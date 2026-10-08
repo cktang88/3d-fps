@@ -1,0 +1,39 @@
+{
+  "name": "ironline-fps",
+  "version": "1.0.0",
+  "description": "Realistic browser FPS built on three.js + Rapier",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cktang88/3d-fps.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/cktang88/3d-fps/issues"
+  },
+  "homepage": "https://github.com/cktang88/3d-fps#readme",
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.21.0",
+    "@fontsource/barlow-condensed": "^5.3.0",
+    "@fontsource/rajdhani": "^5.3.0",
+    "@recast-navigation/core": "^0.43.1",
+    "@recast-navigation/generators": "^0.43.1",
+    "@recast-navigation/three": "^0.43.1",
+    "n8ao": "^2.0.1",
+    "postprocessing": "^6.39.5",
+    "three": "^0.186.1",
+    "yuka": "^0.7.8"
+  },
+  "devDependencies": {
+    "@gltf-transform/cli": "^4.5.1",
+    "playwright": "^1.64.0",
+    "vite": "^8.3.4"
+  },
+  "type": "module"
+}
