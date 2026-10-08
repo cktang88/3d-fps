@@ -1,0 +1,9 @@
+{"tag":"c_optics","setupFiles":["tools/qa/suites/lib.js"],"match":"tdm","w":960,"h":540,
+ "views":[
+  {"name":"o1_m4_reddot_ads","frames":1,"eval":"__qa.god();__qa.freezeBots(true);__qa.releaseAll();__qa.place([0,0.1,10],0.15,0.02);__qa.loadout('m4','p226');__qa.sim(1.2);__qa.down('Mouse2');__qa.sim(0.6);","read":"({optic:__game.currentWeapon.loadout.optic,adsT:__game.currentWeapon.adsT})"},
+  {"name":"o2_m4_holo_ads","frames":1,"eval":"__game.settings.loadout.attachments.m4={optic:'holo'};__qa.loadout('m4');__qa.sim(1.2);__qa.down('Mouse2');__qa.sim(0.6);","read":"({optic:__game.currentWeapon.loadout.optic,adsT:__game.currentWeapon.adsT})"},
+  {"name":"o3_ak_irons_ads","frames":1,"eval":"__game.settings.loadout.attachments.m4={};__qa.down('Mouse2',false);__qa.loadout('ak');__qa.sim(1.2);__qa.down('Mouse2');__qa.sim(0.6);","read":"({optic:__game.currentWeapon.loadout.optic,adsT:__game.currentWeapon.adsT})"},
+  {"name":"o4_switch_holster","frames":1,"eval":"__qa.down('Mouse2',false);__qa.loadout('m4','p226');__qa.sim(1.5);__qa.tap('Digit2');__qa.sim(0.09);","read":"({cur:__game.currentWeapon.id,holstering:__game.viewmodel.holstering})"},
+  {"name":"o5_switch_draw","frames":1,"eval":"__qa.sim(0.15);","read":"({cur:__game.currentWeapon.id,state:__game.currentWeapon.state,holstering:__game.viewmodel.holstering})"},
+  {"name":"o6_switch_back_mid","frames":1,"eval":"__qa.sim(1.0);__qa.tap('Digit1');__qa.sim(0.3);","read":"({cur:__game.currentWeapon.id,state:__game.currentWeapon.state})"}
+ ]}

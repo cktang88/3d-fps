@@ -22,14 +22,16 @@
       // Hip fire: hold trigger 0.5 s (auto) or tap once.
       const a0 = w.ammo;
       const mode = w.mode;
-      Q.press('Mouse0'); Q.sim(mode === 'auto' ? 0.5 : 0.05); Q.down('Mouse0', false); Q.sim(0.6);
+      Q.press('Mouse0'); Q.sim(mode === 'auto' ? 0.5 : 0.05); const fxMid = Q.fx(); Q.down('Mouse0', false); Q.sim(0.6);
       r.hipShots = fired; r.ammoAfterHip = w.ammo;
       const expect = mode === 'burst' ? (s.burst || 3) : mode === 'auto' ? null : 1;
       if (expect != null && fired !== expect) fail(id, `${mode} fire produced ${fired} shots, expected ${expect}`);
+      if (mode === 'auto') { r.effRpm = Math.round(fired / 0.5 * 60); }
       if (mode === 'auto' && fired < 3) fail(id, `auto fire for 0.5 s produced only ${fired} shots`);
       if (a0 - w.ammo !== fired) fail(id, `ammo dropped ${a0 - w.ammo} but ${fired} shots fired`);
       Q.sim(0.4);
       const fx1 = Q.fx();
+      r.fxMid = fxMid; if (fxMid.flashes === 0 && fxMid.tracers === 0) fail(id, 'no muzzle flash / tracer particles alive right after firing');
       r.fx = { flashes: fx1.flashes - fx0.flashes, decalsAdded: fx1.decals - fx0.decals, sparksDust: (fx1.sparks + fx1.dust) - (fx0.sparks + fx0.dust) };
       r.fxPeak = fx1;
       if (fx1.decals <= fx0.decals && fired > 0) fail(id, 'no bullet-hole decals added after firing at wall');

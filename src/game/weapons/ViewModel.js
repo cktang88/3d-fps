@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { GunModels, POSES, RELOAD_PHASES, M, vmTune } from './GunModels.js';
+import { GunModels, POSES, RELOAD_PHASES, M, vmTune, VM_TUNE } from './GunModels.js';
+import { FPArms, FP_K, FP_TUNE } from './FPRig.js';
 import { Spring, Spring3, damp, clamp, DEG, smoothstep, easeInOutSine, rand } from '../../core/MathUtil.js';
 import { muzzleFlashAtlas, muzzleSideTex, reticleTex, glowTex } from '../../render/ProcTex.js';
 
@@ -209,9 +210,12 @@ export class ViewModel {
     const modelKey = s.model;
     const src = this.models.src[modelKey];
     const poseKey = s.pose;
-    const tune = vmTune(poseKey);
+    // Authored FP rig (gun + posed arms): its own tune; the steel-tide VM_TUNE numbers belong to the old meshes.
+    const fp = this.models.fp?.[modelKey];
+    const tune = fp ? { ...VM_TUNE.default, ...FP_TUNE.default, ...(FP_TUNE[modelKey] || {}), scale: 1 / FP_K } : vmTune(poseKey);
     const basePose = POSES[poseKey] || POSES.m4a1;
     const pose = { ...basePose, primary: tune.primary || basePose.primary, support: tune.support || basePose.support };
+    if (fp?.gripR) { pose.primary = fp.gripR.toArray(); pose.support = (fp.gripL || fp.gripR).toArray(); }
     const sidearm = pose.kind === 'sidearm';
     const root = new THREE.Group();
     root.name = 'WeaponRoot';
@@ -343,7 +347,14 @@ export class ViewModel {
 
     // ---- Static arms ----
     const armsSrc = sidearm ? this.models.armsPistol : this.models.armsRifle;
-    if (armsSrc) {
+    if (fp) {
+      // Skinned arms posed onto this exact gun offline (contact-solved); the support arm is IK-driven.
+      rig.fp = new FPArms(fp);
+      rig.fp.object.traverse((o) => { if (o.isMesh) o.material.envMapIntensity = 0.9; });
+      root.add(rig.fp.object);
+      rig.pump = find(gun, 'Pump');
+      rig.pumpHome = rig.pump ? rig.pump.position.clone() : null;
+    } else if (armsSrc) {
       const arms = armsSrc.scene.clone(true);
       arms.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; o.material.envMapIntensity = 0.9; } });
       root.add(arms);
@@ -358,6 +369,15 @@ export class ViewModel {
     // (consistent framing across platforms regardless of where each model's origin is).
     const boreAnchor = new THREE.Vector3(0, rig.boreY, pose.primary[2]).multiplyScalar(scale);
     rig.hip = tune.hip ? V(tune.hip) : V(tune.hipAnchor).sub(boreAnchor.applyEuler(rig.hipRot)).add(V(tune.hipOffset || [0, 0, 0]));
+    if (fp?.meta.hip) {
+      // Authored hip framing (docs/FP_FRAMING.md): camera-space (x right, y fwd, z up, metres) of the bore
+      // point above the grip, plus pitch / yaw / roll in degrees.
+      const h = fp.meta.hip, D = Math.PI / 180;
+      rig.hipRot = new THREE.Euler(h.rot[0] * D, h.rot[1] * D, h.rot[2] * D, 'YXZ');
+      const b = new THREE.Vector3(h.boreRef[0], h.boreRef[2], -h.boreRef[1]).applyEuler(rig.hipRot);
+      rig.hip = new THREE.Vector3(h.pos[0], h.pos[2], -h.pos[1]).sub(b).add(V(tune.hipOffset || [0, 0, 0]));
+      rig.hipRot = new THREE.Euler().setFromQuaternion(new THREE.Quaternion().setFromEuler(rig.hipRot));
+    }
     // ADS: rotate so the sight axis (rear → front) runs exactly along the view axis, then put the
     // rear sight reference on the axis at the platform's eye relief.
     const a = rig.aim;
@@ -533,7 +553,8 @@ export class ViewModel {
     const pos = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
     grip.decompose(pos, q, sc);
     const sidearm = rig.sidearm;
-    const presScale = rig.poseKey === 'scarl' ? 0.8 : rig.poseKey === 'awm' ? 0.75 : sidearm ? 0.64 : 0.72;
+    // FP rigs show real-size guns (the steel-tide set was ~1.36x), so the donor clip is scaled to match.
+    const presScale = (rig.poseKey === 'scarl' ? 0.8 : rig.poseKey === 'awm' ? 0.75 : sidearm ? 0.64 : 0.72) * (rig.fp ? rig.tune.donorScale ?? 0.74 : 1);
     const pres = new THREE.Matrix4().makeRotationY(Math.PI);
     if (sidearm) pres.premultiply(new THREE.Matrix4().makeRotationX(0.3));
     const basis = pres.multiply(new THREE.Matrix4().makeRotationFromQuaternion(q).invert());
@@ -618,6 +639,7 @@ export class ViewModel {
     this.reloading = null;
     if (!rig) return;
     if (this.reloadArms) this.reloadArms.visible = false;
+    if (rig?.fp) { rig.fp.setLeft(rig.root, null); rig.fpA0 = null; }
     if (rig.leftArm) rig.leftArm.visible = true;
     if (rig.magazine && rig.magHome) { rig.magazine.position.copy(rig.magHome.p); rig.magazine.quaternion.copy(rig.magHome.q); rig.magazine.visible = true; }
     if (rig.spare) rig.spare.visible = false;
@@ -725,6 +747,13 @@ export class ViewModel {
     const leftTarget = this._supportArmOffset(rig, w, dt, reloading);
     if (rig.leftArm && leftTarget) rig.leftArm.position.copy(rig.leftArmHome).add(leftTarget);
     else if (rig.leftArm && w.state !== 'reload') rig.leftArm.position.lerp(rig.leftArmHome, 1 - Math.exp(-20 * dt));
+    if (rig.fp && !(w.state === 'reload' && !s.tube)) {
+      // Support hand: IK to its grip + choreography offset (WeaponRoot space); the pump rides with it.
+      rig.fpLeft = rig.fpLeft || new THREE.Vector3();
+      rig.fpLeft.lerp(leftTarget || _v.set(0, 0, 0), leftTarget ? 1 : 1 - Math.exp(-20 * dt));
+      rig.fp.setLeft(rig.root, rig.fpLeft.lengthSq() > 1e-8 ? rig.fpLeft : null);
+      if (rig.pump) rig.pump.position.z = rig.pumpHome.z + (w.state === 'pump' ? Math.max(0, rig.fpLeft.z) : 0);
+    }
     if (w.state === 'pump') {
       const t = clamp(w.stateTime / w.stateDur, 0, 1);
       const k = Math.sin(t * Math.PI);
@@ -835,7 +864,7 @@ export class ViewModel {
     const clip = clipName && this.reloadClips?.get(clipName);
     if (!clip) { this._proceduralReload(rig, progress); return; }
     // Show animated support arm, hide static left arm.
-    this.reloadArms.visible = true;
+    this.reloadArms.visible = !rig.fp; // FP rigs: the clip only drives the IK target of our own hand
     if (rig.leftArm) rig.leftArm.visible = false;
     // The cropped (forearm-only) mesh reads better with our closer camera for every platform: the
     // long-gun mesh's upper-arm sleeve swings into frame during the mag swap.
@@ -868,7 +897,8 @@ export class ViewModel {
     this.reloadArms.updateMatrixWorld(true);
     // Magazine follows the support hand between reach→stow (old mag) and acquire→seat (new mag).
     const ph = rig.phases;
-    const hand = rig.sidearm ? this.leftPalm : this.leftGripAnchor;
+    if (rig.fp) this._fpReloadHand(rig);
+    const hand = rig.fp ? rig.fp.leftHand : rig.sidearm ? this.leftPalm : this.leftGripAnchor;
     if (!rig.magazine) return;
     const toGun = _m.copy(rig.magazine.parent.matrixWorld).invert();
     const handPos = hand.getWorldPosition(new THREE.Vector3()).applyMatrix4(toGun);
@@ -913,8 +943,30 @@ export class ViewModel {
     }
   }
 
+  /**
+   * FP rigs: the support hand rigidly follows the reload clip's hand anchor, keeping the offset it had at
+   * the start of the reload (so it leaves from and returns to its authored grip).
+   */
+  _fpReloadHand(rig) {
+    const anchor = rig.sidearm ? this.leftPalm : this.leftGripAnchor;
+    if (!anchor || !rig.fp.ik.L.ok) return;
+    rig.root.updateMatrixWorld(true);
+    const rootInv = _m2.copy(rig.root.matrixWorld).invert();
+    const A = new THREE.Matrix4().multiplyMatrices(rootInv, anchor.matrixWorld);
+    if (!rig.fpA0) {
+      rig.fp.setLeft(rig.root, null);
+      const H0 = new THREE.Matrix4().multiplyMatrices(rootInv, rig.fp.ik.L.ctrl.matrixWorld);
+      rig.fpA0 = new THREE.Matrix4().copy(A).invert().multiply(H0); // anchor -> hand control
+    }
+    const T = A.multiply(rig.fpA0);
+    const p = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+    T.decompose(p, q, sc);
+    rig.fp.setLeftAbs(rig.root, p, q);
+  }
+
   // Fallback (shotgun/no-clip weapons): support arm dips to the magazine/port.
   _proceduralReload(rig, progress) {
+    if (rig.fp) { const k = Math.sin(progress * Math.PI); rig.fp.setLeft(rig.root, new THREE.Vector3(0.02, -0.12 * k, 0.25 * k)); return; }
     if (!rig.leftArm) return;
     const k = Math.sin(progress * Math.PI);
     rig.leftArm.position.copy(rig.leftArmHome).add(new THREE.Vector3(0.02, -0.12 * k, 0.25 * k));
@@ -933,20 +985,21 @@ export class ViewModel {
    * offset (arms space) or null when the hand should rest on its grip.
    */
   _supportArmOffset(rig, w, dt, reloading) {
-    if (!rig.leftArm || !rig.arms) return null;
+    if (!rig.fp && (!rig.leftArm || !rig.arms)) return null;
+    const conv = (v) => (rig.fp ? v : this._rootToArms(rig, v));
     const sup = V(rig.pose.support);
     if (w.state === 'pump') {
       // Rack: snap back fast, drive forward a touch slower.
       const t = clamp(w.stateTime / w.stateDur, 0, 1);
       const back = t < 0.45 ? smoothstep(t / 0.45) : 1 - smoothstep((t - 0.45) / 0.45);
       this._hideShell();
-      return this._rootToArms(rig, new THREE.Vector3(0, -0.01, 0.17).multiplyScalar(back));
+      return conv(new THREE.Vector3(0, -0.01, rig.tune.pumpStroke ?? 0.17).multiplyScalar(back));
     }
     if (reloading && rig.stats.tube) {
       // Per shell: drop to the belt (0–.3), bring a shell up under the port (.3–.62), thumb it in (.62–.8), return.
       const t = clamp(w.stateTime / w.stateDur, 0, 1);
-      const port = new THREE.Vector3(0.0, -0.36, -0.12);
-      const belt = new THREE.Vector3(0.12, -0.75, 0.15);
+      const port = V(rig.tune.shellPort || [0.0, -0.36, -0.12]);
+      const belt = V(rig.tune.shellBelt || [0.12, -0.75, 0.15]);
       let p;
       if (t < 0.3) p = sup.clone().lerp(belt, smoothstep(t / 0.3));
       else if (t < 0.62) p = belt.clone().lerp(port, smoothstep((t - 0.3) / 0.32));
@@ -955,7 +1008,7 @@ export class ViewModel {
       // Shell in the fingers while carried.
       const carry = t >= 0.22 && t < 0.78 && w.ammo < rig.stats.mag;
       this._showShell(rig, carry ? p.clone().add(new THREE.Vector3(0, 0.035, -0.02)) : null);
-      return this._rootToArms(rig, p.sub(sup));
+      return conv(p.sub(sup));
     }
     this._hideShell();
     return null;

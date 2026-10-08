@@ -148,7 +148,9 @@ export class Weapon {
   update(dt, input) {
     this.time += dt;
     this.stateTime += dt;
-    this.cooldown = Math.max(0, this.cooldown - dt);
+    // Cooldown may go negative within a frame so sustained fire carries the remainder (rpm is
+    // frame-rate independent); it is re-clamped to 0 whenever the trigger isn't driving fire.
+    this.cooldown -= dt;
     const s = this.stats;
     const shots = [];
 
@@ -209,24 +211,27 @@ export class Weapon {
       want = this.burstLeft > 0;
     } else want = input.firePressed;
 
-    if (canShoot && want && this.cooldown <= 0) {
+    let fired = 0;
+    while (canShoot && want && this.cooldown <= 0 && this.ammo > 0 && fired < 4) {
       const shot = this._fire();
       shots.push(shot);
+      fired++;
+      // Carry at most one interval of leftover time (no banking across idle frames).
+      const carry = Math.max(this.cooldown, -dt);
       if (mode === 'burst') {
         this.burstLeft--;
-        this.cooldown = this.burstLeft > 0 ? 60 / s.burstRpm : s.burstDelay + 60 / s.burstRpm;
+        this.cooldown = carry + (this.burstLeft > 0 ? 60 / s.burstRpm : s.burstDelay + 60 / s.burstRpm);
       } else {
-        this.cooldown = 60 / s.rpm;
+        this.cooldown = (mode === 'auto' ? carry : 0) + 60 / s.rpm;
       }
       if (mode === 'bolt' && this.ammo > 0) { this.chambered = false; this._setState('bolt', s.boltTime); this.emit('bolt'); }
       if (mode === 'pump' && this.ammo > 0) { this.chambered = false; this._setState('pump', 60 / s.rpm); this.emit('pump'); }
-      // With a multi-frame drop (low fps) allow catch-up for very high RPM.
-      if (mode === 'auto' && dt > this.cooldown * 2 && this.ammo > 0) {
-        // Skip catch-up; keeps logic deterministic and simple.
-      }
-    } else if (this.burstLeft > 0 && (this.ammo === 0 || !canShoot)) {
-      this.burstLeft = 0;
+      // Only sustained modes may fire several rounds in one long frame.
+      if (!(mode === 'auto' || (mode === 'burst' && this.burstLeft > 0))) break;
+      want = mode === 'auto' ? input.fire : this.burstLeft > 0;
     }
+    if (!fired && this.burstLeft > 0 && (this.ammo === 0 || !canShoot)) this.burstLeft = 0;
+    if (!fired && !(want && canShoot)) this.cooldown = Math.max(0, this.cooldown);
 
     if (input.reloadPressed) this.reload();
     return shots;

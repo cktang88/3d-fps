@@ -1,0 +1,3 @@
+{"tag":"d_diag","setupFiles":["tools/qa/suites/lib.js"],"scriptFile":"tools/qa/suites/d_diag.script.js","match":"tdm","w":960,"h":540,
+ "views":[{"name":"stairs_side","frames":2,"eval":"__qa.god();__qa.freezeBots(true);__qa.place([-12.5,0.1,-38.5],1.75,0.25);__qa.sim(0.3);__game.player.yaw=1.75;__game.player.pitch=0.25;","read":"__qa.perf()"},
+          {"name":"stairs_top_pov","frames":2,"eval":"__qa.place([-16.4,3.7,-40.5],0,-0.25);__qa.sim(0.05);__game.player.position.set(-16.4,3.7,-40.5);__game.player.yaw=0;__game.player.pitch=-0.25;","read":"__qa.p()"}]}

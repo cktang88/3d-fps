@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { grimeTex } from '../../render/ProcTex.js';
+import { FP_IDS, parseFP } from './FPRig.js';
 
 /**
  * Weapon model library: loads the authored GLBs, unifies their materials into one consistent
@@ -182,7 +183,15 @@ export class GunModels {
   }
 
   async load() {
-    const keys = ['m4a1', 'ak47', 'scarl', 'mp5a5', 'vss', 'm24', 'awm', 'p226', 'm1911', 'shotgun', 'optics'];
+    // Per-weapon first-person rigs (gun + posed gloved arms, tools/blender, docs/FP_FRAMING.md) replace the
+    // static gun + rigidly mounted arms for the models they cover.
+    this.fp = {};
+    await Promise.all(FP_IDS.map(async (k) => {
+      const g = await this.assets.model('fp_' + k, `models/fp/${k}.glb`);
+      const fp = g && parseFP(g, k);
+      if (fp?.gun) { this.fp[k] = fp; this.src[k] = fp.gun; }
+    }));
+    const keys = ['m4a1', 'ak47', 'scarl', 'mp5a5', 'vss', 'm24', 'awm', 'p226', 'm1911', 'shotgun', 'optics'].filter((k) => !this.fp[k]);
     await Promise.all([
       ...keys.map(async (k) => { const g = await this.assets.model('gun_' + k, `models/weapons/${k}.glb`); if (g) this.src[k] = g.scene; }),
       this.assets.model('arms_rifle', 'models/weapons/smg45_rifle_arms.glb').then((g) => (this.armsRifle = g)),
@@ -191,11 +200,11 @@ export class GunModels {
     ]);
     // Normalise the shotgun (third-party model, different axes/scale) into the shared contract:
     // muzzle toward −Z, ~1.75 units long (same Godot-space scale as the steel-tide rifles).
-    if (this.src.shotgun) this.src.shotgun = this.normaliseShotgun(this.src.shotgun);
+    if (this.src.shotgun && !this.fp.shotgun) this.src.shotgun = this.normaliseShotgun(this.src.shotgun);
     // Arms share the look (no metal wear; cloth / leather roughness floor).
-    for (const a of [this.armsRifle, this.armsPistol, this.armsReload]) {
+    for (const a of [this.armsRifle, this.armsPistol, this.armsReload, ...Object.values(this.fp).map((f) => ({ scene: f.root, skinnedOnly: true }))]) {
       a?.scene.traverse((o) => {
-        if (!o.isMesh) return;
+        if (!o.isMesh || (a.skinnedOnly && !o.isSkinnedMesh)) return;
         for (const m of Array.isArray(o.material) ? o.material : [o.material]) applyGunLook(m, { wear: 0, micro: 0.5, rmin: 0.5, sat: 0.85, lumMax: 0.45, keepDiffuse: 0.7 });
       });
     }

@@ -86,7 +86,14 @@
       bots: bots.map((b, i) => ({ i, team: b.team, alive: b.alive, k: b.stats.kills, d: b.stats.deaths - deathsBefore[i], maxStill: +maxStill[i].toFixed(1), goal: b.goal?.name || b.goal || b.state, pos: [Math.round(b.position.x), +b.position.y.toFixed(1), Math.round(b.position.z)] })),
       stuckBots: maxStill.map((s, i) => [i, s]).filter(([, s]) => s > 15).map(([i, s]) => `bot${i} still ${s.toFixed(0)}s`),
       fallen: [...fallen], outOfBounds: [...outOfBounds], nanAt,
+      visibleSkinnedRoots: Q.skinnedRoots(), aliveBots: bots.filter((b) => b.alive).length,
     };
+  };
+  // Count distinct visible top-level objects containing a visible SkinnedMesh (bots + corpses).
+  Q.skinnedRoots = () => {
+    const roots = new Set();
+    G().renderer.scene.traverseVisible((o) => { if (o.isSkinnedMesh) { let r = o; while (r.parent && r.parent.type !== 'Scene') r = r.parent; roots.add(r); } });
+    return roots.size;
   };
   // Put the camera ~dist m in front of the nearest alive bot, looking at it.
   Q.lookAtBot = (dist = 4, idx = null) => {
