@@ -34,7 +34,8 @@ async function boot() {
   game.onMatchEnd = (result) => {
     game.paused = true;
     game.input.unlock();
-    game.hud.banner(result, '', 4);
+    game.hud.banner(result, game.mode.teams ? `${game.mode.score[game.player.team]} — ${game.mode.score[1 - game.player.team]}` : '', 4, result === 'VICTORY' ? 'ally' : result === 'DEFEAT' ? 'enemy' : '');
+    game.audio.ui(result === 'VICTORY' ? 'streak' : 'medal');
     setTimeout(() => { game.started = false; game.hud.show(false); menu.showEnd(result); }, 2500);
   };
 
@@ -55,11 +56,17 @@ async function boot() {
   addEventListener('beforeunload', () => saveSettings(settings));
 
   let last = performance.now();
+  const frameErrors = new Set();
   const frame = (now) => {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
-    game.update(dt);
     requestAnimationFrame(frame);
+    // Never let one bad frame kill the loop; report each distinct error once.
+    try { game.update(dt); } catch (e) {
+      const key = e?.message;
+      if (!frameErrors.has(key)) { frameErrors.add(key); console.error(e); }
+      game.input.endFrame();
+    }
   };
   requestAnimationFrame(frame);
 }

@@ -264,6 +264,12 @@ export class ViewModel {
       rig.spare?.children.forEach((c) => { if (c.isMesh) c.scale.y *= 1.3; });
     }
 
+    // Shotgun: authored model has no sights; add a ghost ring + bead (rear hides under an optic).
+    if (poseKey === 'shotgun' && tune.ironRear) {
+      const sg = GunModels.shotgunSights(tune.ironRear, tune.ironFront);
+      gun.add(sg.rear, sg.front);
+      sg.rear.visible = !att.optic || att.optic === 'irons';
+    }
     // Optic.
     gun.updateMatrixWorld(true);
     rig.aim = this._mountOptic(rig, gun, att.optic, authoredOptic, rear, front);
@@ -395,7 +401,7 @@ export class ViewModel {
       info.reticle = ret;
       info.reticleAnchor = reticleAnchor;
       // Angular size of the reticle (radians, full width of the texture quad).
-      info.reticleAngle = opticId === 'reddot' ? 0.012 : 0.05;
+      info.reticleAngle = opticId === 'reddot' ? 0.016 : 0.032;
       info.lensR = (opticId === 'reddot' ? 0.016 : 0.024) * osc;
       // Lens glass tint.
       const lens = new THREE.Mesh(new THREE.CircleGeometry(info.lensR, 24), new THREE.MeshPhysicalMaterial({
@@ -578,6 +584,11 @@ export class ViewModel {
     // Idle breathing.
     const breath = Math.sin(this.time * 1.6) * 0.0015 * (1 - adsE * 0.7);
     const breathR = Math.sin(this.time * 0.8) * 0.004 * (1 - adsE * 0.8);
+
+    // Near plane pushes out while aiming so the stock / receiver right under the cheek never
+    // fills the bottom of the sight picture (it is physically there, but reads as clutter).
+    const near = 0.01 + 0.05 * adsE;
+    if (Math.abs(this.viewCam.near - near) > 1e-4) { this.viewCam.near = near; this.viewCam.updateProjectionMatrix(); }
 
     // ---- Root pose ----
     const pos = new THREE.Vector3().copy(rig.hip).lerp(rig.ads, adsE);
@@ -806,13 +817,17 @@ export class ViewModel {
       this.scopeLensMat.uniforms.fade.value = clamp(w.adsT * 1.6, 0.15, 1);
       if (active && !this.hidden) {
         const cam = g.renderer.camera;
-        const zoom = rig.stats.zoomLevel;
-        // Lens angular radius on screen (view camera).
+        // True magnification is relative to the naked-eye (un-zoomed) view: undo the main
+        // camera's own ADS zoom to recover the base FOV.
+        const zoom = w.lensZoom ? w.lensZoom() : rig.stats.zoomLevel;
+        const mainZoom = 1 + (w.zoom() - 1) * w.adsT;
+        const tanBase = Math.tan((cam.fov * DEG) / 2) * mainZoom;
+        // Lens angular radius on screen (view camera), as a fraction of the half screen height.
         const camInv = _m.copy(this.viewCam.matrixWorld).invert();
         const lp = a.lens.getWorldPosition(new THREE.Vector3()).applyMatrix4(camInv);
         const r = a.lensRadius * rig.scale;
         const Rs = (r / Math.abs(lp.z)) / Math.tan((this.viewCam.fov * DEG) / 2);
-        const tanHalf = Rs * Math.tan((cam.fov * DEG) / 2) / zoom;
+        const tanHalf = Rs * tanBase / zoom;
         this.scopeCam.fov = 2 * Math.atan(Math.max(1e-4, tanHalf)) / DEG;
         this.scopeCam.position.copy(cam.position);
         // Weapon-axis aim: camera orientation * (viewmodel root rotation relative to camera).

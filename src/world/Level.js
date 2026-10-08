@@ -459,6 +459,7 @@ export class Level {
         const name = m.name + ' ' + (m.parent?.name ?? '');
         if (o.pick && !o.pick.test(m.name) && !o.pick.test(m.parent?.name ?? '')) return;
         const geo = m.geometry.clone().applyMatrix4(m.matrixWorld);
+        geo.morphAttributes = {}; geo.morphTargetsRelative = false;
         let mat = m.material;
         if (o.emissive && o.emissive.test(mat.name)) {
           mat = mat.clone();

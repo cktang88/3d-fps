@@ -65,10 +65,20 @@ export class Weapon {
     return true;
   }
 
+  /**
+   * Main-camera magnification at full ADS. Picture-in-picture scopes (ACOG-style) only zoom the
+   * world slightly — the magnified image lives in the lens (see lensZoom) — while overlay scopes
+   * and open sights zoom the whole view.
+   */
   zoom() {
-    if (this.stats.variable) return this.stats.variable[this.zoomIndex] ?? this.stats.zoomLevel;
-    return this.stats.zoomLevel;
+    const s = this.stats;
+    if (s.scope && !s.overlay) return Math.min(1.3, s.zoomLevel);
+    if (s.variable) return s.variable[this.zoomIndex] ?? s.zoomLevel;
+    return s.zoomLevel;
   }
+
+  /** Magnification seen through a picture-in-picture lens. */
+  lensZoom() { return this.stats.zoomLevel; }
 
   toggleZoom() {
     if (!this.stats.variable) return;

@@ -447,6 +447,9 @@ export class HUD {
     }
     this.root.classList.toggle('dead', !p.alive);
 
+    // Keep the scoreboard live while held.
+    if (this.el.sb.classList.contains('on') && (this._sbT = (this._sbT || 0) - dt) <= 0) { this._sbT = 0.5; this.scoreboard(true); }
+
     // Minimap at half rate (it's a 2D canvas redraw).
     if ((this._mmFrame++ & 1) === 0) this.drawMinimap();
   }

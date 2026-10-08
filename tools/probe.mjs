@@ -11,7 +11,7 @@ const file = process.argv[2];
 const body = fs.readFileSync(file, 'utf8');
 const PORT = process.env.PORT || '5204';
 const W = +(process.env.W || 1280), H = +(process.env.H || 720);
-const server = spawn('npx', ['vite', '--config', 'tools/vite.nohmr.config.mjs', '--port', PORT, '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+const server = spawn('npx', ['vite', '--port', PORT, '--strictPort'], { env: { ...process.env, NO_HMR: '1' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
 const killServer = () => { try { process.kill(-server.pid, 'SIGTERM'); } catch {} };
 server.stderr.on('data', (d) => { if (String(d).includes('already in use')) { console.log('port busy'); process.exit(1); } });
 await new Promise((res) => server.stdout.on('data', (d) => { if (String(d).includes('Local') || String(d).includes('ready')) res(); }));

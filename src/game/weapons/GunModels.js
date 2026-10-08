@@ -38,9 +38,9 @@ export const RELOAD_PHASES = {
  * primary/support override the POSES grips (WeaponRoot-local).
  */
 export const VM_TUNE = {
-  default: { scale: 0.68, hipAnchor: [0.222, -0.143, -0.273], hipRot: [0.06, 0.09, -0.15], opticScale: 0.72 },
+  default: { scale: 0.68, hipAnchor: [0.21, -0.12, -0.4], hipRot: [0.03, 0.08, -0.15], opticScale: 0.72 },
   m4a1: { primary: [0.0, -0.17, 0.215], opticScale: 1 },
-  ak74: { scale: 0.82, opticScale: 0.62 },
+  ak74: { scale: 0.82, opticScale: 0.62, ironRelief: 0.34 },
   scarl: { hipOffset: [0, -0.025, -0.04] },
   mp5a5: { opticScale: 0.62, hipOffset: [-0.03, 0.025, -0.02] },
   // Fixed-scope precision platforms: the authored scope glass defines the optical axis. Their
@@ -48,9 +48,9 @@ export const VM_TUNE = {
   vss: { integratedScope: true, muzzle: [0, 0.05, -1.26], magOffset: [0, 0.175, -0.03], chargingOffset: [0, 0, -0.04] },
   m24: { integratedScope: true, muzzle: [0, 0.08, -1.42], magOffset: [0, 0.125, 0], chargingOffset: [0, 0, -0.12], primary: [-0.005, -0.08, -0.07] },
   awm: { integratedScope: true, muzzle: [0, 0.165, -1.68], magOffset: [0, 0.19, 0], chargingOffset: [0, 0.02, -0.1], primary: [0, -0.05, -0.15] },
-  shotgun: { hipOffset: [0, -0.07, -0.1] },
-  p226: { hipAnchor: [0.07, -0.1, -0.42], hipRot: [0.04, 0.05, -0.03], muzzle: [0, 0.09, -0.08], ironRear: [0, 0.128, 0.3], ironFront: [0, 0.128, -0.05] },
-  m1911: { hipAnchor: [0.07, -0.1, -0.42], hipRot: [0.04, 0.05, -0.03], muzzle: [0, 0.09, -0.08], ironRear: [0, 0.13, 0.3], ironFront: [0, 0.13, -0.05] },
+  shotgun: { scale: 0.6, hipOffset: [0.03, -0.09, 0], ironRear: [0, 0.15, -0.05], ironFront: [0, 0.07, -1.17], ironRelief: 0.3 },
+  p226: { scale: 0.85, hipAnchor: [0.09, -0.08, -0.46], hipRot: [0.08, 0.1, -0.15], muzzle: [0, 0.09, -0.08], ironRear: [0, 0.128, 0.3], ironFront: [0, 0.128, -0.05] },
+  m1911: { scale: 0.85, hipAnchor: [0.09, -0.08, -0.46], hipRot: [0.08, 0.1, -0.15], muzzle: [0, 0.09, -0.08], ironRear: [0, 0.13, 0.3], ironFront: [0, 0.13, -0.05] },
 };
 export const vmTune = (key) => ({ ...VM_TUNE.default, ...(VM_TUNE[key] || {}) });
 
@@ -304,6 +304,30 @@ export class GunModels {
     const rib2 = rib.clone(); rib2.position.x = -0.038;
     g.add(d, neck, rib, rib2);
     return g;
+  }
+
+  /** Ghost-ring rear + ramped front post with a glowing bead (shotgun irons). Returns { rear, front }. */
+  static shotgunSights(rearPos, frontPos) {
+    const rear = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.017, 0.0055, 8, 24), M('darkSteel'));
+    rear.add(ring);
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.026, 0.05), M('darkSteel'));
+    base.position.y = -0.03; rear.add(base);
+    for (const sx of [-1, 1]) {
+      const wing = new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.05, 0.04), M('darkSteel'));
+      wing.position.set(sx * 0.028, -0.006, 0); rear.add(wing);
+    }
+    rear.position.set(...rearPos);
+    const front = new THREE.Group();
+    const h = 0.065;
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.009, h, 0.03), M('darkSteel'));
+    post.position.y = -h / 2; front.add(post);
+    const ramp = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.02, 0.07), M('darkSteel'));
+    ramp.position.y = -h + 0.006; front.add(ramp);
+    const bead = new THREE.Mesh(new THREE.SphereGeometry(0.0075, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 1.3, 0.25), toneMapped: false }));
+    bead.position.y = 0.001; front.add(bead);
+    front.position.set(...frontPos);
+    return { rear, front };
   }
 
   static extMag(mag) {

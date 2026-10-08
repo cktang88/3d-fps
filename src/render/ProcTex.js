@@ -239,13 +239,19 @@ export function reticleTex(type = 'dot', color = '#ff2a1a') {
   g.translate(S / 2, S / 2);
   g.fillStyle = color; g.strokeStyle = color;
   g.shadowColor = color; g.shadowBlur = 8;
+  // Designs fill the quad: the quad's angular size is set by the optic (ViewModel reticleAngle).
   if (type === 'dot') {
-    g.beginPath(); g.arc(0, 0, 6, 0, Math.PI * 2); g.fill();
+    g.shadowBlur = 26;
+    g.beginPath(); g.arc(0, 0, 30, 0, Math.PI * 2); g.fill();
+    g.shadowBlur = 6; g.fillStyle = '#ffd0c8';
+    g.beginPath(); g.arc(0, 0, 11, 0, Math.PI * 2); g.fill();
   } else if (type === 'holo') {
-    g.lineWidth = 5; g.beginPath(); g.arc(0, 0, 70, 0, Math.PI * 2); g.stroke();
-    g.beginPath(); g.arc(0, 0, 6, 0, Math.PI * 2); g.fill();
-    for (const a of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
-      g.save(); g.rotate(a); g.fillRect(-2.5, -86, 5, 18); g.restore();
+    // EOTech-style 65 MOA ring + 1 MOA dot, ring ticks at the cardinal points.
+    g.shadowBlur = 6;
+    g.lineWidth = 6; g.beginPath(); g.arc(0, 0, 96, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.arc(0, 0, 9, 0, Math.PI * 2); g.fill();
+    for (const a of [0, Math.PI / 2, Math.PI * 1.5]) {
+      g.save(); g.rotate(a); g.fillRect(-3, -112, 6, 22); g.restore();
     }
   } else if (type === 'chevron') {
     g.lineWidth = 6;

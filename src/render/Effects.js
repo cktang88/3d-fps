@@ -5,6 +5,22 @@ import {
 import { G } from '../core/Physics.js';
 import { rand } from '../core/MathUtil.js';
 
+const _o = new THREE.Vector3(), _d = new THREE.Vector3(), _refl = new THREE.Vector3(), _down = new THREE.Vector3(0, -1, 0);
+const _tm = new THREE.Matrix4(), _tq = new THREE.Quaternion(), _ts = new THREE.Vector3(), _ta = new THREE.Vector3(), _tb = new THREE.Vector3(), _tc = new THREE.Vector3(), _tmid = new THREE.Vector3();
+
+// Per-surface impact look: dust colour/amount, chip colour/count.
+const SURF = {
+  concrete: { color: [0.72, 0.7, 0.66], chip: [0.42, 0.41, 0.39], puffs: 4, puffSpeed: 1, alpha: 0.32, size: 1, life: 1, grav: 0.15, chips: 5, chipSize: 1 },
+  brick: { color: [0.66, 0.46, 0.38], chip: [0.42, 0.22, 0.16], puffs: 4, puffSpeed: 1, alpha: 0.34, size: 1, life: 1, grav: 0.15, chips: 6, chipSize: 1.1 },
+  plaster: { color: [0.86, 0.85, 0.82], chip: [0.8, 0.79, 0.76], puffs: 5, puffSpeed: 1.1, alpha: 0.38, size: 1.1, life: 1.1, grav: 0.1, chips: 5, chipSize: 0.9 },
+  wood: { color: [0.55, 0.43, 0.3], chip: [0.45, 0.32, 0.2], puffs: 2, puffSpeed: 0.8, alpha: 0.25, size: 0.8, life: 0.8, grav: 0.3, chips: 7, chipSize: 1.3 },
+  metal: { color: [0.6, 0.6, 0.6], chip: [0.3, 0.3, 0.3], puffs: 1, puffSpeed: 0.6, alpha: 0.18, size: 0.6, life: 0.6, grav: 0.1, chips: 0, chipSize: 1 },
+  dirt: { color: [0.5, 0.42, 0.32], chip: [0.3, 0.24, 0.17], puffs: 4, puffSpeed: 1.2, alpha: 0.42, size: 1.1, life: 1, grav: 0.8, chips: 7, chipSize: 1.2 },
+  glass: { color: [0.85, 0.9, 0.92], chip: [0.7, 0.8, 0.85], puffs: 1, puffSpeed: 0.5, alpha: 0.12, size: 0.5, life: 0.5, grav: 0.1, chips: 8, chipSize: 0.8 },
+  fabric: { color: [0.55, 0.5, 0.42], chip: [0.4, 0.36, 0.3], puffs: 3, puffSpeed: 0.8, alpha: 0.3, size: 0.9, life: 1, grav: 0.4, chips: 2, chipSize: 0.8 },
+  foliage: { color: [0.35, 0.42, 0.25], chip: [0.2, 0.3, 0.12], puffs: 2, puffSpeed: 0.6, alpha: 0.2, size: 0.8, life: 0.8, grav: 0.5, chips: 6, chipSize: 1.2 },
+};
+
 /**
  * GPU-instanced camera-facing particle system. All per-particle state lives in typed arrays;
  * one draw call per system. Supports atlas frames, rotation, size/alpha over life, gravity, drag,
@@ -30,6 +46,7 @@ class ParticleSystem {
     this.frame = new Float32Array(max);
     this.fadeIn = new Float32Array(max);
     this.collide = new Uint8Array(max);
+    this.floor = new Float32Array(max);
 
     const geo = new THREE.InstancedBufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0], 3));
@@ -123,7 +140,8 @@ class ParticleSystem {
     this.drag[i] = o.drag ?? 0;
     this.frame[i] = o.frame ?? ((Math.random() * this.atlas * this.atlas) | 0);
     this.fadeIn[i] = o.fadeIn ?? 0;
-    this.collide[i] = o.collide ? 1 : 0;
+    this.collide[i] = o.collide !== undefined && o.collide !== false ? 1 : 0;
+    this.floor[i] = typeof o.collide === 'number' ? o.collide : -1e9;
   }
 
   update(dt, groundY = null) {
@@ -140,9 +158,11 @@ class ParticleSystem {
       const d = Math.exp(-this.drag[i] * dt);
       this.v[i * 3] *= d; this.v[i * 3 + 1] = this.v[i * 3 + 1] * d - this.grav[i] * dt; this.v[i * 3 + 2] *= d;
       this.p[i * 3] += this.v[i * 3] * dt; this.p[i * 3 + 1] += this.v[i * 3 + 1] * dt; this.p[i * 3 + 2] += this.v[i * 3 + 2] * dt;
-      if (this.collide[i] && groundY !== null && this.p[i * 3 + 1] < groundY(this.p[i * 3], this.p[i * 3 + 2])) {
-        this.p[i * 3 + 1] = groundY(this.p[i * 3], this.p[i * 3 + 2]);
-        this.v[i * 3 + 1] *= -0.3; this.v[i * 3] *= 0.5; this.v[i * 3 + 2] *= 0.5;
+      if (this.collide[i] && this.p[i * 3 + 1] < this.floor[i]) {
+        // Bounce on the floor captured at spawn (cheap, no per-frame raycasts).
+        this.p[i * 3 + 1] = this.floor[i];
+        this.v[i * 3 + 1] *= -0.3; this.v[i * 3] *= 0.45; this.v[i * 3 + 2] *= 0.45;
+        this.rotV[i] *= 0.5;
       }
       this.rot[i] += this.rotV[i] * dt;
     }
@@ -172,7 +192,7 @@ class ParticleSystem {
     this.size0[to] = this.size0[from]; this.size1[to] = this.size1[from];
     this.rot[to] = this.rot[from]; this.rotV[to] = this.rotV[from];
     this.alpha0[to] = this.alpha0[from]; this.grav[to] = this.grav[from]; this.drag[to] = this.drag[from];
-    this.frame[to] = this.frame[from]; this.fadeIn[to] = this.fadeIn[from]; this.collide[to] = this.collide[from];
+    this.frame[to] = this.frame[from]; this.fadeIn[to] = this.fadeIn[from]; this.collide[to] = this.collide[from]; this.floor[to] = this.floor[from];
   }
 }
 
@@ -393,75 +413,115 @@ export class Effects {
     this.tracers.push({ from: from.clone(), dir, len, d: 0, speed, width });
   }
 
+  /** Floor height under a point (one raycast per effect, used for debris bounce). */
+  _floorAt(p) {
+    _o.set(p.x, p.y + 0.05, p.z);
+    const hit = this.game.physics.raycast(_o, _down, 6, G.WORLD);
+    return hit ? hit.point.y + 0.01 : p.y - 6;
+  }
+
   impact(point, normal, surface = 'concrete', dir = null) {
     const n = normal;
     const p = point;
-    const refl = dir ? dir.clone().reflect(n) : n.clone();
+    const refl = _refl.copy(dir ?? n);
+    if (dir) refl.reflect(n);
     if (surface === 'flesh') {
-      for (let i = 0; i < 6; i++) {
+      // Red mist + a few heavy droplets.
+      for (let i = 0; i < 4; i++) {
         this.blood.spawn({
           x: p.x, y: p.y, z: p.z,
-          vx: (dir?.x ?? 0) * rand(1, 3) + rand(-1, 1), vy: rand(-0.2, 1.5), vz: (dir?.z ?? 0) * rand(1, 3) + rand(-1, 1),
-          life: rand(0.3, 0.6), size0: 0.08, size1: 0.45, alpha: 0.8, color: [0.45, 0.02, 0.02], drag: 4, gravity: 3,
+          vx: (dir?.x ?? 0) * rand(0.5, 2) + rand(-0.6, 0.6), vy: rand(-0.2, 0.9), vz: (dir?.z ?? 0) * rand(0.5, 2) + rand(-0.6, 0.6),
+          life: rand(0.25, 0.5), size0: 0.06, size1: rand(0.35, 0.55), alpha: 0.75, color: [0.42, 0.02, 0.02], drag: 5, gravity: 1.5,
+        });
+      }
+      for (let i = 0; i < 5; i++) {
+        this.debris.spawn({
+          x: p.x, y: p.y, z: p.z,
+          vx: (dir?.x ?? 0) * rand(1, 3) + rand(-1, 1), vy: rand(0, 2), vz: (dir?.z ?? 0) * rand(1, 3) + rand(-1, 1),
+          life: rand(0.3, 0.6), size0: rand(0.01, 0.02), alpha: 1, color: [0.3, 0.01, 0.01], gravity: 9.8, drag: 0.4,
         });
       }
       return;
     }
     const decal = this.decals[surface] || this.decals.concrete;
-    if (surface !== 'glass' && surface !== 'dirt' && surface !== 'water') decal.add(p, n);
+    if (surface !== 'glass' && surface !== 'dirt' && surface !== 'water' && surface !== 'foliage' && surface !== 'fabric') decal.add(p, n);
     else if (surface === 'dirt') this.decals.concrete.add(p, n, 0.05);
 
-    const dustCol = surface === 'wood' ? [0.55, 0.42, 0.3] : surface === 'dirt' ? [0.5, 0.42, 0.32] : surface === 'metal' ? [0.6, 0.6, 0.6] : [0.7, 0.68, 0.64];
-    const puffs = surface === 'metal' ? 2 : 4;
-    for (let i = 0; i < puffs; i++) {
-      const s = rand(0.5, 2.0);
+    const C = SURF[surface] || SURF.concrete;
+    const floor = n.y > 0.7 ? p.y + 0.01 : this._floorAt(p);
+    // Initial burst: tight, fast puff along the normal + a slower lingering cloud.
+    for (let i = 0; i < C.puffs; i++) {
+      const s = rand(0.6, 2.4) * C.puffSpeed;
       this.dust.spawn({
-        x: p.x + n.x * 0.05, y: p.y + n.y * 0.05, z: p.z + n.z * 0.05,
-        vx: n.x * s + refl.x * 0.5 + rand(-0.3, 0.3), vy: n.y * s + rand(0, 0.5), vz: n.z * s + refl.z * 0.5 + rand(-0.3, 0.3),
-        life: rand(0.8, 1.8), size0: 0.08, size1: rand(0.5, 0.9), alpha: 0.35, color: dustCol, drag: 3.5, gravity: 0.2,
+        x: p.x + n.x * 0.04, y: p.y + n.y * 0.04, z: p.z + n.z * 0.04,
+        vx: n.x * s + refl.x * 0.6 + rand(-0.35, 0.35), vy: n.y * s + rand(0, 0.45), vz: n.z * s + refl.z * 0.6 + rand(-0.35, 0.35),
+        life: rand(0.7, 1.6) * C.life, size0: 0.05, size1: rand(0.35, 0.7) * C.size, alpha: C.alpha, color: C.color, drag: 4, gravity: C.grav,
       });
     }
-    // Chips / debris.
-    const chips = surface === 'metal' ? 0 : 6;
-    for (let i = 0; i < chips; i++) {
-      const s = rand(2, 5);
+    // Dirt kicks a vertical spray.
+    if (surface === 'dirt' || surface === 'foliage') {
+      for (let i = 0; i < 3; i++) this.dust.spawn({ x: p.x, y: p.y + 0.02, z: p.z, vx: rand(-0.4, 0.4), vy: rand(2, 4), vz: rand(-0.4, 0.4), life: rand(0.5, 0.9), size0: 0.06, size1: 0.35, alpha: 0.5, color: C.color, drag: 3, gravity: 5 });
+    }
+    // Chips / splinters that bounce on the floor.
+    for (let i = 0; i < C.chips; i++) {
+      const s = rand(1.5, 4.5);
       this.debris.spawn({
-        x: p.x, y: p.y, z: p.z,
-        vx: n.x * s + rand(-1.5, 1.5), vy: n.y * s + rand(0.5, 2.5), vz: n.z * s + rand(-1.5, 1.5),
-        life: rand(0.4, 0.9), size0: rand(0.012, 0.025), alpha: 1, color: dustCol.map((c) => c * 0.5), gravity: 9.8, drag: 0.5,
+        x: p.x + n.x * 0.02, y: p.y + n.y * 0.02, z: p.z + n.z * 0.02,
+        vx: n.x * s + rand(-1.4, 1.4), vy: n.y * s + rand(0.6, 2.6), vz: n.z * s + rand(-1.4, 1.4),
+        life: rand(0.6, 1.3), size0: rand(0.01, 0.022) * C.chipSize, alpha: 1, color: C.chip, gravity: 9.8, drag: 0.6, collide: floor,
       });
     }
-    // Sparks for metal and occasionally concrete.
-    const sparks = surface === 'metal' ? 14 : surface === 'concrete' ? (Math.random() < 0.35 ? 5 : 0) : 0;
+    // Sparks: always on metal, sometimes on concrete/brick.
+    const sparks = surface === 'metal' ? (8 + (Math.random() * 6) | 0) : (surface === 'concrete' || surface === 'brick') && Math.random() < 0.3 ? 3 : 0;
     for (let i = 0; i < sparks; i++) {
-      const s = rand(3, 9);
-      const d = refl.clone().add(new THREE.Vector3(rand(-0.6, 0.6), rand(-0.3, 0.8), rand(-0.6, 0.6))).normalize();
+      const s = rand(3, 10);
+      _d.set(refl.x + rand(-0.7, 0.7), refl.y + rand(-0.3, 0.8), refl.z + rand(-0.7, 0.7)).normalize();
       this.sparks.spawn({
-        x: p.x, y: p.y, z: p.z, vx: d.x * s, vy: d.y * s, vz: d.z * s,
-        life: rand(0.15, 0.45), size0: 0.012, alpha: 1, color: [4, 2.2, 0.8], gravity: 9.8, drag: 1.5,
+        x: p.x, y: p.y, z: p.z, vx: _d.x * s, vy: _d.y * s, vz: _d.z * s,
+        life: rand(0.12, 0.4), size0: 0.01, alpha: 1, color: [4, 2.3, 0.9], gravity: 9.8, drag: 1.5, collide: floor,
       });
     }
-    if (surface === 'metal') this.flashLight(p.clone().addScaledVector(n, 0.1), 3, 0.04, 0xffbb66, 2);
+    // Tiny hot flash on hard surfaces sells the "hit".
+    if (surface === 'metal' || surface === 'concrete' || surface === 'brick') {
+      this.flashes.spawn({ x: p.x + n.x * 0.03, y: p.y + n.y * 0.03, z: p.z + n.z * 0.03, life: 0.045, size0: surface === 'metal' ? 0.16 : 0.1, size1: 0.05, color: surface === 'metal' ? [3, 2.4, 1.6] : [1.4, 1.2, 1] });
+    }
+    if (surface === 'metal') this.flashLight(_o.copy(p).addScaledVector(n, 0.1), 3, 0.04, 0xffbb66, 2);
   }
 
   explosion(pos) {
-    this.flashLight(pos.clone().setY(pos.y + 0.5), 400, 0.25, 0xff8833, 25);
-    for (let i = 0; i < 30; i++) {
-      const d = new THREE.Vector3(rand(-1, 1), rand(0.2, 1.4), rand(-1, 1)).normalize();
-      const s = rand(2, 8);
-      this.fire.spawn({ x: pos.x, y: pos.y + 0.3, z: pos.z, vx: d.x * s, vy: d.y * s, vz: d.z * s, life: rand(0.25, 0.6), size0: 0.6, size1: 2.2, alpha: 0.9, color: [3, 1.5, 0.5], drag: 4 });
-    }
+    const floor = this._floorAt(pos);
+    this.flashLight(_o.copy(pos).setY(pos.y + 0.6), 520, 0.3, 0xff8a3a, 28);
+    // Core flash.
+    this.flashes.spawn({ x: pos.x, y: pos.y + 0.5, z: pos.z, life: 0.12, size0: 3.2, size1: 4.5, color: [4, 3, 2] });
+    // Fireball: fast-expanding, short-lived additive puffs.
     for (let i = 0; i < 26; i++) {
-      const d = new THREE.Vector3(rand(-1, 1), rand(0.3, 1.5), rand(-1, 1)).normalize();
-      const s = rand(1, 5);
-      this.smoke.spawn({ x: pos.x, y: pos.y + 0.5, z: pos.z, vx: d.x * s, vy: d.y * s, vz: d.z * s, life: rand(3, 6), size0: 1, size1: rand(4, 6), alpha: 0.5, color: [0.25, 0.23, 0.22], drag: 1.6, gravity: -0.25, fadeIn: 0.05 });
+      _d.set(rand(-1, 1), rand(0.15, 1.3), rand(-1, 1)).normalize();
+      const s = rand(2, 9);
+      this.fire.spawn({ x: pos.x, y: pos.y + 0.3, z: pos.z, vx: _d.x * s, vy: _d.y * s, vz: _d.z * s, life: rand(0.18, 0.5), size0: 0.7, size1: rand(1.8, 2.8), alpha: 0.9, color: [3, 1.4, 0.45], drag: 5 });
     }
-    for (let i = 0; i < 40; i++) {
-      const d = new THREE.Vector3(rand(-1, 1), rand(0.2, 1.5), rand(-1, 1)).normalize();
+    // Dark column + lingering smoke.
+    for (let i = 0; i < 22; i++) {
+      _d.set(rand(-1, 1), rand(0.4, 1.6), rand(-1, 1)).normalize();
+      const s = rand(1, 4.5);
+      this.smoke.spawn({ x: pos.x, y: pos.y + 0.5, z: pos.z, vx: _d.x * s, vy: _d.y * s, vz: _d.z * s, life: rand(3.5, 7), size0: 1, size1: rand(4, 6.5), alpha: 0.42, color: [0.2, 0.19, 0.18], drag: 1.7, gravity: -0.22, fadeIn: 0.04 });
+    }
+    // Ground dust ring rolling outward.
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2 + rand(-0.1, 0.1), s = rand(5, 9);
+      this.dust.spawn({ x: pos.x, y: floor + 0.25, z: pos.z, vx: Math.cos(a) * s, vy: rand(0.2, 0.8), vz: Math.sin(a) * s, life: rand(1.6, 2.6), size0: 0.6, size1: rand(2, 3), alpha: 0.4, color: [0.55, 0.5, 0.43], drag: 2.6 });
+    }
+    // Dirt chunks + sparks.
+    for (let i = 0; i < 26; i++) {
+      _d.set(rand(-1, 1), rand(0.5, 2), rand(-1, 1)).normalize();
+      const s = rand(4, 12);
+      this.debris.spawn({ x: pos.x, y: pos.y + 0.2, z: pos.z, vx: _d.x * s, vy: _d.y * s, vz: _d.z * s, life: rand(0.9, 1.8), size0: rand(0.025, 0.06), alpha: 1, color: [0.16, 0.14, 0.12], gravity: 9.8, drag: 0.3, collide: floor });
+    }
+    for (let i = 0; i < 36; i++) {
+      _d.set(rand(-1, 1), rand(0.2, 1.5), rand(-1, 1)).normalize();
       const s = rand(6, 20);
-      this.sparks.spawn({ x: pos.x, y: pos.y + 0.2, z: pos.z, vx: d.x * s, vy: d.y * s, vz: d.z * s, life: rand(0.3, 1.0), size0: 0.02, color: [4, 2, 0.6], gravity: 9.8, drag: 0.8 });
+      this.sparks.spawn({ x: pos.x, y: pos.y + 0.2, z: pos.z, vx: _d.x * s, vy: _d.y * s, vz: _d.z * s, life: rand(0.3, 1.0), size0: 0.02, color: [4, 2, 0.6], gravity: 9.8, drag: 0.8, collide: floor });
     }
-    const hit = this.game.physics.raycast(pos.clone().setY(pos.y + 0.5), new THREE.Vector3(0, -1, 0), 2, G.WORLD);
+    const hit = this.game.physics.raycast(_o.copy(pos).setY(pos.y + 0.5), _down, 2, G.WORLD);
     if (hit) this.decals.scorch.add(hit.point, hit.normal);
   }
 
@@ -483,7 +543,7 @@ export class Effects {
     }
 
     // Tracers: segment of length ~ speed*0.04 sliding along path, camera-facing ribbon.
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3();
+    const m = _tm, q = _tq, s = _ts;
     const camPos = camera.position;
     let n = 0;
     for (let i = this.tracers.length - 1; i >= 0; i--) {
@@ -494,12 +554,12 @@ export class Effects {
       const segLen = Math.min(t.speed * 0.035, 14);
       const head = Math.min(t.d, t.len), tail = Math.max(0, t.d - segLen);
       if (head - tail < 0.01) continue;
-      const start = t.from.clone().addScaledVector(t.dir, tail);
+      const start = _ta.copy(t.from).addScaledVector(t.dir, tail);
       // Orient: x along dir, plane faces camera.
-      const mid = start.clone().addScaledVector(t.dir, (head - tail) / 2);
-      const toCam = camPos.clone().sub(mid).normalize();
-      const yAxis = new THREE.Vector3().crossVectors(toCam, t.dir).normalize();
-      const zAxis = new THREE.Vector3().crossVectors(t.dir, yAxis).normalize();
+      const mid = _tmid.copy(start).addScaledVector(t.dir, (head - tail) / 2);
+      const toCam = _tc.copy(camPos).sub(mid).normalize();
+      const yAxis = _tb.crossVectors(toCam, t.dir).normalize();
+      const zAxis = toCam.crossVectors(t.dir, yAxis).normalize();
       m.makeBasis(t.dir, yAxis, zAxis);
       q.setFromRotationMatrix(m);
       const dist = mid.distanceTo(camPos);

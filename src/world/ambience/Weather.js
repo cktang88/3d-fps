@@ -239,9 +239,8 @@ export class Weather {
     this.lDir.position.set(Math.cos(az) * 100, 140, Math.sin(az) * 100);
     battle?.pulse(az, { el: 0.3, width: 0.55, intensity: 2.6 * strength, color: [0.7, 0.76, 1], height: 0.5, decay: 9 });
     const delay = (visibleBolt ? d : rand(900, 2500)) / 343;
-    const r = new THREE.Vector3(-this.amb.camera.getWorldDirection(new THREE.Vector3()).z, 0, 0);
     const fwd = this.amb.camera.getWorldDirection(new THREE.Vector3());
-    r.set(-fwd.z, 0, fwd.x).normalize();
+    const r = new THREE.Vector3(-fwd.z, 0, fwd.x).normalize();
     const pan = THREE.MathUtils.clamp(new THREE.Vector3(Math.cos(az), 0, Math.sin(az)).dot(r), -1, 1) * 0.7;
     this.amb.audio.thunder(delay, strength * (visibleBolt ? 1 : 0.6), pan);
   }
