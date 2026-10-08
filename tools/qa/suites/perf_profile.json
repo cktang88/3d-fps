@@ -1,0 +1,2 @@
+{"tag":"perf_profile","setupFiles":["tools/qa/suites/lib.js"],"match":"tdm","w":320,"h":180,"renderScript":true,
+ "scriptFile":"tools/qa/suites/perf_profile.script.js"}
