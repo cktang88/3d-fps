@@ -252,16 +252,18 @@ async function worker(n) {
     let timer;
     const r = await Promise.race([
       runJob(job, b, n),
-      new Promise((res) => { timer = setTimeout(async () => {
+      new Promise((res) => { timer = setTimeout(() => {
         log(`[w${n}] TIMEOUT`, job.id, `after ${limit / 1000}s - closing its page`);
-        const w = warm.get(n); warm.delete(n); const partial = w?.sink?.result; await w?.page?.close().catch(() => {});
-        res({ ...(partial || {}), id: job.id, owner: job.owner, startedAt: partial?.startedAt || new Date(Date.now() - limit).toISOString(), finishedAt: new Date().toISOString(), shots: partial?.shots || [], logs: partial?.logs || [], data: partial?.data || {}, error: `TIMEOUT after ${limit / 1000}s (page hung - possible infinite loop in game code or job script)` });
+        const w = warm.get(n); warm.delete(n); const partial = w?.sink?.result;
+        // Resolve BEFORE closing the page so the timeout wins the race (closing makes runJob reject with "closed").
+        res({ ...(partial || {}), id: job.id, owner: job.owner, startedAt: partial?.startedAt || new Date(Date.now() - limit).toISOString(), finishedAt: new Date().toISOString(), shots: partial?.shots || [], logs: partial?.logs || [], data: partial?.data || {}, timedOut: true, error: `TIMEOUT after ${limit / 1000}s (page hung - possible infinite loop in game code or job script)` });
+        w?.page?.close().catch(() => {});
       }, limit); }),
     ]);
     clearTimeout(timer);
     if (shuttingDown) return new Promise(() => {}); // leave it in running/; the next start re-queues it
     // Browser died mid-job (OOM etc.): re-queue once instead of failing the requester.
-    if (r.error && /has been closed|Target crashed|disconnected|Browser closed/i.test(r.error) && (job._retries || 0) < 2) {
+    if (r.error && !r.timedOut && /has been closed|Target crashed|disconnected|Browser closed/i.test(r.error) && (job._retries || 0) < 2) {
       job._retries = (job._retries || 0) + 1;
       warm.delete(n);
       fs.writeFileSync(path.join(REQ, f), JSON.stringify(job));

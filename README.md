@@ -78,6 +78,28 @@ Code is original except where noted. Third-party assets:
   (https://sketchfab.com/3d-models/free-military-soldier-rigged-e9c56308a67d4a3db62e914fafa4d198), fallback body;
   animation clips from Quaternius Universal Animation Library 1 & 2 (Standard) — CC0 (https://quaternius.com), retargeted at load.
 - **Shotgun model**: by Harry_L — CC BY (https://sketchfab.com/models/53b158b0d5a54b4491b09d1fb3058e29), via Mugen87/dive.
+- **First-person rigs** (`public/assets/models/fp/`, built by `tools/blender/`, see `docs/FP_FRAMING.md`). All are CC BY 4.0
+  unless noted. Modifications: re-posed, re-rigged, rescaled, maker markings removed, textures re-encoded (WebP),
+  AO baked.
+  - Gloved arms: "Fps arms" by bumstrum (DJMaesen) (https://sketchfab.com/3d-models/fps-arms-9452ce4cddde4110a4fd73e555a8e412).
+  - Arm rig and grip templates by ccransh: "FPS AK-74m animations" (https://sketchfab.com/3d-models/fps-ak-74m-animations-94be8385c402474cacd39bc096c6ca14),
+    "FPS pistol animations" (https://sketchfab.com/3d-models/fps-pistol-animations-0d7a343dcb6f401197a73c91aee93f6d),
+    "FPS animations sniper rifle" (https://sketchfab.com/3d-models/fps-animations-sniper-rifle-c15ae8393d824f5b929e3f69691cdd31).
+  - Remington 870 pump shotgun: "FPS Arms remington (shotgun)" by ccransh, with the 870 by tris09 (https://sketchfab.com/3d-models/fps-arms-remington-shotgun-e68ef617fe8a48cca8610d016ffd5881).
+  - SCAR-L: "FN Scar-L Assault Rifle" by Hitansh_3DArtist (https://sketchfab.com/3d-models/fn-scar-l-assault-rifle-ea1823de59684fd596d9f6726382f948).
+  - MP5: "MP5 Submachine Gun" by Rotuma (https://sketchfab.com/3d-models/mp5-submachine-gun-a73b61932a0e4eecb5db5c63c158aa24).
+  - VSS: "Special Sniper Rifle VSS Vintorez" by ArmsMuseum, CC0 (https://sketchfab.com/3d-models/special-sniper-rifle-vss-vintorez-4d5d8c1b7b79429abfa4816f18330089).
+  - M24: "M24 Bounty Hunter Sniper Rifle" by Naudaff3D (https://sketchfab.com/3d-models/m24-bounty-hunter-sniper-rifle-d40e74e2259549f5b025807163f1028c).
+  - AWM: "AWM" by erhanmatur (https://sketchfab.com/3d-models/awm-bacc05ad5c074c9daa3aa7ca02766a6c).
+  - P226: "Sig Sauer P226" by Alexcanot (https://sketchfab.com/3d-models/sig-sauer-p226-e3d4f1ab22f342f4a0891743353c114c).
+  - M1911: "M1911 pistol" by egorbelous (https://sketchfab.com/3d-models/m1911-pistol-80a0b8a6c4314da4a7b3a7cfe6cec1d4).
+- **Optics** (`optics.glb`). All are CC BY 4.0, and logos and markings were removed.
+  - Red dot: "Generic Red Dot Scope / Rifle Attachment Lowpoly" by valterjherson1.
+  - Holographic sight: "EoTech EXPS3-0 Holographic Weapon Sight Lowpoly" by valterjherson1.
+  - 4x scope: "Advanced Combat Optical Gunsight | Game Ready" by Argentavisss.
+  - Sniper scope: "Nightforce ATACR 4-20x50 F1 Riflescope" by ense7en (Sketchfab).
+- **First-person rifle animations**: retargeted from the Free FPS Template Blender source files (Fab), used under its
+  licence (controller shapes by Helindu).
 - **Gunshot & firearm foley**: The Free Firearm Sound Library (CC0) — https://github.com/buddingmonkey/FreeFirearmsSFXLibrary
   and edits from operation-steel-tide.
 - **Footsteps / impacts / UI / explosions**: Kenney Impact Sounds, Interface Sounds and Sci-Fi Sounds — CC0 (https://kenney.nl).

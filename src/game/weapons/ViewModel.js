@@ -1,11 +1,18 @@
 import * as THREE from 'three';
 import { GunModels, POSES, RELOAD_PHASES, M, vmTune, VM_TUNE } from './GunModels.js';
 import { FPArms, FP_K, FP_TUNE } from './FPRig.js';
+import { composeDelta } from './FPAnims.js';
 import { Spring, Spring3, damp, clamp, DEG, smoothstep, easeInOutSine, rand } from '../../core/MathUtil.js';
 import { muzzleFlashAtlas, muzzleSideTex, reticleTex, glowTex } from '../../render/ProcTex.js';
+import { PlayerBody } from '../PlayerBody.js';
 
 const V = (a) => new THREE.Vector3(a[0], a[1], a[2]);
 const PROBE_LAYER = 4; // render layer for the viewmodel light probe
+// Overhand-throw hand path (UAL2 "OverhandThrow", CC0): throwing hand relative to the head at 20 Hz,
+// mirrored onto the left hand and converted to view space (x right, y up, z back).
+const THROW_PATH = [[-0.339,-0.578,0.211],[-0.445,-0.481,0.277],[-0.469,-0.292,0.412],[-0.36,-0.084,0.508],[-0.236,0.084,0.494],
+  [-0.413,0.282,0.032],[-0.397,0.274,-0.295],[-0.031,-0.406,-0.402],[-0.064,-0.544,-0.289],[-0.108,-0.584,-0.226]];
+const THROW_WIND = 4; // index where the wind-up holds while cooking
 const _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4(), _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
 
 function find(root, name) {
@@ -706,6 +713,7 @@ export class ViewModel {
   // ------------------------------------------------------------------ events
   onFire(shot) {
     const rig = this.rig; if (!rig) return;
+    this.fireClipT = 0; // authored fire kick (template clips)
     const s = rig.stats;
     const k = s.kick * (1 - this.adsBlend * 0.45);
     this.kickPos.impulse(rand(-0.03, 0.03) * k, rand(0.02, 0.05) * k, 0.5 * k * (rig.sidearm ? 0.6 : 1));
@@ -749,6 +757,11 @@ export class ViewModel {
    * ctx: { weapon, player, mouse:{x,y}, dt, adsT, sprint, reloadProgress, reloadType, fpcam, aimDir }
    */
   update(dt, ctx) {
+    // Full-body awareness (legs/torso under the camera + full player shadow), Medium quality and up.
+    if (!this.body && this.game.charTemplate && (this.game.settings?.quality ?? 2) >= 1) {
+      try { this.body = new PlayerBody(this.game); } catch (e) { console.warn('player body:', e.message); this.body = false; }
+    }
+    if (this.body) this.body.update(dt);
     const rig = this.rig;
     if (!rig) return;
     this.time += dt;
@@ -789,15 +802,19 @@ export class ViewModel {
     this.kickPos.update(dt); this.kickRot.update(dt);
     this.landY.update(dt);
 
+    // Authored animation set (FP rifle-family rigs): replaces procedural bob / breathing / sprint carry /
+    // equip / holster / reload offsets below with the retargeted template clips (applied after the pose).
+    const tpl = rig.fp && !rig.sidearm && this.models.tplAnims && !window.__vmProcAnims ? this.models.tplAnims : null;
+    const tplReload = tpl && !s.tube;
     // Bob (figure-8), synced with camera bob phase.
-    const ph = ctx.fpcam.bobPhase, ba = ctx.fpcam.bobAmount * (1 - adsE * 0.9);
+    const ph = ctx.fpcam.bobPhase, ba = ctx.fpcam.bobAmount * (1 - adsE * 0.9) * (tpl ? 0 : 1);
     const sprintA = 1 + this.sprintBlend * 1.4;
     const bobX = Math.sin(ph) * 0.012 * ba * sprintA;
     const bobY = -Math.abs(Math.cos(ph)) * 0.01 * ba * sprintA;
     const bobRot = Math.sin(ph) * 0.02 * ba * sprintA;
     // Idle breathing.
-    const breath = Math.sin(this.time * 1.6) * 0.0015 * (1 - adsE * 0.7);
-    const breathR = Math.sin(this.time * 0.8) * 0.004 * (1 - adsE * 0.8);
+    const breath = tpl ? 0 : Math.sin(this.time * 1.6) * 0.0015 * (1 - adsE * 0.7);
+    const breathR = tpl ? 0 : Math.sin(this.time * 0.8) * 0.004 * (1 - adsE * 0.8);
 
     // Near plane pushes out while aiming so the stock / receiver right under the cheek never
     // fills the bottom of the sight picture (it is physically there, but reads as clutter).
@@ -812,16 +829,16 @@ export class ViewModel {
       rig.hipRot.z + (rig.adsRot.z - rig.hipRot.z) * adsE);
     // Sprint pose: lower, tilt, canted (CoD/Apex style).
     const sb = smoothstep(this.sprintBlend);
-    if (rig.sidearm) { pos.add(new THREE.Vector3(-0.04, -0.12, 0.05).multiplyScalar(sb)); rot.x += -0.55 * sb; rot.z += 0.15 * sb; }
+    if (tpl) { /* Run clip carries the sprint pose */ } else if (rig.sidearm) { pos.add(new THREE.Vector3(-0.04, -0.12, 0.05).multiplyScalar(sb)); rot.x += -0.55 * sb; rot.z += 0.15 * sb; }
     else { pos.add(new THREE.Vector3(-0.05, -0.08, 0.08).multiplyScalar(sb)); rot.x += -0.12 * sb; rot.y += 0.55 * sb; rot.z += 0.35 * sb; }
     // Tactical sprint: weapon lifted higher.
-    if (p.tacSprint) { rot.x += -0.25 * sb; pos.y += 0.04 * sb; }
+    if (p.tacSprint) { rot.x += -0.25 * sb * (tpl ? 0.4 : 1); pos.y += 0.04 * sb; }
     // Slide / mantle: lower and roll.
     pos.y -= 0.05 * this.slideBlend + 0.18 * this.mantleBlend;
     rot.z += 0.22 * this.slideBlend + 0.25 * this.mantleBlend;
     rot.x -= 0.5 * this.mantleBlend;
     // Reload offset: bring gun in & roll toward the support hand.
-    const rb = smoothstep(this.reloadBlend);
+    const rb = smoothstep(this.reloadBlend) * (tplReload ? 0 : 1);
     {
       const rp = rig.tune.reloadPos, rr = rig.tune.reloadRot;
       pos.x += rp[0] * rb; pos.y += rp[1] * rb; pos.z += rp[2] * rb;
@@ -858,14 +875,22 @@ export class ViewModel {
       const k = Math.sin(t * Math.PI);
       pos.z += 0.025 * k; rot.x += 0.05 * k; rot.z += 0.04 * k;
     }
+    this._applyThrowHand(rig);
     // Holster: drop and roll out of frame (ease-in, so it leaves with intent).
-    if (this.holsterK > 0) {
+    if (this.holsterK > 0 && !tpl) {
       const k = this.holsterK * this.holsterK;
       pos.y -= 0.3 * k; pos.x += 0.05 * k; pos.z += 0.04 * k;
       rot.x -= 0.75 * k; rot.z += 0.4 * k; rot.y += 0.15 * k;
     }
+    // Grenade: wind up while cooking (game.cook), release + follow-through on throw.
+    this._updateThrow(dt);
+    if (this.throwK > 0) {
+      const k = smoothstep(this.throwK);
+      pos.y -= 0.13 * k; pos.x += 0.06 * k; pos.z += 0.05 * k;
+      rot.x -= 0.32 * k; rot.z -= 0.25 * k; rot.y -= 0.1 * k;
+    }
     // Equip: swing up from the hip with weight — fast rise, slight overshoot, then settle.
-    {
+    if (!tpl) {
       const e = this.equipT;
       const rise = 1 - Math.pow(1 - e, 3);
       const settle = Math.sin(e * Math.PI * 2.2) * Math.pow(1 - e, 1.5);
@@ -892,14 +917,16 @@ export class ViewModel {
     pos.y += ctx.fpcam.dip.x * 0.025 + bobY + breath;
     pos.x += bobX;
     pos.add(this.swayPos.x);
-    pos.add(new THREE.Vector3(this.kickPos.x.x, this.kickPos.x.y, this.kickPos.x.z).multiplyScalar(0.03 * (1 - adsE * 0.5)));
-    rot.x += this.swayRot.x.x + this.kickRot.x.x * 0.02 + breathR;
-    rot.y += this.swayRot.x.y + this.kickRot.x.y * 0.02;
-    rot.z += this.swayRot.x.z + this.kickRot.x.z * 0.02 + bobRot;
+    const kk = tpl ? 0.45 : 1; // authored fire clip carries most of the kick
+    pos.add(new THREE.Vector3(this.kickPos.x.x, this.kickPos.x.y, this.kickPos.x.z).multiplyScalar(0.03 * (1 - adsE * 0.5) * kk));
+    rot.x += this.swayRot.x.x + this.kickRot.x.x * 0.02 * kk + breathR;
+    rot.y += this.swayRot.x.y + this.kickRot.x.y * 0.02 * kk;
+    rot.z += this.swayRot.x.z + this.kickRot.x.z * 0.02 * kk + bobRot;
     // Lean also rolls the gun slightly extra.
     rot.z += -p.lean * 0.05;
     rig.root.position.copy(pos);
     rig.root.rotation.copy(rot);
+    if (tpl) this._applyTemplate(rig, tpl, w, ctx, dt, adsE, sb, tplReload);
 
     // Slide / bolt carrier.
     if (rig.charging && w.state !== 'bolt') {
@@ -950,6 +977,59 @@ export class ViewModel {
     this._updateLighting(ctx, dt);
   }
 
+  /**
+   * Authored clip layer (camera-space deltas from the template base pose, composed onto the procedural pose):
+   * idle / walk / run loops (+ aimed variants by ADS), fire, reload, equip, holster.
+   */
+  _applyTemplate(rig, A, w, ctx, dt, adsE, sb, tplReload) {
+    const T = (this._tplT ||= { a: { p: new THREE.Vector3(), q: new THREE.Quaternion() }, b: { p: new THREE.Vector3(), q: new THREE.Quaternion() }, acc: { p: new THREE.Vector3(), q: new THREE.Quaternion() } });
+    const acc = T.acc; acc.p.set(0, 0, 0); acc.q.identity();
+    const blend = (hip, aim, t, k) => {
+      A.gun(hip, t, T.a, k);
+      if (aim && adsE > 0) { A.gun(aim, t, T.b, k); T.a.p.lerp(T.b.p, adsE); T.a.q.slerp(T.b.q, adsE); }
+      composeDelta(T.a, acc, acc);
+    };
+    const TAU = Math.PI * 2;
+    const stride = ((ctx.fpcam.bobPhase % TAU) + TAU) % TAU / TAU;
+    const move = clamp(ctx.fpcam.bobAmount ?? 0, 0, 1);
+    blend('Idle', 'IdleAimed', this.time, 1);
+    if (move > 0.01) blend('Walk', 'WalkAimed', A.at('Walk', stride), move * (1 - sb));
+    if (sb > 0.001) blend('Run', null, A.at('Run', stride), sb * (1 - adsE));
+    this.fireClipT = (this.fireClipT ?? 99) + dt;
+    if (this.fireClipT < A.dur('Fire')) blend('Fire', 'FireAimed', this.fireClipT, 1);
+    if (tplReload && w.state === 'reload') blend('Reload', null, A.at('Reload', clamp(w.stateTime / w.stateDur, 0, 1)), 1);
+    if (this.equipT < 1) blend('Equip', null, A.at('Equip', this.equipT), 1);
+    if (this.holsterK > 0) blend('Holster', null, A.at('Holster', this.holsterK), 1);
+    // root := acc * root (camera space)
+    rig.root.position.applyQuaternion(acc.q).add(acc.p);
+    rig.root.quaternion.premultiply(acc.q);
+  }
+
+  /** Template reload: magazine + support hand follow the retargeted tracks (re-anchored to this gun). */
+  _tplReload(rig, A, progress) {
+    const R = (this._tplR ||= { h: { dg: new THREE.Vector3(), dw: new THREE.Vector3(), w: 0, dq: new THREE.Quaternion() }, m: { p: new THREE.Vector3(), q: new THREE.Quaternion() } });
+    const t = A.at('Reload', progress);
+    if (!rig.fp.homeL) rig.fp.captureHome(rig.root);
+    const K = 1 / rig.scale;
+    rig.root.updateMatrixWorld(true);
+    // Magazine well (root space) = magazine home.
+    const par = rig.magazine.parent;
+    const parM = _m.copy(rig.root.matrixWorld).invert().multiply(par.matrixWorld);
+    const well = rig.magHome.p.clone().applyMatrix4(parM);
+    A.mag(t, R.m);
+    const magRoot = well.clone().addScaledVector(R.m.p, K);
+    rig.magazine.position.copy(magRoot.applyMatrix4(parM.clone().invert()));
+    rig.magazine.quaternion.copy(R.m.q).multiply(rig.magHome.q);
+    rig.magazine.visible = true;
+    if (rig.spare) rig.spare.visible = false;
+    A.handL(t, R.h);
+    const pg = rig.fp.homeL.p.clone().addScaledVector(R.h.dg, K);
+    const pw = well.clone().addScaledVector(R.h.dw, K);
+    const p = pg.lerp(pw, R.h.w);
+    const q = R.h.dq.clone().multiply(rig.fp.homeL.q);
+    rig.fp.setLeftAbs(rig.root, p, q);
+  }
+
   _updateReload(rig, w, dt) {
     const reloading = w.state === 'reload' && !rig.stats.tube;
     if (!reloading) {
@@ -959,6 +1039,14 @@ export class ViewModel {
     const empty = w.reloadType === 'empty';
     const progress = clamp(w.stateTime / w.stateDur, 0, 1);
     if (!this.reloading) this.startReload(rig, w.reloadType);
+    if (rig.fp && !rig.sidearm && this.models.tplAnims && rig.magazine && !window.__vmProcAnims) {
+      this._tplReload(rig, this.models.tplAnims, progress);
+      if (empty && rig.charging && progress > 0.62) { // bolt release after the mag seats
+        const t = clamp((progress - 0.62) / 0.18, 0, 1);
+        rig.charging.position.z = rig.chargingHome.z + Math.sin(t * Math.PI) * 0.1;
+      }
+      return;
+    }
     const clipName = rig.clipStem ? `reload_${rig.clipStem}_${empty ? 'empty' : 'tactical'}` : null;
     const clip = clipName && this.reloadClips?.get(clipName);
     if (!clip) { this._proceduralReload(rig, progress); return; }
@@ -1069,6 +1157,57 @@ export class ViewModel {
     if (!rig.leftArm) return;
     const k = Math.sin(progress * Math.PI);
     rig.leftArm.position.copy(rig.leftArmHome).add(new THREE.Vector3(0.02, -0.12 * k, 0.25 * k));
+  }
+
+  /** Grenade throw state machine, driven by Game.cook (non-null while the pin is pulled). */
+  _updateThrow(dt) {
+    const cooking = this.game.cook != null;
+    if (cooking) {
+      if (this.throwPhase !== 'wind') { this.throwPhase = 'wind'; this.throwU = 0; }
+      this.throwU = Math.min(THROW_WIND, this.throwU + dt / 0.06); // reach the wind-up in ~0.25 s
+      this.throwK = Math.min(1, (this.throwK || 0) + dt / 0.15);
+    } else if (this.throwPhase === 'wind') {
+      this.throwPhase = 'release'; // the frag leaves the hand this frame (Game spawns it now)
+    }
+    if (this.throwPhase === 'release') {
+      this.throwU += dt / 0.045; // release + follow-through ~0.25 s
+      if (this.throwU >= THROW_PATH.length - 1) { this.throwPhase = 'recover'; this.throwU = THROW_PATH.length - 1; }
+    } else if (this.throwPhase === 'recover' || !this.throwPhase) {
+      this.throwK = Math.max(0, (this.throwK || 0) - dt / 0.22);
+      if (this.throwK === 0) this.throwPhase = null;
+    }
+  }
+
+  /** Left hand follows the throw path (view space → WeaponRoot), blended by throwK. */
+  _applyThrowHand(rig) {
+    const k = this.throwK || 0;
+    const showNade = this.throwPhase === 'wind' || (this.throwPhase === 'release' && this.throwU < 5.6);
+    if (k <= 0 || !rig) { if (this.nade) this.nade.visible = false; return; }
+    const u = Math.min(THROW_PATH.length - 1, Math.max(0, Number.isFinite(this.throwU) ? this.throwU : 0));
+    const i = Math.min(THROW_PATH.length - 2, Math.floor(u)), f = u - i;
+    const a = THROW_PATH[i], b = THROW_PATH[i + 1];
+    const vp = _v.set(a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f).multiplyScalar(0.85);
+    // The mocap wind-up sits behind the ear; slide the whole path forward so the cocked hand and the
+    // frag read at the top-left of frame, then sweep across and down through release.
+    vp.x -= 0.02; vp.y -= 0.1; vp.z -= 0.64;
+    rig.root.updateMatrixWorld(true);
+    const target = rig.root.worldToLocal(this.viewCam.localToWorld(vp.clone()));
+    const sup = V(rig.pose.support);
+    const off = target.sub(sup).multiplyScalar(smoothstep(k));
+    if (rig.fp) rig.fp.setLeft(rig.root, off);
+    else if (rig.leftArm) rig.leftArm.position.copy(rig.leftArmHome).add(this._rootToArms(rig, off));
+    // Frag in the fingers until release.
+    if (!this.nade) {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.036, 14, 10), M('od'));
+      body.scale.set(1, 1.25, 1);
+      const spoon = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.05, 0.016), M('steel'));
+      spoon.position.set(0.026, 0.02, 0);
+      g.add(body, spoon); g.traverse((o) => { o.frustumCulled = false; });
+      this.nade = g; this.viewCam.add(g);
+    }
+    this.nade.visible = showNade && k > 0.3;
+    this.nade.position.copy(vp).add(_v.set(0, 0.015, 0)); // in the fist, where the grip would be
   }
 
   /** Root-local delta → static-arms LeftArm local delta (arms carry a Y-flip and presentation scale). */

@@ -44,21 +44,60 @@ Pistols tip up and in toward the chest.
 **Reload:** the gun rolls 15–25° toward the support hand and rises slightly, so the magazine well comes into frame
 (x 50–65%, y 60–85%). The support hand has to be visible for the whole magazine swap.
 
+### Professional reference: Free FPS Template (Fab) rifle set
+
+These numbers were measured in headless Blender from `Animations/Animations_Assault_Rifle.blend`
+(`tools/blender/extract_template_anims.py`). In the template the camera is CHILD_OF the `head` bone, the weapon follows
+`ik_hand_gun`, it runs at 30 fps, and the gun is a 0.75 m AAC Honey Badger. The listing assumes UE's 90° horizontal
+FOV, which is close to our viewmodel vFOV 52° (85° horizontal at 16:9).
+
+| Pose | Grip (`ik_hand_gun`) relative to the eye: right / forward / down (cm) | Gun orientation | Screen (vFOV 52°) |
+|---|---|---|---|
+| Idle (hip) | 5.8 / 14.4 / 9.8 | parallel to the view axis, about 5° cant (top to the left) | rear sight about (72%, 50%), front sight about (57%, 52%) |
+| Aim (ADS) | 0.0 / 9.6 / 9.9 | exactly on axis | sight on the crosshair |
+| Support hand (idle, gun space) | 4.6 left / 14.5 ahead of the grip / 0.2 below | | forearm enters diagonally from the bottom-left |
+| Support elbow (camera space) | 15 left / 8 forward / 17 down | | |
+
+| Clip | Length | Shape (measured on the gun) |
+|---|---|---|
+| Idle loop | 3.73 s | breathing 0.32 cm / 0.5° |
+| Walk loop (2 steps) | 1.10 s | 0.44 cm / 0.5° (aimed 0.25 cm / 0°) |
+| Run loop (2 steps) | 1.00 s | sprint carry: 43° rotation, 7.3 cm |
+| Fire (hip / aimed) | 0.80 s | peak at frame 1 (33 ms): 1.8 cm / 2.7° hip, 2.2 cm / 0.7° aimed, then a slow settle |
+| Reload (tactical) | 3.17 s (95 f) | hand reaches the magazine f0–8; magazine out f8; pouch at f24 (39 cm away); back in by f57 (seated); hand on the handguard by f75; gun rolls up to 64° |
+| Equip | 1.07 s | from 68° / 15.8 cm below, ease-out |
+| Holster | 0.73 s | to 68° / 15.8 cm below |
+
+How these numbers are used in the game:
+* **Hip framing** (`rigs.py` FRAMING) is matched to the template idle. The bore point above the grip is at
+  (6.8, 14.4, -5.2) cm with 5° cant. That is 1.4 cm higher than the template after the side-by-side QA, because our
+  models carry their sights lower above the grip. The left shoulder and elbow pole come from the template, giving the
+  diagonal support forearm.
+* **Animation:** all clips are retargeted at effector level (`tools/blender/retarget_template.py` →
+  `public/assets/anims/fp_rifle_anims.json`, 43 KB) and drive every rifle-family FP rig (`src/game/weapons/FPAnims.js`,
+  `ViewModel._applyTemplate` / `_tplReload`):
+  - the gun gets camera-space deltas from the template's base pose;
+  - the support hand follows the template's gun-space path, re-anchored from its handguard grip and magazine well
+    onto each gun's GripL and magazine well, and solved by our arm IK;
+  - the magazine follows the template magazine track.
+  Pistols and the pump shotgun's shell loading keep their own animation. Setting `window.__vmProcAnims = true`
+  restores the procedural set for A/B comparison.
+
 ### Rig framing (implemented, `tools/blender/rigs.py` FRAMING)
 
 Placement is anchored at the bore point above the web of the grip marker. Rotations are pitch / yaw / roll in degrees.
 
-| Class | Bore point at web (m) | Rotation (deg) | Result for the AK at hip |
-|---|---|---|---|
-| rifle | (0.085, 0.200, -0.080) | (0.5, 0.5, 3) | rear sight ~(64%, 62%), front sight ~(56%, 57%) |
-| smg | (0.082, 0.195, -0.078) | (0.5, 0.5, 3) | |
-| sniper | (0.090, 0.215, -0.088) | (0.5, 0.5, 2) | |
-| shotgun | (0.085, 0.200, -0.082) | (0.5, 0.5, 3) | |
-| pistol | (0.065, 0.260, -0.072) | (1, 2, 2) | |
+| Class | Bore point at web (m) | Rotation (deg) |
+|---|---|---|
+| rifle | (0.068, 0.144, -0.052) | (0, 0, 5) |
+| smg | (0.072, 0.180, -0.056) | (0, 0, 5) (SMG sights sit right over the grip, so the gun goes further out) |
+| sniper | (0.070, 0.150, -0.058) | (0, 0, 4) |
+| shotgun | (0.068, 0.144, -0.054) | (0, 0, 5) |
+| pistol | (0.050, 0.220, -0.035) | (1, 1, 2) (matched to Hunt: Showdown / Delta Force pistol references) |
 
-Shoulders are camera-relative (R (0.19, -0.04, -0.21), L (-0.17, 0, -0.21)). When a hand is out of reach, the
+Shoulders are camera-relative (R (0.19, -0.04, -0.21), L (-0.29, -0.15, -0.12) from the template). When a hand is out of reach, the
 shoulder slides toward it along the arm line, which keeps the open sleeve ends below the frame. Elbow pole targets
-are below and outside the arms (R (0.45, 0.05, -0.75), L (-0.30, 0.25, -0.75)), which tucks the elbows.
+are below and outside the arms (R (0.45, 0.05, -0.75), L (-0.32, 0.12, -0.32)), which tucks the elbows.
 
 ## 4. Quality gates
 
@@ -162,6 +201,7 @@ AK, P226). They can be cut further by atlasing.
 | AWM | erhanmatur | sketchfab.com/3d-models/awm-bacc05ad5c074c9daa3aa7ca02766a6c | CC-BY 4.0 |
 | Sig Sauer P226 | Alexcanot | sketchfab.com/3d-models/sig-sauer-p226-e3d4f1ab22f342f4a0891743353c114c | CC-BY 4.0 |
 | M1911 pistol | egorbelous | sketchfab.com/3d-models/m1911-pistol-80a0b8a6c4314da4a7b3a7cfe6cec1d4 | CC-BY 4.0 |
+| First-person rifle animations (idle, walk, run, fire, reload, equip, holster), effector-retargeted | Free FPS Template (Fab) Blender source files; controller shapes by Helindu | Fab listing | used under its licence |
 | M4A1, AK-47 (unchanged meshes, re-rigged) | Operation Steel Tide (AetherRadar) | github.com/AetherRadar/operation-steel-tide | MIT |
 | Generic Red Dot Scope (red dot) | valterjherson1 | sketchfab.com/3d-models/generic-red-dot-scope-rifle-attachment-lowpoly-8bf2794c30d04fa0aed1e3df92cd8a9e | CC-BY 4.0 |
 | EoTech EXPS3-0 Holographic Weapon Sight (holo; logos removed) | valterjherson1 | sketchfab.com/3d-models/eotech-exps3-0-holographic-weapon-sight-lowpoly-45e4fcdfb1b34756ab9e866564a12f66 | CC-BY 4.0 |

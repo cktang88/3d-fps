@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { grimeTex } from '../../render/ProcTex.js';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FP_IDS, parseFP } from './FPRig.js';
+import { FPAnims } from './FPAnims.js';
 
 /**
  * Weapon model library: loads the authored GLBs, unifies their materials into one consistent
@@ -196,6 +197,8 @@ export class GunModels {
       const fp = g && parseFP(g, k);
       if (fp?.gun) { this.fp[k] = fp; this.src[k] = fp.gun; }
     }));
+    // Authored FP rifle animation set (Free FPS Template, effector-retargeted; drives FP rigs' gun + support hand).
+    try { const r = await fetch('./assets/anims/fp_rifle_anims.json'); if (r.ok) this.tplAnims = new FPAnims(await r.json()); } catch { /* procedural fallback */ }
     const keys = ['m4a1', 'ak47', 'scarl', 'mp5a5', 'vss', 'm24', 'awm', 'p226', 'm1911', 'shotgun', 'optics'].filter((k) => !this.fp[k]);
     await Promise.all([
       ...keys.map(async (k) => { const g = await this.assets.model('gun_' + k, `models/weapons/${k}.glb`); if (g) this.src[k] = g.scene; }),
