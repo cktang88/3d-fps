@@ -105,5 +105,6 @@
    "eval": "__game.match.end(); __qa.sim(0.5);",
    "read": "({overlaps: __qa.hudOverlaps(), career: __game.settings.career})"
   }
- ]
+ ],
+ "lofi": true
 }

@@ -595,6 +595,51 @@ if OUT != '-':
     bpy.context.view_layer.objects.active = arms_mesh
     for o in bpy.data.objects: o.select_set(o == arms_mesh)
     bpy.ops.object.modifier_apply(modifier=mod.name)
+    # ---- Corrective contact pass (baked into the rest pose = the hold) ----
+    # Vertices still inside the gun are projected onto its surface (+0.3 mm); neighbours within 12 mm
+    # follow with a smooth falloff so the glove creases instead of denting. Iterated: the falloff can
+    # push a neighbour in elsewhere.
+    from mathutils.kdtree import KDTree
+    me = arms_mesh.data
+    W_ = arms_mesh.matrix_world; Wi = W_.inverted()
+    kd = KDTree(len(me.vertices))
+    for v in me.vertices: kd.insert(W_ @ v.co, v.index)
+    kd.balance()
+    R_FALL = 0.012 * K
+    moved_total = 0
+    for it in range(6):
+        disp = {}
+        for v in me.vertices:
+            p = W_ @ v.co
+            d = inside_depth(gun_bvh, p, 0.03 * K)
+            if d > 0.0002 * K:
+                loc, nrm, _, _ = gun_bvh.find_nearest(p, 0.03 * K)
+                delta = (loc + nrm * 0.0003 * K) - p
+                for (q, j, dist) in kd.find_range(p, R_FALL):
+                    w = 1.0 if j == v.index else 0.5 * (1 + math.cos(math.pi * dist / R_FALL)) * 0.85
+                    cur = disp.get(j)
+                    if cur is None or (delta * w).length > cur.length:
+                        disp[j] = delta * w
+        if not disp:
+            break
+        for j, dv in disp.items():
+            me.vertices[j].co = Wi @ ((W_ @ me.vertices[j].co) + dv)
+        moved_total += len(disp)
+        me.update()
+        kd = KDTree(len(me.vertices))
+        for v in me.vertices: kd.insert(W_ @ v.co, v.index)
+        kd.balance()
+    dfin = [inside_depth(gun_bvh, W_ @ v.co, 0.05 * K) for v in me.vertices]
+    fin = {}
+    for i, d in enumerate(dfin):
+        if d > 0:
+            k_ = next((k for k, names in REG.items() if DOM[i] in names), 'other')
+            fin[k_] = max(fin.get(k_, 0), d)
+    REPORT['final_mm'] = {k: round(v / K * 1000, 2) for k, v in fin.items()}
+    REPORT['final_max_mm'] = round(max(fin.values(), default=0) / K * 1000, 2)
+    REPORT['corrected_vertices'] = moved_total
+    log('FINAL (after corrective pass)', REPORT['final_max_mm'], REPORT['final_mm'], 'verts moved', moved_total)
+    save_json(os.path.join(WORK, f'rig_{GID}.json'), REPORT)
     bpy.context.view_layer.objects.active = arm
     for o in bpy.data.objects: o.select_set(o == arm)
     bpy.ops.object.mode_set(mode='POSE')
@@ -669,7 +714,7 @@ if OUT != '-':
     if vg_mount is not None:
         marker('VGripMount', Matrix.Translation(vg_mount))
     root['fp'] = json.dumps({'K': K, 'cls': SPEC['cls'], 'hip': REPORT['hip'], 'boreZ': BORE_Z, 'web': list(SPEC['web']),
-                             'trig': list(SPEC['trig']), 'maxPenetrationMm': REPORT['max_mm']})
+                             'trig': list(SPEC['trig']), 'maxPenetrationMm': REPORT.get('final_max_mm', REPORT['max_mm'])})
     for o in bpy.data.objects: o.select_set(True)
     bpy.ops.export_scene.gltf(filepath=OUT, use_selection=True, export_format='GLB', export_extras=True,
                               export_skins=True, export_animations=bool(bpy.data.actions), export_animation_mode='ACTIONS',

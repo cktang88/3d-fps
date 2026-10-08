@@ -16,6 +16,7 @@ export class AmbParticles {
     this.max = max;
     this.count = 0;
     this.atlas = atlas;
+    this.ax = atlas; this.ay = atlas;
     this.sort = sort;
     this.additive = additive;
     const f = (n) => new Float32Array(max * n);
@@ -40,14 +41,14 @@ export class AmbParticles {
 
     this.mat = new THREE.ShaderMaterial({
       uniforms: {
-        map: { value: texture }, atlas: { value: atlas }, stretch: { value: stretch },
+        map: { value: texture }, atlas: { value: new THREE.Vector2(atlas, atlas) }, aspect: { value: 1 }, stretch: { value: stretch },
         lightCol: { value: new THREE.Color(1, 1, 1) }, sunCol: { value: new THREE.Color(0, 0, 0) },
         sunDir: { value: new THREE.Vector3(0, 1, 0) }, nearFade: { value: nearFade },
         fogColor: { value: new THREE.Color() }, fogDensity: { value: 0 }, fogScale: { value: fogScale },
       },
       vertexShader: /* glsl */`
         attribute vec3 iPos; attribute vec3 iVel; attribute vec4 iCol; attribute vec3 iEmi; attribute vec3 iMisc;
-        uniform float stretch; uniform float atlas;
+        uniform float stretch; uniform vec2 atlas; uniform float aspect;
         varying vec2 vUv; varying vec4 vCol; varying vec3 vEmi; varying float vDepth; varying vec3 vDir;
         void main() {
           float size = iMisc.x, rot = iMisc.y, frame = iMisc.z;
@@ -59,11 +60,11 @@ export class AmbParticles {
             mv.xy += dir * corner.y * (size * 2.0 + l * stretch) + vec2(-dir.y, dir.x) * corner.x * size;
           } else {
             float c = cos(rot), s = sin(rot);
-            mv.xy += mat2(c, s, -s, c) * corner * size;
+            mv.xy += mat2(c, s, -s, c) * vec2(corner.x, corner.y * aspect) * size;
           }
           gl_Position = projectionMatrix * mv;
-          float fx = mod(frame, atlas), fy = floor(frame / atlas);
-          vUv = (uv + vec2(fx, atlas - 1.0 - fy)) / atlas;
+          float fx = mod(frame, atlas.x), fy = floor(frame / atlas.x);
+          vUv = (uv + vec2(fx, atlas.y - 1.0 - fy)) / atlas;
           vCol = iCol; vEmi = iEmi; vDepth = -mv.z;
           vDir = normalize(iPos - cameraPosition);
         }`,
@@ -106,12 +107,13 @@ export class AmbParticles {
   }
 
   /** Swap in a (loaded) atlas texture, e.g. a pre-rendered flipbook. */
-  setAtlas(texture, atlas, lifeFrames = false) {
+  setAtlas(texture, atlas, lifeFrames = false, atlasY = atlas, aspect = 1) {
     if (!texture) return;
-    this.atlas = atlas;
+    this.atlas = atlas; this.ax = atlas; this.ay = atlasY;
+    this.mat.uniforms.aspect.value = aspect;
     this.lifeFrames = lifeFrames;
     this.mat.uniforms.map.value = texture;
-    this.mat.uniforms.atlas.value = atlas;
+    this.mat.uniforms.atlas.value.set(atlas, atlasY);
   }
 
   spawn(o) {
@@ -134,7 +136,7 @@ export class AmbParticles {
     this.cSpan[i] = o.colorSpan ?? 1; this.eSpan[i] = o.emissiveSpan ?? 0.3;
     this.a0[i] = o.alpha ?? 1; this.fadeIn[i] = o.fadeIn ?? 0;
     this.grav[i] = o.gravity ?? 0; this.drag[i] = o.drag ?? 0; this.windK[i] = o.wind ?? 0; this.turb[i] = o.turb ?? 0;
-    this.frame[i] = o.frame ?? ((Math.random() * this.atlas * this.atlas) | 0);
+    this.frame[i] = o.frame ?? ((Math.random() * this.ax * this.ay) | 0);
     this.frameRate[i] = o.frameRate ?? (this.lifeFrames ? -1 : 0);
   }
 
@@ -174,7 +176,7 @@ export class AmbParticles {
     }
 
     const P = this.aPos.array, V = this.aVel.array, C = this.aCol.array, E = this.aEmi.array, M = this.aMisc.array;
-    const atl2 = this.atlas * this.atlas;
+    const atl2 = this.ax * this.ay;
     for (let j = 0; j < n; j++) {
       const i = order[j], i3 = i * 3, t = this.life[i] / this.maxLife[i];
       P[j * 3] = this.p[i3]; P[j * 3 + 1] = this.p[i3 + 1]; P[j * 3 + 2] = this.p[i3 + 2];

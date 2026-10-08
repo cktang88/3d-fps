@@ -211,7 +211,11 @@ function sourcesChangedSince(t) {
 }
 async function freshBuild() {
   // One build serves every job claimed within the next 20 s.
-  if (buildInfo && (Date.now() - buildAt < 20000 || !sourcesChangedSince(buildAt))) return buildInfo;
+  const age = Date.now() - buildAt;
+  let changed = false;
+  try { changed = sourcesChangedSince(buildAt); } catch { changed = true; }
+  // Reuse within 20 s, or while sources are unchanged — but never serve a snapshot older than 5 min.
+  if (buildInfo && (age < 20000 || (!changed && age < 300000))) return buildInfo;
   if (!building) building = (async () => {
     log('building snapshot…');
     const b = build();
@@ -237,7 +241,7 @@ async function worker(n) {
     let job;
     try { job = JSON.parse(fs.readFileSync(fp, 'utf8')); } catch { fs.renameSync(fp, fp + '.bad'); continue; }
     const b = await freshBuild();
-    log(`[w${n}] run`, job.id, 'for', job.owner);
+    log(`[w${n}] run`, job.id, 'for', job.owner, 'snapshot', b.stamp);
     const r = await runJob(job, b, n);
     if (shuttingDown) return new Promise(() => {}); // leave it in running/; the next start re-queues it
     // Browser died mid-job (OOM etc.): re-queue once instead of failing the requester.

@@ -1,12 +1,41 @@
 {
-  "tag": "f_ffa",
-  "setupFiles": ["tools/qa/suites/lib.js"],
-  "match": "ffa",
-  "w": 800, "h": 450,
-  "views": [
-    {"name": "f1_spawn", "frames": 2, "read": "({mode: __game.mode.key, teams: __game.mode.teams, bots: __game.bots.length, alive: __game.bots.filter(b=>b.alive).length, pos: __qa.p(), hudOverlaps: __qa.hudOverlaps()})"},
-    {"name": "f2_sim", "shot": false, "frames": 1, "eval": "window.__res = __qa.matchSim(120);", "read": "window.__res"},
-    {"name": "f3_scoreboard", "frames": 2, "keys": ["Tab"], "release": ["Tab"], "read": "({hudOverlaps: __qa.hudOverlaps(), player: __game.player.stats, top: __game.bots.map(b=>b.stats.kills).sort((a,b)=>b-a).slice(0,3)})"},
-    {"name": "f4_bot", "frames": 2, "eval": "window.__bi = __qa.lookAtBot(3.5);", "read": "({bot: window.__bi, nan: __qa.nanScan()})"}
-  ]
+ "tag": "f_ffa",
+ "setupFiles": [
+  "tools/qa/suites/lib.js"
+ ],
+ "match": "ffa",
+ "w": 800,
+ "h": 450,
+ "views": [
+  {
+   "name": "f1_spawn",
+   "frames": 2,
+   "read": "({mode: __game.mode.key, teams: __game.mode.teams, bots: __game.bots.length, alive: __game.bots.filter(b=>b.alive).length, pos: __qa.p(), hudOverlaps: __qa.hudOverlaps()})"
+  },
+  {
+   "name": "f2_sim",
+   "shot": false,
+   "frames": 1,
+   "eval": "window.__res = __qa.matchSim(120);",
+   "read": "window.__res"
+  },
+  {
+   "name": "f3_scoreboard",
+   "frames": 2,
+   "keys": [
+    "Tab"
+   ],
+   "release": [
+    "Tab"
+   ],
+   "read": "({hudOverlaps: __qa.hudOverlaps(), player: __game.player.stats, top: __game.bots.map(b=>b.stats.kills).sort((a,b)=>b-a).slice(0,3)})"
+  },
+  {
+   "name": "f4_bot",
+   "frames": 2,
+   "eval": "window.__bi = __qa.lookAtBot(3.5);",
+   "read": "({bot: window.__bi, nan: __qa.nanScan()})"
+  }
+ ],
+ "lofi": true
 }
