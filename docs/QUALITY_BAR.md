@@ -23,3 +23,9 @@ cool teal shadows.
 All assets pass through one shared look: albedo/roughness/normal-intensity normalisation, consistent texel density,
 a global weathering + wetness layer, contact grounding (AO + dirt decals), identical sun/IBL/fog, and a single
 colour grade as the final glue. Details: `docs/ART_PIPELINE.md`.
+
+## Asset sourcing
+Curated, licence-verified catalogue: `docs/ASSET_SOURCES.md` (GitHub repos first, plus Sketchfab, Poly Haven,
+ambientCG, OpenGameArt, itch.io, Kenney, Quaternius). Allowed: CC0 / CC-BY / CC-BY-SA or explicitly redistributable
+in a public open-source game. Never: NC, ND, store licences, ripped commercial-game assets, raw Mixamo files.
+Every shipped asset is credited in README.
