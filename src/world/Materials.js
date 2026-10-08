@@ -36,7 +36,7 @@ const DEFS = {
   containerTan: { set: 'rusty_painted_metal', tint: 0xe0d8d0, paint: 0x9a7d55, normal: 1.2, metal: 0.35, surface: 'metal', grime: 0.4, wet: 0.7, rmin: 0.35 },
   containerWhite: { set: 'rusty_painted_metal', tint: 0xe0d8d0, paint: 0xa9a7a0, normal: 1.2, metal: 0.35, surface: 'metal', grime: 0.45, wet: 0.7, rmin: 0.35 },
   woodDark: { set: 'Wood051', tint: 0x9c9286, normal: 1, surface: 'wood', grime: 0.4, wet: 0.9, rmin: 0.5 },
-  wood: { set: 'Wood092', tint: 0x9a9184, normal: 1, surface: 'wood', grime: 0.35, wet: 0.9, rmin: 0.5 },
+  wood: { set: 'Wood092', tint: 0x9a9184, sat: 0.6, normal: 1, surface: 'wood', grime: 0.35, wet: 0.9, rmin: 0.5 },
   tiles: { set: 'Tiles139', tint: 0xb8b2a8, normal: 1, surface: 'concrete', grime: 0.4, wet: 0.3, rmin: 0.2 },
   sandbag: { set: 'Fabric083', tint: 0x9a8865, normal: 2, surface: 'dirt', grime: 0.5, wet: 1, rmin: 0.6 },
   paving: { set: 'PavingStones138', tint: 0xaca598, normal: 1.2, surface: 'concrete', grime: 0.5, wet: 1, puddle: 1, rmin: 0.35 },
@@ -201,7 +201,7 @@ export class Materials {
     indoorMin: { value: [0, 1, 2, 3].map(() => new THREE.Vector3(1e5, 1e5, 1e5)) },
     indoorMax: { value: [0, 1, 2, 3].map(() => new THREE.Vector3(-1e5, -1e5, -1e5)) },
     indoorCount: { value: 0 },
-    indoorAmount: { value: 0.78 },
+    indoorAmount: { value: 0.62 },
   };
   static get indoor() { return Materials.unify; }
 
@@ -252,7 +252,7 @@ export class Materials {
         normalScale: new THREE.Vector2(d.normal, d.normal),
       });
       m.name = key;
-      this.applyUnify(m, { grime: d.grime, wet: d.wet, puddle: d.puddle ?? 0, rmin: d.rmin, sat: 0.86, contact: 1, streaks: 1, paint: d.paint });
+      this.applyUnify(m, { grime: d.grime, wet: d.wet, puddle: d.puddle ?? 0, rmin: d.rmin, sat: d.sat ?? 0.86, contact: 1, streaks: 1, paint: d.paint });
       this.mats[key] = m;
       this.surfaceOf.set(m, d.surface);
     }

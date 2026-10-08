@@ -86,7 +86,7 @@ Code is original except where noted. Third-party assets:
   cardboard_box_01, old_tyre, exterior_aircon_unit, street_lamp_01, security_light, utility_box_01/02, metal_trash_can,
   water_manhole_cover, covered_car, trashbag, metal_jerrycan_green, propane_tank, portable_generator,
   hanging_industrial_lamp, mounted_fluorescent_lights, modular_industrial_pipes_01,
-  wooden_crate_02, cement_bag, rusted_wheel_rim_01, WetFloorSign_01, barrel_stove, overhead_crane), simplified and
+  wooden_crate_02, cement_bag, rusted_wheel_rim_01, WetFloorSign_01, barrel_stove), simplified and
   re-encoded (webp) with gltf-transform.
 - **HDRI**: Poly Haven "Bambanani Sunset" (Dimitrios Savva, Jarod Guest) — CC0.
 - **Level textures added**: ambientCG Ground110, Fence006 (chain-link), MetalWalkway013 (grating), Leaking003 (wall

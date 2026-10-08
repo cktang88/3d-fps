@@ -52,7 +52,6 @@ const PROPS = {
   wheelRim: ['rusted_wheel_rim_01/rusted_wheel_rim_01.glb'],
   wetSign: ['WetFloorSign_01/WetFloorSign_01.glb'],
   stove: ['barrel_stove/barrel_stove.glb'],
-  crane: ['overhead_crane/overhead_crane.glb', { recenter: true }],
 };
 
 /**
@@ -765,9 +764,6 @@ export class Level {
     }
     // Longitudinal purlins.
     for (const zz of [-44, -38, -32]) this.box('steel', 0, H - 0.1, zz, 36, 0.12, 0.1, { nav: false, map: false, collide: false });
-    // Overhead gantry crane parked over the centre aisle (hero piece), on runway beams.
-    this.prop('crane', -1.5, -35.2, 0, { y: H - 1.75 - 5.1, mount: true });
-    for (const zz of [-37.2, -33.2]) this.box('steel', 0, H - 1.85, zz, 35.4, 0.2, 0.25, { nav: false, map: false, collide: false });
     // Ceiling ducting.
     // Catwalk along north wall at 4 m: perforated grating deck on a steel frame.
     const cy = 4;
@@ -974,8 +970,8 @@ export class Level {
     // Ceiling fluorescents (cool) — one flickers on each floor.
     for (const [x, z] of [[-10, 35], [-10, 41], [-1, 35], [-1, 41], [4, 41]]) this.prop('fluoro', x, z, 0, { y: F - 0.32, mount: true });
     for (const [x, z] of [[-9, 35], [-9, 41], [2, 35], [2, 41], [-5, 38]]) this.prop('fluoro', x, z, Math.PI / 2, { y: 2 * F - 0.07, mount: true });
-    this.interiorLight(-6, F - 0.5, 38, 0xdbe8ff, 10, 14, true);
-    this.interiorLight(-4, 2 * F - 0.5, 38, 0xdbe8ff, 10, 14);
+    this.interiorLight(-6, F - 0.5, 38, 0xdbe8ff, 18, 15, true);
+    this.interiorLight(-4, 2 * F - 0.5, 38, 0xdbe8ff, 20, 16);
     // Exterior: AC units on the roof and wall, lamps over doors, downpipes, leak streaks.
     this.prop('aircon', -9, z1 - 2.5, 0.0, { y: 2 * F + 0.3 }); this.prop('aircon', -5.4, z1 - 2.5, 0.0, { y: 2 * F + 0.3 });
     this.prop('aircon2', 3.5, z1 - 2.2, Math.PI, { y: 2 * F + 0.3 });
@@ -1068,7 +1064,7 @@ export class Level {
       this.beam('woodDark', V(tx + s * 1.6, 0.4, tz - 1.6), V(tx + s * 1.6, ty - 0.4, tz + 1.6), 0.1, 0.14);
     }
     this.box('woodDark', tx, ty - 0.1, tz, 3.8, 0.2, 3.8, { uv: 1.5, map: true });
-    for (const [dx, dz, w, d] of [[0, -1.85, 3.8, 0.1], [-1.85, 0, 0.1, 3.8], [1.85, 0, 0.1, 3.8]]) this.box('wood', tx + dx, ty + 0.5, tz + dz, w, 1.0, d, { map: false });
+    for (const [dx, dz, w, d] of [[0, -1.85, 3.8, 0.1], [-1.85, 0, 0.1, 3.8], [1.85, 0, 0.1, 3.8]]) this.box('woodDark', tx + dx, ty + 0.5, tz + dz, w, 1.0, d, { map: false, uv: 1.2 });
     this.box('corrugated', tx, ty + 2.6, tz, 4.4, 0.12, 4.4, { nav: false, map: false });
     for (const [dx, dz] of [[-1.85, -1.85], [1.85, -1.85], [-1.85, 1.85], [1.85, 1.85]]) this.box('woodDark', tx + dx, ty + 1.3, tz + dz, 0.12, 2.6, 0.12, { map: false, nav: false });
     this.stairs('woodDark', tx, tz + 1.95 + 6.2, Math.PI, 1.2, ty, 6.2, 0, { open: true, tread: 'wood', rail: true });
