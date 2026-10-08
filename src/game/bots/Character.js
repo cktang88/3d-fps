@@ -4,7 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { damp, clamp, DEG } from '../../core/MathUtil.js';
 import { POSES, RELOAD_PHASES } from '../weapons/GunModels.js';
 import { G } from '../../core/Physics.js';
-import { rigidLodTemplate, addMergedShadowProxy, simplifyObject } from '../../render/Lod.js';
+import { rigidLodTemplate, addMergedShadowProxy, simplifyObject, DistanceLod } from '../../render/Lod.js';
 
 /*
  * Third-person soldier: Bamen military soldier (CC-BY 4.0) with retargeted Mixamo-named clips.
@@ -449,6 +449,8 @@ export class Character {
     });
     // Perf: the body's ~11 skinned parts cast one merged, simplified shadow (1 shadow draw instead of 11).
     addMergedShadowProxy(model, 3500);
+    // Perf: ~30% body mesh once a bot is small on screen (distance x tan(fov/2) > 24, i.e. ~20 m at hip FOV).
+    this._geoLod = new DistanceLod(model, 0.3, 0.01);
     this.bones = findBones(model);
     this._addArmbands(mats.__band);
 
@@ -736,6 +738,7 @@ export class Character {
     if (!cam) return 0;
     const dx = bot.position.x - cam.position.x, dy = bot.position.y - cam.position.y, dz = bot.position.z - cam.position.z;
     const d2 = dx * dx + dy * dy + dz * dz;
+    this._geoLod?.update(Math.sqrt(d2) * Math.tan(cam.fov * DEG * 0.5));
     if (d2 < 15 * 15) return 0; // close: every frame
     const d = Math.sqrt(d2);
     cam.getWorldDirection(_v7);
@@ -746,8 +749,28 @@ export class Character {
     return 1 / 12;
   }
 
+  /**
+   * three's PropertyMixer only writes a bone when the sampled value differs from what it wrote last
+   * time, so procedural edits would accumulate on constant poses. Save the post-mixer locals of every
+   * bone we touch and restore them before the next mixer update.
+   */
+  _saveProc() {
+    const bs = this._procBones || (this._procBones = ['spine', 'spine1', 'spine2', 'neck', 'head', 'lSh', 'rSh', 'lArm', 'lFore', 'lHand', 'rArm', 'rFore', 'rHand'].map((k) => this.bones[k]).filter(Boolean));
+    const sv = this._procSave || (this._procSave = bs.map(() => new THREE.Quaternion()));
+    for (let i = 0; i < bs.length; i++) sv[i].copy(bs[i].quaternion);
+    this._procSaved = true;
+  }
+
+  _restoreProc() {
+    if (!this._procSaved) return;
+    const bs = this._procBones, sv = this._procSave;
+    for (let i = 0; i < bs.length; i++) bs[i].quaternion.copy(sv[i]);
+    this._procSaved = false;
+  }
+
   _animate(dt, bot, sp) {
     const tpl = this.tpl, gait = tpl.gait;
+    this._restoreProc();
     // Turning on the spot: shuffle the feet (drive the walk cycle from the turn rate) instead of
     // pivoting on planted soles.
     if (sp < 0.3) sp = Math.max(sp, clamp(Math.abs(this.yawRate) * 0.32 - 0.15, 0, 1.1));
@@ -812,6 +835,7 @@ export class Character {
   _afterPose(bot, fresh) {
     if (!fresh) { this._matrixFrame = -1; return; } // matrices refreshed lazily (hitboxes) / by the renderer
     const root = this.root, b = this.bones;
+    this._saveProc();
     root.updateMatrixWorld(true);
     const pitch = clamp(bot.pitch, -70 * DEG, 70 * DEG);
     const aimYaw = bot.yaw;
@@ -837,7 +861,7 @@ export class Character {
     }
     // Head looks along the aim (the aim clip buries the chin in the stock; keep a slight cheek weld).
     if (b.head && b.neck && b.head.parent === b.neck && b.neck.parent === b.spine2 && this.oneShotW < 0.5) {
-      const tp = pitch - 0.22;
+      const tp = pitch - 0.15;
       _v2.set(-Math.sin(aimYaw) * Math.cos(tp), Math.sin(tp), -Math.cos(aimYaw) * Math.cos(tp));
       const k = 1 - this.oneShotW * 2;
       // Cheek weld: roll the head toward the stock so the eye sits over the sights.
@@ -904,7 +928,7 @@ export class Character {
     wpos(b.rArm, _v1);
     wpos(b.spine2, _v2);
     _v1.lerp(_v2, 0.42);
-    _v1.y = _v1.y * 0.6 + (wpos(b.rArm, _v3).y - 0.04) * 0.4 - 0.045;
+    _v1.y = _v1.y * 0.6 + (wpos(b.rArm, _v3).y - 0.04) * 0.4 + Character.POCKET_Y;
     _v1.addScaledVector(_v5, 0.03 - rw * 0.05);
     _v1.y -= rw * 0.07;
     _v3.copy(this.buttLocal).applyQuaternion(_q1);
@@ -1180,6 +1204,7 @@ export class Character {
 
   // ---------------- death ----------------
   _startDeath(bot) {
+    this._restoreProc();
     const hit = this.lastHit;
     const dir = _v1.set(0, 0, 0);
     if (hit?.dir) dir.set(hit.dir.x, 0, hit.dir.z);
@@ -1427,4 +1452,5 @@ export class Character {
 Character.CORPSE_TIME = 7;
 Character.STANCE_YAW = -30 * DEG; // hips 30° to the firing side (TC 3-22.9)
 Character.TWIST_TRIM = -12 * DEG; // shoulders stay ~12° bladed
-Character.LEAN_IN = 0.16; // rad of extra forward lean when planted and aiming
+Character.LEAN_IN = 0.09; // rad of extra forward lean when planted and aiming
+Character.POCKET_Y = 0.06; // shoulder-pocket height trim (m): bore ≈ 6.5 cm under the eye

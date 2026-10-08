@@ -282,3 +282,31 @@ export function rigidLodTemplate(src, maxTris, error = 0.01, drop = null) {
   per.set(key, root);
   return root;
 }
+
+/**
+ * Distance LOD by geometry swap (works for SkinnedMesh: only the index buffer differs, skinning is shared).
+ * update(k) takes the camera-relative size metric k = distance * tan(fov/2) (zoom-aware: a 3.5x scope keeps
+ * full detail 3.5x further). Switches to the low mesh above `far`, back to full below `near` (hysteresis).
+ */
+export class DistanceLod {
+  constructor(root, ratio = 0.3, error = 0.01, near = 20, far = 24) {
+    this.parts = [];
+    this.low = false;
+    this.near = near; this.far = far;
+    root.traverse((o) => {
+      if (!o.isMesh || o.layers.mask !== 1 || !o.geometry?.attributes.position) return;
+      const t = triCount(o.geometry);
+      if (t < 600) return;
+      const lo = simplifiedGeometry(o.geometry, Math.round(t * ratio), error);
+      if (lo !== o.geometry) this.parts.push([o, o.geometry, lo]);
+    });
+  }
+
+  set(low) {
+    if (low === this.low) return;
+    this.low = low;
+    for (const [o, hi, lo] of this.parts) o.geometry = low ? lo : hi;
+  }
+
+  update(k) { this.set(this.low ? k > this.near : k > this.far); }
+}

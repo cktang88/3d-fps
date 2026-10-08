@@ -7,6 +7,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fp_lib import *
 import numpy as np
+import mathutils, mathutils.geometry
 
 MARKS = {
     # COLT AUTOMATIC / CALIBRE .45 (right side of slide) + left-side GOVERNMENT MODEL / COLT markings
@@ -41,11 +42,20 @@ def main():
             for z in np.linspace(z0, z1, 50):
                 hit, loc, nrm, idx, ob, _ = bpy.context.scene.ray_cast(dg, Vector((sx * 0.5, y, z)), Vector((-sx, 0, 0)))
                 if not hit or ob.type != 'MESH': continue
-                me = ob.data; poly = me.polygons[idx]
+                me = ob.data
+                if not me.loop_triangles: me.calc_loop_triangles()
                 uvl = me.uv_layers[0].data
-                # Barycentric-ish: nearest loop UV is enough at this density.
-                li = min(poly.loop_indices, key=lambda l: (ob.matrix_world @ me.vertices[me.loops[l].vertex_index].co - loc).length)
-                uv = uvl[li].uv
+                lp = ob.matrix_world.inverted() @ loc
+                uv = None
+                for t in me.loop_triangles:
+                    if t.polygon_index != idx: continue
+                    a_, b_, c_ = (me.vertices[me.loops[l].vertex_index].co for l in t.loops)
+                    bary = mathutils.geometry.barycentric_transform(lp, a_, b_, c_, Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1)))
+                    if min(bary) > -1e-3:
+                        ua, ub, uc = (uvl[l].uv for l in t.loops)
+                        uv = ua * bary.x + ub * bary.y + uc * bary.z
+                        break
+                if uv is None: continue
                 for m in me.materials:
                     if not m or not m.node_tree: continue
                     for n in m.node_tree.nodes:
@@ -56,7 +66,7 @@ def main():
         if not w: continue
         px = np.array(img.pixels[:], np.float32).reshape(h, w, 4)
         mk = np.zeros((h, w), bool)
-        r = max(2, w // 256)
+        r = max(2, w // 400)
         for u, v in uvs:
             x = int((u % 1) * w); yv = int((v % 1) * h)
             mk[max(0, yv - r):yv + r, max(0, x - r):x + r] = True
@@ -65,7 +75,13 @@ def main():
             px[mk, :3] = (0.5, 0.5, 1.0)
         else:
             px[..., :3] = blur_fill(px[..., :3], mk)
-        img.pixels[:] = px.ravel(); img.pack()
+        img.pixels[:] = px.ravel(); img.update()
+        # Re-pack from the edited buffer (packing a dirty image as PNG); the glTF exporter reads packed data.
+        img.file_format = 'PNG'; img.filepath_raw = f'/tmp/_blank_{gid}_{name}.png'; img.save(); img.unpack(method='REMOVE') if img.packed_file else None
+        img.filepath = img.filepath_raw; img.reload(); img.pack()
+        if os.environ.get('FP_DEBUG'):
+            mi = bpy.data.images.new('m_' + name, w, h); mm = np.zeros((h, w, 4), np.float32); mm[mk] = 1; mm[..., 3] = 1
+            mi.pixels[:] = mm.ravel(); mi.filepath_raw = f'/tmp/_mask_{gid}_{name}.png'; mi.file_format = 'PNG'; mi.save()
         print('BLANKED', gid, name, int(mk.sum()), 'texels', 'normal' if is_normal else 'colour')
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.export_scene.gltf(filepath=path, use_selection=True, export_format='GLB', export_extras=True)
