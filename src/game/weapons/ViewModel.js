@@ -308,7 +308,9 @@ export class ViewModel {
     root.name = 'WeaponRoot';
     const scale = tune.scale;
     root.scale.setScalar(scale);
-    const gun = src.clone(true);
+    // FP rigs: wrap so `gun` is an identity frame (attachments below are placed in WeaponRoot coordinates,
+    // while M4/AK carry a uniform scale on their own root node).
+    const gun = fp ? new THREE.Group().add(src.clone(true)) : src.clone(true);
     root.add(gun);
     root.updateMatrixWorld(true);
 
@@ -1247,6 +1249,8 @@ export class ViewModel {
     this._sunK = damp(this._sunK ?? 1, this._sunTarget ?? 1, 6, dt);
     this._indoorK = damp(this._indoorK ?? 0, this._indoor ?? 0, 4, dt);
 
+    if (window.__vmLegacyLight) return this._legacyLighting(camQi); // QA A/B switch
+
     // ---- Key (sun) in view space, tight shadow frustum around the weapon.
     const sunV = _v.copy(lvl.sunDir).applyQuaternion(camQi).normalize();
     this.vmSun.position.copy(this.vmSunTarget.position).addScaledVector(sunV, 2);
@@ -1274,7 +1278,7 @@ export class ViewModel {
       if (this.probeFace === 0 && this.probeTimer <= 0 && !this._probeBusy) {
         this.probeTimer = this.probeInterval;
         this._probeBusy = true;
-        captureSH(r, this.probeRT, this._shBuf).then((sh) => { this.shTarget = sh; }).catch(() => {}).finally(() => { this._probeBusy = false; });
+        captureSH(r, this.probeRT, this._shBuf).then((sh) => { this.shTarget = sh; }).catch((e) => { if (!this._probeErr) { this._probeErr = true; console.warn('viewmodel probe:', e.message); } }).finally(() => { this._probeBusy = false; });
       }
     }
     if (this.shTarget) {
@@ -1337,6 +1341,19 @@ export class ViewModel {
     }
   }
 
+  /** Pre-rig lighting (sun + hemi + fixed-orientation IBL), kept for A/B comparisons. */
+  _legacyLighting(camQi) {
+    const lvl = this.game.level;
+    this.vmSun.position.copy(lvl.sunDir).applyQuaternion(camQi).multiplyScalar(5);
+    this.vmSun.color.set(0xfff0dc); this.vmSun.intensity = 3.0 * this._sunK; this.vmSun.castShadow = false;
+    this.viewScene.environmentRotation.set(0, 0, 0);
+    this.viewScene.environmentIntensity = 0.9 * (1 - this._indoorK * 0.65);
+    this.vmHemi.intensity = 0.3 * (1 - this._indoorK * 0.5);
+    this.vmHemi.position.set(0, 1, 0).applyQuaternion(camQi);
+    this.vmProbe.intensity = 0; this.vmRim.intensity = 0; this.vmAccent.intensity = 0;
+    for (const l of this.vmLocal) l.intensity = 0;
+  }
+
   _mirrorLocalLights(eye, dt) {
     const g = this.game;
     this._lightScanT -= dt;
@@ -1374,7 +1391,7 @@ export class ViewModel {
       vl.position.copy(c.pos).applyMatrix4(camInv);
       vl.color.copy(c.L.color);
       vl.distance = c.L.distance; vl.decay = c.L.decay;
-      vl.intensity = c.L.intensity * o.v; // copied every frame → flickers with the source
+      vl.intensity = c.L.intensity * o.v * 0.75; // copied every frame → flickers with the source
     }
   }
 

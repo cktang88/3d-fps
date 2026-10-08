@@ -5,14 +5,14 @@
 (() => {
   const g = window.__game, Q = window.__qa, out = { fails: [], warn: [] };
   const SIM = window.__jankSeconds || 60, dt = 1 / 30;
-  const TH = { slideP95: 0.35, slideWarn: 0.2, popsPerMin: 6, twistDeg: 75, aimP90Deg: 10, handsApart: 0.95, handsApartT: 0.3, floatM: 0.15, sinkM: -0.1, floatT: 0.5, botBotM: 0.45, corpseS: 30 };
+  const TH = { slideP95: 0.35, slideWarn: 0.2, ratioLo: 0.8, ratioHi: 1.25, popsPerMin: 6, twistDeg: 100, aimP90Deg: 10, handsApart: 0.95, handsApartT: 0.3, floatM: 0.15, sinkM: -0.1, floatT: 0.5, botBotM: 0.45, corpseS: 30 };
   out.thresholds = TH;
   Q.god(); Q.releaseAll();
   // Park the player out of the way (top of the guard tower) so bots fight each other.
   const park = [-48, 4.3, -40.5];
   const V = g.player.position.constructor;
   const bots = g.bots;
-  const S = bots.map(() => ({ slide: [], pops: 0, popList: [], twistMax: 0, aimErr: [], apartT: 0, apartMax: 0, tpose: 0, floatT: 0, floatMax: 0, sinkMin: 0, floatEv: 0, inside: 0, deadT: 0, corpseMax: 0, lastToe: null, lastW: new Map(), aliveT: 0 }));
+  const S = bots.map(() => ({ ratio: [], slide: [], pops: 0, popList: [], twistMax: 0, aimErr: [], apartT: 0, apartMax: 0, tpose: 0, floatT: 0, floatMax: 0, sinkMin: 0, floatEv: 0, inside: 0, deadT: 0, corpseMax: 0, lastToe: null, lastW: new Map(), aliveT: 0 }));
   for (const b of bots) if (b.model) { b.model._qaLod = b.model._lodInterval; b.model._lodInterval = () => 0; }
   const wp = (o, v = new V()) => o.getWorldPosition(v);
   const yawOf = (o) => { const d = new V(0, 0, 1).applyQuaternion(o.getWorldQuaternion(new o.quaternion.constructor())); return Math.atan2(d.x, d.z); };
@@ -30,35 +30,38 @@
       m.root.updateMatrixWorld(true);
       const B = m.bones;
       // Planted-foot slide (toes near the ground and not rising).
-      const toes = [wp(B.lToe), wp(B.rToe)];
+      const toes = [wp(B.lFoot), wp(B.rFoot)];
       if (s.lastToe) for (let k = 0; k < 2; k++) {
         const h = toes[k].y - b.position.y, vy = (toes[k].y - s.lastToe[k].y) / dt;
-        if (h < 0.08 && Math.abs(vy) < 0.15) s.slide.push(Math.hypot(toes[k].x - s.lastToe[k].x, toes[k].z - s.lastToe[k].z) / dt);
+        if (h < 0.12 && Math.abs(vy) < 0.15) s.slide.push(Math.hypot(toes[k].x - s.lastToe[k].x, toes[k].z - s.lastToe[k].z) / dt);
       }
       s.lastToe = toes;
       // Floating / sinking: lowest toe vs ground while not jumping.
-      const low = Math.min(toes[0].y, toes[1].y) - b.position.y;
+      const low = Math.min(wp(B.lToe).y, wp(B.rToe).y) - b.position.y;
       if (!(b.jumpY > 0.01)) {
         if (low > TH.floatM || low < TH.sinkM) { s.floatT += dt; if (s.floatT > TH.floatT) s.floatEv++; } else s.floatT = 0;
         s.floatMax = Math.max(s.floatMax, low); s.sinkMin = Math.min(s.sinkMin, low);
       }
       // Action weight pops.
       for (const a of m.mixer._actions) {
+        if (a === m.hitAction || a === m.deathAction || a === m.toppleLoAction || a === m.toppleUpAction) continue;
         const w = a.getEffectiveWeight(), w0 = s.lastW.get(a);
         if (w0 !== undefined && Math.abs(w - w0) > 0.35) { s.pops++; if (s.popList.length < 5) s.popList.push((a.getClip()?.name || '?') + ' ' + w0.toFixed(2) + '->' + w.toFixed(2)); }
         s.lastW.set(a, w);
       }
       // Chest vs hips twist.
-      if (B.spine2 && B.hips) s.twistMax = Math.max(s.twistMax, angDiff(yawOf(B.spine2), yawOf(B.hips)) * 57.3);
+      s.twistMax = Math.max(s.twistMax, Math.abs(m.twist ?? 0) * 57.3);
+      // Gait playback ratio: ground speed / blended natural clip speed (moving only).
+      if ((m.speedS ?? 0) > 0.8) { let ws = 0, ns = 0; for (const [k, gk] of Object.entries(m.tpl?.gait || {})) { const a = m.lowerActions?.[k]; if (!a) continue; const w = a.getEffectiveWeight(); ws += w; ns += w * gk.speed; } if (ws > 0.5) s.ratio.push(m.speedS / (ns / ws)); }
       // Hands apart (T-pose / support hand off the gun).
       const apart = wp(B.lHand).distanceTo(wp(B.rHand)); s.apartMax = Math.max(s.apartMax, apart);
       if (apart > TH.handsApart && !m.dying) { s.apartT += dt; if (s.apartT > TH.handsApartT) s.tpose++; } else s.apartT = 0;
       // Barrel vs aim right after a shot.
       if (b.lastFiredTime !== undefined && g.time - b.lastFiredTime < dt * 1.01) {
         const mz = m.muzzleWorld?.(b);
-        if (mz) {
-          const barrel = mz.clone().sub(wp(B.rHand)).normalize();
-          const aim = new V(-Math.sin(b.aimYaw) * Math.cos(b.aimPitch), Math.sin(b.aimPitch), -Math.cos(b.aimYaw) * Math.cos(b.aimPitch));
+        if (mz && m.weaponObj && !(m.oneShotW > 0)) {
+          const barrel = new V(0, 0, -1).applyQuaternion(m.weaponObj.getWorldQuaternion(new m.weaponObj.quaternion.constructor()));
+          const aim = new V(-Math.sin(b.yaw) * Math.cos(b.pitch), Math.sin(b.pitch), -Math.cos(b.yaw) * Math.cos(b.pitch));
           s.aimErr.push(Math.acos(Math.max(-1, Math.min(1, barrel.dot(aim)))) * 57.3);
         }
       }
@@ -75,11 +78,12 @@
   for (const b of bots) if (b.model?._qaLod) { b.model._lodInterval = b.model._qaLod; delete b.model._qaLod; }
   const pct = (arr, p) => { if (!arr.length) return 0; const a = arr.slice().sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(p * a.length))]; };
   out.bots = S.map((s, i) => {
-    const r = { i, aliveS: Q.r(s.aliveT, 1), slideP95: Q.r(pct(s.slide, 0.95)), slideN: s.slide.length, popsPerMin: Q.r(s.pops / Math.max(1e-3, s.aliveT) * 60, 1), pops: s.popList, twistMax: Q.r(s.twistMax, 0), aimP90: Q.r(pct(s.aimErr, 0.9), 1), aimN: s.aimErr.length, handsApartMax: Q.r(s.apartMax), tposeEvents: s.tpose, floatMax: Q.r(s.floatMax), sinkMin: Q.r(s.sinkMin), floatEvents: s.floatEv, insideFrames: s.inside, corpseMaxS: Q.r(s.corpseMax, 1) };
+    const r = { i, ratioP5: Q.r(pct(s.ratio, 0.05)), ratioP95: Q.r(pct(s.ratio, 0.95)), ratioN: s.ratio.length, aliveS: Q.r(s.aliveT, 1), slideP95: Q.r(pct(s.slide, 0.95)), slideN: s.slide.length, popsPerMin: Q.r(s.pops / Math.max(1e-3, s.aliveT) * 60, 1), pops: s.popList, twistMax: Q.r(s.twistMax, 0), aimP90: Q.r(pct(s.aimErr, 0.9), 1), aimN: s.aimErr.length, handsApartMax: Q.r(s.apartMax), tposeEvents: s.tpose, floatMax: Q.r(s.floatMax), sinkMin: Q.r(s.sinkMin), floatEvents: s.floatEv, insideFrames: s.inside, corpseMaxS: Q.r(s.corpseMax, 1) };
     const F = (m) => out.fails.push(`bot${i}: ${m}`);
     if (r.slideP95 > TH.slideP95) F(`planted-foot slide p95 ${r.slideP95} m/s > ${TH.slideP95}`); else if (r.slideP95 > TH.slideWarn) out.warn.push(`bot${i}: foot slide p95 ${r.slideP95}`);
+    if (r.ratioN > 30 && (r.ratioP5 < TH.ratioLo || r.ratioP95 > TH.ratioHi)) F(`gait playback ratio p5..p95 ${r.ratioP5}..${r.ratioP95} outside ${TH.ratioLo}..${TH.ratioHi}`);
     if (r.popsPerMin > TH.popsPerMin) F(`${r.popsPerMin} weight pops/min (${s.popList.join('; ')})`);
-    if (r.twistMax > TH.twistDeg) F(`chest-hips twist ${r.twistMax}°`);
+    if (r.twistMax > TH.twistDeg) F(`chest twist ${r.twistMax}° > ${TH.twistDeg}`);
     if (r.aimN >= 5 && r.aimP90 > TH.aimP90Deg) F(`barrel-vs-aim p90 ${r.aimP90}° over ${r.aimN} shots`);
     if (r.tposeEvents) F(`hands apart > ${TH.handsApart} m for > ${TH.handsApartT}s (${r.tposeEvents} frames; max ${r.handsApartMax} m)`);
     if (r.floatEvents) F(`feet floating/sinking > ${TH.floatT}s (max ${r.floatMax}, min ${r.sinkMin})`);

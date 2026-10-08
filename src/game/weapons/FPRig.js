@@ -20,6 +20,17 @@ export const FP_IDS = ['m4a1', 'ak47', 'scarl', 'mp5a5', 'vss', 'm24', 'awm', 's
  */
 export const FP_TUNE = {
   default: { opticScale: 0.82, reloadPos: [-0.05, 0.05, -0.02], reloadRot: [-0.06, 0.14, -0.3] },
+  // Measured on the FP models (tools/blender/measure_sights.py, WeaponRoot-local = gun frame, K-space).
+  m4a1: { rail: [0, 0.1043, -0.107] },
+  ak47: { ironRear: [0, 0.0975, -0.639], ironFront: [0, 0.1049, -1.3832], rail: [0, 0.0956, -0.492] },
+  scarl: { ironRear: [0, 0.2655, 0.2311], ironFront: [0, 0.2777, -0.514], rail: [0, 0.1879, -0.058] },
+  // MP5: diopter drum aperture centre / front post tip inside the hood.
+  mp5a5: { ironRear: [0, 0.238, 0.0978], ironFront: [0, 0.254, -0.5722], rail: [0, 0.2286, -0.21] },
+  // Remington: ghost ring on the receiver + the authored bead.
+  shotgun: { ironRear: [0, 0.16, 0.0], ironFront: [0, 0.157, -0.984], rail: [0, 0.1314, 0.0], pumpStroke: 0.16,
+    shellPort: [0.0, -0.02, 0.05], shellBelt: [0.1, -0.5, 0.25] },
+  p226: { ironRear: [0, 0.1352, 0.1435], ironFront: [0, 0.1359, -0.1692], rail: [0, 0.131, 0.04] },
+  m1911: { ironRear: [0, 0.1297, 0.1299], ironFront: [0, 0.1287, -0.1954], rail: [0, 0.1281, 0.045] },
   // Fixed-scope precision platforms: the authored scope glass defines the optical axis.
   vss: { integratedScope: true },
   m24: { integratedScope: true },

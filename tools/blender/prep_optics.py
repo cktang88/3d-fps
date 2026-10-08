@@ -16,9 +16,36 @@ OPTICS = {
     # prefix: (source, rotZ deg so the objective faces +Y, lens regex (axis + radius), drop regex, contact)
     'Micro': ('o_reddot/model.glb', 180, r'^wSphere', r'^wSphere', 0.070),
     'Holo': ('o_holo/model.glb', 180, r'^1\.00[134]_', r'^1\.00[134]_', 0.092),
-    'Scope': ('o_acog/model.glb', 0, None, None, 0.084),
+    'Scope': ('o_acog/model.glb', 180, None, None, 0.084),
     'Sniper': ('o_scope/model.glb', 0, r'^Object_4$', r'^Object_[24]$', 0.084),
 }
+
+
+def blank_markings(meshes):
+    """Trademark hygiene: maker logos / warning stickers are bright white or yellow on a dark housing.
+    Replace those texels in the base colour maps with the housing's median colour."""
+    import numpy as np
+    done = set()
+    for o in meshes:
+        for m in o.data.materials:
+            if not m or not m.node_tree: continue
+            bsdf = next((n for n in m.node_tree.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+            if not bsdf or not bsdf.inputs['Base Color'].is_linked: continue
+            img = getattr(bsdf.inputs['Base Color'].links[0].from_node, 'image', None)
+            if not img or img.name in done: continue
+            done.add(img.name)
+            w, h = img.size
+            px = np.array(img.pixels[:], dtype=np.float32).reshape(h, w, 4)
+            r, g, b = px[..., 0], px[..., 1], px[..., 2]
+            lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+            mask = (lum > 0.55) | ((r > 0.35) & (g > 0.28) & (b < 0.5 * g))
+            if mask.mean() > 0.2:  # light-coloured housing: leave it alone
+                print('BLANK skip', img.name, round(float(mask.mean()), 3)); continue
+            fill = np.median(px[~mask][:, :3], axis=0)
+            px[mask, :3] = fill
+            img.pixels[:] = px.ravel()
+            img.pack()
+            print('BLANK', img.name, 'texels', int(mask.sum()))
 
 
 def main():
@@ -62,6 +89,7 @@ def main():
             for o in list(meshes):
                 if re.match(drop_rx, o.name):
                     bpy.data.objects.remove(o, do_unlink=True); meshes.remove(o)
+        blank_markings(meshes)
         pts = [v.co for o in meshes for v in o.data.vertices]; mn, mx = bbox(pts)
         f = contact / (axis.z - mn.z)
         T = Matrix.Scale(f, 4) @ Matrix.Translation((-axis.x, -(mn.y + mx.y) / 2, -axis.z))
