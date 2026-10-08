@@ -121,9 +121,9 @@ function lensDirtTexture(w = 1024, h = 576) {
 
 /**
  * Owns the WebGL renderer + post stack.
- * Pipeline: world RenderPass -> N8AO -> viewmodel RenderPass (depth cleared, own FOV)
- *   -> [HDR] god rays + bloom + lens (dirt/sun glare)
- *   -> [tonemap] AgX + grade (split tone / LGG / contrast) + vignette + edge CA (damage) + fine grain
+ * Pipeline: world RenderPass -> N8AO -> [HDR] god rays + bloom + lens (dirt/sun glare; need world depth)
+ *   -> viewmodel RenderPass (depth cleared, own FOV)
+ *   -> [tonemap] ACES filmic + grade (split tone / LGG / contrast) + vignette + edge CA (damage) + fine grain
  *   -> SMAA (on display-referred image).
  * Effects are motivated & subtle; each can be toggled via settings: fxBloom, fxGodRays, fxLens, fxCA, fxGrain.
  */
@@ -165,7 +165,6 @@ export class Renderer {
     this.viewPass.clearPass.setClearFlags(false, true, false);
     this.viewPass.ignoreBackground = true;
     this.viewPass.skipShadowMapUpdate = true;
-    this.composer.addPass(this.viewPass);
 
     // ---- HDR stage
     this.bloom = new BloomEffect({
@@ -195,7 +194,10 @@ export class Renderer {
     this.smaa = new SMAAEffect({ preset: SMAAPreset.HIGH });
     this.aaPass = new EffectPass(this.camera, this.smaa);
 
+    // HDR effects that read scene depth (god rays, sun-glare occlusion) must run BEFORE the viewmodel pass,
+    // which clears depth — otherwise the sun "shines through" walls and ceilings.
     this.composer.addPass(this.hdrPass);
+    this.composer.addPass(this.viewPass);
     this.composer.addPass(this.gradePass);
     this.composer.addPass(this.aaPass);
 

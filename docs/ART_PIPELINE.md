@@ -48,9 +48,9 @@ Presets: `level`, `prop`, `character`, `viewmodel` (`Materials.PRESETS`), or pas
 - Fake volumetrics: crossed additive cards through sunlit openings + dust motes (`LevelEnv.buildLightShafts/buildDust`).
 
 ## 5. Post (Renderer.js) — the final glue
-HDR: god rays from the sun (masked by depth) → bloom (threshold > 1, wide mip blur, low intensity: only genuinely
+HDR (before the viewmodel pass, which clears depth): god rays from the sun (masked by depth) → bloom (threshold > 1, wide mip blur, low intensity: only genuinely
 bright things glow) → lens (dirt lit by bloom; sun glare only when the sun disc is on screen and unoccluded).
-Display: AgX tonemap → grade (split toning: teal shadows / warm highlights, lift/gamma/gain, filmic S-curve,
+Display: ACES filmic tonemap → grade (split toning: teal shadows / warm highlights, lift/gamma/gain, filmic S-curve,
 saturation) → vignette (barely there at rest, deepens with damage/low health/ADS) → chromatic aberration (edges,
 damage only) → fine grain 3.5% → SMAA on the display-referred image.
 Each effect can be disabled from settings keys: `fxBloom`, `fxGodRays`, `fxLens`, `fxCA`, `fxGrain`.
