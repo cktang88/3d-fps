@@ -1,0 +1,89 @@
+{
+ "tag": "e_keyart",
+ "setupFiles": [
+  "tools/qa/suites/lib.js"
+ ],
+ "match": "tdm",
+ "w": 960,
+ "h": 540,
+ "views": [
+  {
+   "name": "e01_sun",
+   "frames": 2,
+   "eval": "__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([2,0,-8],2.68,0.06);__qa.sim(0.3);__game.player.yaw=2.68;__game.player.pitch=0.06;",
+   "read": "__qa.perf()"
+  },
+  {
+   "name": "e02_courtyardN",
+   "frames": 2,
+   "eval": "__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([0,0,20],0.3,0.02);__qa.sim(0.3);__game.player.yaw=0.3;__game.player.pitch=0.02;",
+   "read": "__qa.perf()"
+  },
+  {
+   "name": "e03_courtyard_dock",
+   "frames": 2,
+   "eval": "__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([2,0,-12],0.4,0.02);__qa.sim(0.3);__game.player.yaw=0.4;__game.player.pitch=0.02;",
+   "read": "__qa.perf()"
+  },
+  {
+   "name": "e04_warehouse",
+   "frames": 2,
+   "eval": "__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([13,0,-35],1.57,0.12);__qa.sim(0.3);__game.player.yaw=1.57;__game.player.pitch=0.12;",
+   "read": "__qa.perf()"
+  },
+  {
+   "name": "e05_warehouse_rev",
+   "frames": 2,
+   "eval": "__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([-12,0,-30],-1.9,0.05);__qa.sim(0.3);__game.player.yaw=-1.9;__game.player.pitch=0.05;",
+   "read": "__qa.perf()"
+  },
+  {
+   "name": "e06_catwalk",
+   "frames": 2,
+   "eval": "__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([10,4,-46.6],1.9,-0.15);__qa.sim(0.3);__game.player.yaw=1.9;__game.player.pitch=-0.15;",
+   "read": "__qa.perf()"
+  },
+  {
+   "name": "e07_office1",
+   "frames": 2,
+   "eval": "__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([-12.5,0,40.5],-1.9,0);__qa.sim(0.3);__game.player.yaw=-1.9;__game.player.pitch=0;",
+   "read": "__qa.perf()"
+  },
+  {
+   "name": "e08_office2",
+   "frames": 2,
+   "eval": "__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([-12.5,3.4,35],-1.57,0);__qa.sim(0.3);__game.player.yaw=-1.57;__game.player.pitch=0;",
+   "read": "__qa.perf()"
+  },
+  {
+   "name": "e09_containers",
+   "frames": 2,
+   "eval": "__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([37,0,4],0.1,0.03);__qa.sim(0.3);__game.player.yaw=0.1;__game.player.pitch=0.03;",
+   "read": "__qa.perf()"
+  },
+  {
+   "name": "e10_ruins",
+   "frames": 2,
+   "eval": "__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([-28,0,-2],1.4,0);__qa.sim(0.3);__game.player.yaw=1.4;__game.player.pitch=0;",
+   "read": "__qa.perf()"
+  },
+  {
+   "name": "e11_ruins_wall",
+   "frames": 2,
+   "eval": "__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([-30,0,3],1.9,0);__qa.sim(0.3);__game.player.yaw=1.9;__game.player.pitch=0;",
+   "read": "__qa.perf()"
+  },
+  {
+   "name": "e12_perimeter",
+   "frames": 2,
+   "eval": "__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([30,0,50],2.4,0.08);__qa.sim(0.3);__game.player.yaw=2.4;__game.player.pitch=0.08;",
+   "read": "__qa.perf()"
+  },
+  {
+   "name": "e13_tower",
+   "frames": 2,
+   "eval": "__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([-48,4.2,-40.5],-0.9,-0.05);__qa.sim(0.3);__game.player.yaw=-0.9;__game.player.pitch=-0.05;",
+   "read": "__qa.perf()"
+  }
+ ]
+}

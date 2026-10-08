@@ -1,0 +1,7 @@
+{
+  "tag": "cd_logic",
+  "setupFiles": ["tools/qa/suites/lib.js", "tools/qa/suites/d_movement.script.js:window.__moveTest"],
+  "scriptFile": "tools/qa/suites/c_weapons_logic.script.js",
+  "match": "tdm", "w": 480, "h": 270,
+  "views": [{"name": "d_movement", "shot": false, "frames": 1, "eval": "window.__mv = window.__moveTest();", "read": "window.__mv"}]
+}

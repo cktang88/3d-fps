@@ -1211,6 +1211,32 @@ export class Level {
     sky.material.depthWrite = false;
     sky.renderOrder = -1;
     sky.material.fog = false;
+    // Storm grade on the sky: brooding, cooler upper sky; the warm band at the horizon and the glow around the
+    // sun stay bright, so the eye goes to the light breaking through.
+    {
+      const sd = info.dir;
+      sky.material.onBeforeCompile = (sh) => {
+        sh.vertexShader = sh.vertexShader
+          .replace('#include <common>', '#include <common>\nvarying vec3 vSkyDir;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSkyDir = normalize(position);');
+        sh.fragmentShader = sh.fragmentShader
+          .replace('#include <common>', '#include <common>\nvarying vec3 vSkyDir;')
+          .replace('#include <map_fragment>', `#include <map_fragment>
+            {
+              vec3 d = normalize(vSkyDir);
+              float sunK = pow(max(dot(d, vec3(${sd.x.toFixed(4)}, ${sd.y.toFixed(4)}, ${sd.z.toFixed(4)})), 0.0), 6.0);
+              float el = d.y;
+              float storm = smoothstep(0.02, 0.5, el) * (1.0 - sunK);
+              float l = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+              vec3 grey = l * vec3(0.78, 0.84, 0.95);
+              diffuseColor.rgb = mix(diffuseColor.rgb, grey, storm * 0.6) * mix(1.0, 0.5, storm);
+              diffuseColor.rgb *= 1.0 + sunK * 0.35;
+              // The projected ground of the HDRI: darker, damp.
+              diffuseColor.rgb *= mix(1.0, 0.62, smoothstep(0.0, -0.05, el));
+            }`);
+      };
+      sky.material.needsUpdate = true;
+    }
     this.sky = sky;
     scene.add(sky);
     scene.background = new THREE.Color(0x40444a);

@@ -153,11 +153,12 @@ const UNIFY_FRAG = /* glsl */`
   float streak = texture2D(uNoise, vec2(sx * 0.11, P.y * 0.035 + n1.r * 0.08)).a;
   streak = smoothstep(0.42, 0.78, streak) * (1.0 - up) * uUni2.z;
   float wet = wetK * clamp(up * 0.8 + streak * 0.75 + (1.0 - up) * (0.12 + 0.3 * smoothstep(0.6, 0.0, P.y)), 0.0, 1.0);
+  wet *= mix(0.3, 1.0, smoothstep(0.3, 0.72, g));            // damp vs drying patches
   float pud = 0.0;
   if (uUni.z > 0.0 && up > 0.5) {
     float pf = texture2D(uNoise, P.xz * 0.0105 + 0.13).b * 0.75 + n1.r * 0.25 - P.y * 1.5;
-    float rim = smoothstep(0.50, 0.58, pf);
-    pud = smoothstep(0.585, 0.615, pf) * up * outside * uUni.z * uWet;
+    float rim = smoothstep(0.46, 0.55, pf);
+    pud = smoothstep(0.55, 0.585, pf) * up * outside * uUni.z * uWet;
     wet = max(wet, rim * up * outside * uWet);
   }
   float porous = 1.0 - metalnessFactor * 0.7;

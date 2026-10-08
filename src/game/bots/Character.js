@@ -758,33 +758,32 @@ export class Character {
       _v3.set(Math.sin(yaw), 0, Math.cos(yaw));
       return !phys.raycast(_v2, _v3, dist, G.WORLD);
     };
-    let mode = 'clip';
-    if (explosive || Math.abs(off) > 105 * DEG || (!headshot && Math.random() < 0.3)) mode = 'topple';
+    // Pushed backward / sideways → the authored backward fall, yawed (≤100°) to go with the hit.
+    // Pushed forward (shot from behind) → knees buckle and the body pitches onto its front.
+    let mode = Math.abs(off) > 105 * DEG ? 'topple' : 'clip';
     if (this.forceDeathMode) mode = this.forceDeathMode; // debug / tests
     const d = {
-      mode, t: 0, fadeW: 0, rate: headshot ? 1.3 : 0.9 + Math.random() * 0.25,
+      mode, t: 0, fadeW: 0, rate: headshot ? 1.35 : explosive ? 1.2 : 0.88 + Math.random() * 0.25,
       fromYaw: this.bodyYaw, toYaw: this.bodyYaw, dir: dir.clone(), angle: 0, angVel: 0, landed: false,
-      slide: explosive ? 3.2 : shotgun ? 2.2 : headshot ? 0.6 : 1.1 + Math.random() * 0.6, slid: 0, maxSlide: 0,
+      // Knockback: a short stagger-slide, bigger for buckshot / blasts.
+      slide: explosive ? 2.4 : shotgun ? 0.9 : headshot ? 0.12 : 0.25 + Math.random() * 0.25, slid: 0, maxSlide: 0,
       groundY: bot.position.y, lift: 0, origin: bot.position.clone(),
     };
     if (mode === 'clip') {
-      // Turn toward the impact so the authored fall goes with the bullet (bounded so it reads as a spin).
-      let target = this.bodyYaw + clamp(off, -100 * DEG, 100 * DEG);
-      if (!clear(target, 1.9)) { // wall behind: fall the other way instead
-        mode = d.mode = 'topple';
-      } else d.toYaw = target;
+      const target = this.bodyYaw + clamp(off, -100 * DEG, 100 * DEG);
+      if (clear(target, 1.9)) d.toYaw = target;
+      else if (clear(this.bodyYaw, 1.9)) d.toYaw = this.bodyYaw; // wall behind the hit line: fall straight back
+      else mode = d.mode = 'topple'; // back to a wall: crumple forward instead
     }
     if (mode === 'topple') {
-      // Fall along the hit; if a wall blocks, pick the clearest alternative.
-      let yaw = Math.atan2(dir.x, dir.z);
-      const tries = [0, 0.6, -0.6, 1.4, -1.4, Math.PI];
-      for (const t of tries) if (clear(yaw + t, 1.7)) { yaw += t; break; }
+      // Forward along the body (biased toward the hit), avoiding walls.
+      const fwdYaw = this.bodyYaw + Math.PI;
+      let yaw = fwdYaw + clamp(wrapPi(Math.atan2(dir.x, dir.z) - fwdYaw), -0.9, 0.9);
+      for (const t of [0, 0.5, -0.5, 1.0, -1.0]) if (clear(yaw + t, 1.6)) { yaw += t; break; }
       d.fallYaw = yaw; // world yaw of fall direction (vector (sin, 0, cos))
-      d.angVel = explosive ? 2.5 : 0.6 + Math.random() * 0.4;
-      d.kneel = explosive ? 0.05 : 0.22 + Math.random() * 0.15; // time spent buckling before the topple
-      // Falling back / sideways-back: slump into a sit and go over backwards. Falling forward: knees
-      // buckle into a crouch and the body pitches onto its front with the arms flung.
-      d.forward = Math.abs(wrapPi(yaw - this.bodyYaw)) > 100 * DEG;
+      d.angVel = explosive ? 2.5 : 0.5 + Math.random() * 0.4;
+      d.kneel = explosive ? 0.05 : 0.2 + Math.random() * 0.15; // time spent buckling before the topple
+      d.forward = true;
     }
     // Knockback slide distance, clipped by walls.
     if (phys) {
@@ -804,8 +803,8 @@ export class Character {
     else if (!d.forward) { this.downedAction.reset(); this.downedAction.timeScale = 1; this.downedAction.play(); this.downedAction.setEffectiveWeight(0); d.poses = [this.downedAction]; }
     else {
       const lo = this.toppleLoAction, up = this.toppleUpAction;
-      lo.reset(); lo.play(); lo.setEffectiveWeight(0);
-      up.reset(); up.play(); up.time = up.getClip().duration * 0.22; up.timeScale = 0.8; up.setEffectiveWeight(0);
+      lo.reset(); lo.play(); lo.time = 0.4; lo.timeScale = 0; lo.setEffectiveWeight(0);
+      up.reset(); up.play(); up.time = up.getClip().duration * 0.3; up.timeScale = 0; up.setEffectiveWeight(0); // arms flung, spine still neutral
       d.poses = [lo, up];
     }
     this.hitAction.setEffectiveWeight(0);
@@ -887,7 +886,7 @@ export class Character {
   _groundCorpse(d, dt) {
     const b = this.bones;
     let minY = Infinity;
-    for (const k of ['hips', 'spine2', 'head', 'lHand', 'rHand', 'lLeg', 'rLeg', 'lFoot', 'rFoot']) {
+    for (const k of ['hips', 'spine2', 'head', 'lLeg', 'rLeg', 'lFoot', 'rFoot']) {
       const bone = b[k];
       if (!bone) continue;
       _v4.setFromMatrixPosition(bone.matrixWorld);

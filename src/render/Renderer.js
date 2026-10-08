@@ -178,7 +178,7 @@ export class Renderer {
     );
     this.sunDir = null;
     this.godRays = new GodRaysEffect(this.camera, this.sunSource, {
-      resolutionScale: 0.5, kernelSize: KernelSize.SMALL, density: 0.94, decay: 0.93, weight: 0.32, exposure: 0.55,
+      resolutionScale: 0.5, kernelSize: KernelSize.SMALL, density: 0.94, decay: 0.93, weight: 0.24, exposure: 0.5,
       samples: 48, clampMax: 1.0, blur: true,
     });
     this.lens = new LensEffect(this.bloom, lensDirtTexture());

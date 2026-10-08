@@ -79,6 +79,10 @@ async function runJob(job, buildInfo) {
         for (const k of v.keys || []) { g.input.down.add(k); g.input.pressed.add(k); }
         if (v.eval) (0, eval)(v.eval);
       }, v);
+      const tv = Date.now();
+      // Optional: fast-forward `sim` seconds of game time without rendering (cheap on SwiftShader).
+      if (v.sim) await page.evaluate((sec) => { const g = window.__game, r = g.renderer.render, wp = g.paused; g.renderer.render = () => {}; g.paused = false;
+        try { for (let i = 0, n = Math.round(sec * 30); i < n; i++) g.update(1 / 30); } finally { g.renderer.render = r; g.paused = wp; } }, v.sim);
       await frames(v.frames || 8);
       if (v.read) result.data[v.name] = await page.evaluate(v.read); // expression returning JSON-serialisable data
       if (v.shot !== false) {
@@ -86,6 +90,7 @@ async function runJob(job, buildInfo) {
         await page.screenshot({ path: path.join(dir, f), timeout: 180000 });
         result.shots.push(path.join('tools/qa/results', job.id, f));
       }
+      (result.viewMs ||= {})[v.name] = Date.now() - tv;
       if (v.release) await page.evaluate((keys) => { const g = window.__game; for (const k of keys) g.input.down.delete(k); }, v.release);
     }
     if (job.script) result.data.script = await page.evaluate(job.script); // async expression string

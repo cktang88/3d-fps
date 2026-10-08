@@ -1,0 +1,14 @@
+{
+  "tag": "ab_boot_tdm",
+  "setupFiles": ["tools/qa/suites/lib.js"],
+  "match": false,
+  "w": 960, "h": 540,
+  "views": [
+    {"name": "a1_menu", "frames": 3, "read": "({menuOpen: !!document.querySelector('#menu, .menu') && getComputedStyle(document.querySelector('#menu, .menu')).display !== 'none', title: document.title, perf: __qa.perf()})"},
+    {"name": "b1_spawn", "frames": 3, "eval": "const g=__game; g.menu.close(); g.startMatch('tdm'); g.paused=false;", "read": "({bots: __game.bots.length, alive: __game.bots.filter(b=>b.alive).length, teams: [0,1].map(t=>__game.bots.filter(b=>b.team===t).length), playerTeam: __game.player.team, pos: __qa.p(), weapon: __game.currentWeapon.id, ammo: __game.currentWeapon.ammo, hudOverlaps: __qa.hudOverlaps(), perf: __qa.perf()})"},
+    {"name": "b2_sim", "shot": false, "frames": 1, "eval": "window.__res = __qa.matchSim(120);", "read": "window.__res"},
+    {"name": "b3_bot", "frames": 2, "eval": "window.__bi = __qa.lookAtBot(4);", "read": "({bot: window.__bi, nan: __qa.nanScan(), perf: __qa.perf()})"},
+    {"name": "b4_scoreboard", "frames": 2, "keys": ["Tab"], "release": ["Tab"], "read": "({hudOverlaps: __qa.hudOverlaps(), score: __game.mode.score})"},
+    {"name": "b5_firefight", "frames": 2, "eval": "__qa.matchSim(20); const g=__game; let best=null,bd=1e9; for(const b of g.bots) if(b.alive && b.target){const d=b.position.length(); if(d<bd){bd=d;best=b;}} if(best){ const i=g.bots.indexOf(best); __qa.lookAtBot(7,i);} window.__fb=best?g.bots.indexOf(best):null;", "read": "({bot: window.__fb, fx: __qa.fx()})"}
+  ]
+}
