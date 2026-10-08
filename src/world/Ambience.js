@@ -38,15 +38,17 @@ export class Ambience {
 
   async init() {
     const A = this.game.assets;
-    const [wisp, expl] = await Promise.all([
+    const [wisp, expl, flame] = await Promise.all([
       A.texture('ambience/vfx/wispysmoke02_8x8.webp', true, false),
       A.texture('ambience/vfx/explosion01_5x5.webp', true, false),
+      A.texture('ambience/vfx/flame03_16x4.webp', true, false),
       this.fires.load(),
     ]);
     // The UH-60 streams in after boot (first flyover is ≥18 s in); the primitive heli covers until then.
     setTimeout(() => this.flyover.load(A).catch((e) => console.warn('heli model', e)), 0);
     // Photoreal pre-rendered flipbooks (Unity Labs, CC0) replace the procedural puffs when available.
     if (wisp) { this.fires.smoke.setAtlas(wisp, 8, true); this.battle.smoke.setAtlas(wisp, 8, true); }
+    if (flame) this.fires.setFlameFlipbook(flame);
     if (expl) { this.battle.blasts.setAtlas(expl, 5, true); this.battle.hasBlast = true; }
     // Pre-roll fire smoke so plumes are already established on first sight.
     const ctx = this._ctx(0.25);

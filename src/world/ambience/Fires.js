@@ -8,6 +8,7 @@ import { rand } from '../../core/MathUtil.js';
 import { addMergedShadowProxy } from '../../render/Lod.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const _tip = new THREE.Vector3();
 
 /** Box geometry with world-ish (size-proportional) UVs so tiling textures don't stretch. */
 function uvBox(w, h, d, uvScale = 0.9) {
@@ -113,6 +114,9 @@ export class Fires {
     this.embers = new AmbParticles(this.scene, { max: 500, texture: glowTex(), additive: true, stretch: 0.06, fogScale: 1, nearFade: 1.4 });
 
     this._buildFlameMesh();
+    // Volumetric flames: many small overlapping flipbook sprites (Unity Labs Flame03, swapped in on load).
+    this.flameP = new AmbParticles(this.scene, { max: 1100, texture: glowTex(), additive: true, fogScale: 1, nearFade: 0.7, renderOrder: 11 });
+    this.flipFlames = false;
   }
 
   async load() {
@@ -462,6 +466,34 @@ export class Fires {
     this.flameGeo.instanceCount = n;
   }
 
+  /** Swap the shader flame cards for flipbook flame particles. */
+  setFlameFlipbook(tex) {
+    if (!tex) return;
+    this.flameP.setAtlas(tex, 16, false, 4, 2.0);
+    this.flipFlames = true;
+    this.flameMesh.visible = false;
+  }
+
+  _emitFlames(s, dt, k) {
+    for (const f of s.flames) {
+      f.acc = (f.acc ?? Math.random()) + dt * (10 + f.w * f.h * 10) * Math.max(0.6, k);
+      while (f.acc >= 1) {
+        f.acc -= 1;
+        const r = Math.sqrt(Math.random()) * f.w * 0.32, a = Math.random() * Math.PI * 2;
+        const size = f.h * rand(0.3, 0.5) * (1 - r / (f.w * 0.5) * 0.35);
+        const v = rand(0.85, 1.15) * f.k;
+        this.flameP.spawn({
+          x: f.p.x + Math.cos(a) * r, y: f.p.y + size * 0.8 + rand(0, 0.12) * f.h, z: f.p.z + Math.sin(a) * r,
+          vx: rand(-0.15, 0.15), vy: rand(0.3, 0.8) * f.h, vz: rand(-0.15, 0.15),
+          life: rand(0.45, 0.85) * (0.55 + f.h * 0.22), size0: size, size1: size * rand(0.5, 0.75),
+          rot: rand(-0.18, 0.18), rotV: rand(-0.4, 0.4), alpha: 0.85, fadeIn: 0.12,
+          color: [2.3 * v, 1.95 * v, 1.65 * v], color1: [1.5 * v, 0.62 * v, 0.28 * v], colorSpan: 1,
+          frame: (Math.random() * 64) | 0, frameRate: rand(22, 30), gravity: -f.h * 0.9, drag: 0.8, wind: 0.35,
+        });
+      }
+    }
+  }
+
   // ------------------------------------------------------------------ runtime
   nearest(pos) {
     let best = null, bd = 1e9;
@@ -487,7 +519,10 @@ export class Fires {
       s.smokeAcc += dt * s.rate * k;
       while (s.smokeAcc >= 1) {
         s.smokeAcc -= 1;
-        const at = s.smokeAt[(Math.random() * s.smokeAt.length) | 0], sp = s.spread, sz = s.size;
+        // Most smoke rolls straight off the flame tips; the rest from the plume source.
+        let at = s.smokeAt[(Math.random() * s.smokeAt.length) | 0];
+        if (this.flipFlames && Math.random() < 0.6) { const f = s.flames[(Math.random() * Math.min(4, s.flames.length)) | 0]; at = _tip.set(f.p.x, f.p.y + f.h * 0.95, f.p.z); }
+        const sp = s.spread, sz = s.size;
         this.smoke.spawn({
           x: at.x + rand(-sp, sp), y: at.y + rand(-0.2, 0.3), z: at.z + rand(-sp, sp),
           vx: rand(-0.3, 0.3), vy: rand(1.6, 2.6), vz: rand(-0.3, 0.3),
@@ -497,6 +532,7 @@ export class Fires {
           drag: 0.18, gravity: -0.05, wind: 0.9, turb: 0.25, rotV: rand(-0.25, 0.25),
         });
       }
+      if (this.flipFlames) this._emitFlames(s, dt, k);
       // Embers.
       s.emberAcc += dt * (s.rate * 2.2) * k;
       s.burstT -= dt;
@@ -518,5 +554,6 @@ export class Fires {
     if (this.mats) { this.mats.char.emissiveIntensity = em * 0.7; this.mats.charWood.emissiveIntensity = em; }
     this.smoke.update(dt, wind, ctx.camera, this.scene, ctx.light);
     this.embers.update(dt, wind, ctx.camera, this.scene, null);
+    this.flameP.update(dt, wind, null, this.scene, null);
   }
 }
