@@ -521,12 +521,15 @@ def solve_finger(side, chain, wrap=True, max_iter=80, limit=45.0):
 for side in ([] if os.environ.get('FP_NOIK') else SIDES):
     push_hand_out(side)
     solve_arm(side)
+    for _ in range(2):  # wrist twist moves palm vertices: re-fit, re-solve
+        push_hand_out(side, iters=15, snug=False)
+        solve_arm(side)
 if not FAST:
     for side in SIDES:
         for ch in FINGERS:
             # Right index stays on the trigger (no wrap curl); thumbs only de-penetrate.
             wrap = not ((side == 'R' and ch[0] == '004') or ch[0] == '020')
-            res = solve_finger(side, ch, wrap=wrap)
+            res = solve_finger(side, ch, wrap=wrap, limit=60.0 if ch[0] == '020' else 45.0)
             log('finger', side, ch[0], res)
 
 # ------------------------------------------------------------------ 6. report
@@ -589,9 +592,6 @@ save_json(os.path.join(WORK, f'rig_{GID}.json'), REPORT)
 
 # ------------------------------------------------------------------ 8. export
 if OUT != '-':
-    for o in list(bpy.data.objects):
-        if o.name.startswith('pole_') or o.type in ('CAMERA', 'LIGHT'):
-            bpy.data.objects.remove(o, do_unlink=True)
     bpy.context.view_layer.objects.active = arms_mesh
     for o in bpy.data.objects: o.select_set(o == arms_mesh)
     bpy.ops.object.modifier_apply(modifier=mod.name)
@@ -601,13 +601,62 @@ if OUT != '-':
     bpy.ops.pose.armature_apply(selected=False)
     bpy.ops.object.mode_set(mode='OBJECT')
     m2 = arms_mesh.modifiers.new('Armature', 'ARMATURE'); m2.object = arm
+    for p_ in pb:
+        p_.matrix_basis = Matrix()
+    bpy.context.view_layer.update()
+    # ---- Variant: support hand on a vertical foregrip (game: GunModels.vgrip at VGripMount) ----
+    VG = SPEC.get('vgrip')
+    vg_mount = None
+    if VG is not None and not FAST:
+        att = 0.82 / 0.72  # FP_TUNE.default.opticScale / 0.72, as ViewModel scales attachments
+        xc, uz = underside(gun_pts, VG, 0.02, 0.06)
+        top = Vector((xc, VG, uz + 0.004))
+        vg_mount = top
+        bm = bmesh.new()
+        bmesh.ops.create_cone(bm, cap_ends=True, segments=16, radius1=0.026 * att, radius2=0.022 * att, depth=0.13 * att)
+        me = bpy.data.meshes.new('vg'); bm.to_mesh(me); bm.free()
+        me.transform(Matrix.Translation(top + Vector((0, 0, -0.075 * att))))
+        vgo = bpy.data.objects.new('VGripCollider', me); bpy.context.scene.collection.objects.link(vgo)
+        bm2 = bmesh.new(); bmesh.ops.create_cube(bm2, size=1); me2 = bpy.data.meshes.new('vgc'); bm2.to_mesh(me2); bm2.free()
+        me2.transform(Matrix.Translation(top + Vector((0, 0, -0.01 * att))) @ Matrix.Diagonal((0.04 * att, 0.06 * att, 0.025 * att, 1)))
+        vgc = bpy.data.objects.new('VGripClamp', me2); bpy.context.scene.collection.objects.link(vgc)
+        bpy.context.view_layer.update()
+        gun_bvh, _ = bvh_of(coll + [vgo, vgc])
+        TBV = TB['bolt']; f_v = L_REF / chain_len_tpl(TBV, 'R')
+        tvp = tpl_scan('bolt')
+        sl = [q for q in tvp if abs(q.y - 0.262) < 0.012 and q.z < 0.03]
+        tx = (min(q.x for q in sl) + max(q.x for q in sl)) / 2 if sl else 0.0
+        top_tpl = Vector((tx, 0.262, 0.035))
+        M_V = Matrix.Translation(top) @ Matrix.Scale(K * f_v, 4) @ Matrix.Translation(-top_tpl)
+        set_hand('L', M_V, TBV)
+        push_hand_out('L')
+        solve_arm('L')
+        for ch in FINGERS:
+            solve_finger('L', ch, wrap=ch[0] != '020')
+        d = depths(verts_of(REG['L_hand']), maxd=0.05 * K)
+        REPORT['vgrip_L_max_mm'] = round(max([x for x in d if x > 0] or [0]) / K * 1000, 2)
+        log('VGRIP L penetration mm', REPORT['vgrip_L_max_mm'])
+        make_camera(CAM_W, vfov_deg=52.0); render(os.path.join(WORK, f'rig_{GID}_vgrip.png'))
+        act = bpy.data.actions.new('grip_vgrip')
+        arm.animation_data_create(); arm.animation_data.action = act
+        for p_ in pb:
+            if p_.name.endswith('_L') or '.L' in p_.name or p_.name.startswith('Bone_L'):
+                p_.keyframe_insert('location', frame=0); p_.keyframe_insert('rotation_quaternion', frame=0)
+        arm.animation_data.action = None
+        for p_ in pb:
+            p_.matrix_basis = Matrix()
+        bpy.data.objects.remove(vgo, do_unlink=True); bpy.data.objects.remove(vgc, do_unlink=True)
+        save_json(os.path.join(WORK, f'rig_{GID}.json'), REPORT)
+    for o in list(bpy.data.objects):
+        if o.name.startswith('pole_') or o.type in ('CAMERA', 'LIGHT'):
+            bpy.data.objects.remove(o, do_unlink=True)
     # Contract markers (gun frame).
     root = bpy.data.objects.new(f'FP_{GID}', None); bpy.context.scene.collection.objects.link(root)
     gun_root.parent = root; arm.parent = root
 
     def marker(name, M):
         e = bpy.data.objects.new(name, None); bpy.context.scene.collection.objects.link(e)
-        e.parent = gun_root if name not in ('GripR', 'GripL') else root
+        e.parent = gun_root if name not in ('GripR', 'GripL', 'VGripMount') else root
         e.matrix_world = M
         return e
     if not any(o.name.startswith('MuzzleSocket') or o.name.startswith('MuzzleDeviceTip') for o in bpy.data.objects):
@@ -617,10 +666,13 @@ if OUT != '-':
     marker('GripR', Matrix.Translation(O_tgt) @ Matrix.Rotation(math.radians(-SPEC['rake']), 4, 'X'))
     if tkey != 'pistol':
         marker('GripL', Matrix.Translation(S_tgt))
+    if vg_mount is not None:
+        marker('VGripMount', Matrix.Translation(vg_mount))
     root['fp'] = json.dumps({'K': K, 'cls': SPEC['cls'], 'hip': REPORT['hip'], 'boreZ': BORE_Z, 'web': list(SPEC['web']),
                              'trig': list(SPEC['trig']), 'maxPenetrationMm': REPORT['max_mm']})
     for o in bpy.data.objects: o.select_set(True)
     bpy.ops.export_scene.gltf(filepath=OUT, use_selection=True, export_format='GLB', export_extras=True,
-                              export_skins=True, export_animations=False, export_image_format='AUTO')
+                              export_skins=True, export_animations=bool(bpy.data.actions), export_animation_mode='ACTIONS',
+                              export_force_sampling=False, export_image_format='AUTO')
     log('exported', OUT)
 log('done', json.dumps({'max_mm': REPORT['max_mm']}))

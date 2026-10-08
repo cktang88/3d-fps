@@ -20,11 +20,11 @@ TPL = {
 LEFT_TPL = {'rifle': 'rifle', 'bolt': 'rifle', 'shotgun': 'shotgun', 'pistol': 'pistol'}
 
 RIGS = {
-    'm4a1': dict(tpl='rifle', cls='rifle', web=(-0.213, -0.080), rake=26.6, trig=(-0.110, -0.090), sup=0.42),
-    'ak47': dict(tpl='rifle', cls='rifle', web=(0.172, -0.095), rake=16.0, trig=(0.315, -0.120), sup=0.80),
-    'scarl': dict(tpl='rifle', cls='rifle', web=(-0.262, -0.025), rake=30.0, trig=(-0.150, -0.050), sup=0.25),
-    'mp5a5': dict(tpl='rifle', cls='smg', web=(-0.110, 0.020), rake=34.0, trig=(0.000, -0.020), sup=0.43),
-    'vss': dict(tpl='rifle', cls='rifle', web=(-0.350, -0.040), rake=8.0, trig=(-0.205, -0.060), sup=0.15),
+    'm4a1': dict(vgrip=0.5, tpl='rifle', cls='rifle', web=(-0.213, -0.080), rake=26.6, trig=(-0.110, -0.090), sup=0.42),
+    'ak47': dict(vgrip=0.92, tpl='rifle', cls='rifle', web=(0.172, -0.095), rake=16.0, trig=(0.315, -0.120), sup=0.80),
+    'scarl': dict(vgrip=0.36, tpl='rifle', cls='rifle', web=(-0.262, -0.025), rake=30.0, trig=(-0.150, -0.050), sup=0.25),
+    'mp5a5': dict(vgrip=0.5, tpl='rifle', cls='smg', web=(-0.110, 0.020), rake=34.0, trig=(0.000, -0.020), sup=0.43),
+    'vss': dict(vgrip=0.2, tpl='rifle', cls='rifle', web=(-0.350, -0.040), rake=8.0, trig=(-0.205, -0.060), sup=0.15),
     'm24': dict(tpl='bolt', cls='sniper', web=(-0.585, 0.005), rake=36.0, trig=(-0.470, -0.070), sup=0.10),
     'awm': dict(tpl='rifle', cls='sniper', web=(-0.575, -0.050), rake=11.0, trig=(-0.430, -0.110), sup=0.15),
     'shotgun': dict(tpl='shotgun', cls='shotgun', web=(-0.505, 0.052), rake=16.0, trig=(-0.335, -0.030), sup='pump'),

@@ -1351,6 +1351,7 @@ export class Level {
     sky.onBeforeRender = () => {
       const t = (performance.now() - t0) / 1000;
       Materials.unify.uTime.value = t;
+      Materials.unify.uRain.value = Math.min(1, this.game.ambience?.weather?.rainAmount ?? 0);
       shafts.material.uniforms.uTime.value = t;
       dust.material.uniforms.uTime.value = t;
       for (const f of this.flicker) {

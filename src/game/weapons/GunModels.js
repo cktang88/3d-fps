@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { grimeTex } from '../../render/ProcTex.js';
+import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FP_IDS, parseFP } from './FPRig.js';
 
 /**

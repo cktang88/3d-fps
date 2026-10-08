@@ -35,7 +35,7 @@ export function parseFP(gltf, id) {
   scene.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
   const marker = (n) => { const o = root.getObjectByName(n); return o ? o.getWorldPosition(new THREE.Vector3()).applyMatrix4(inv) : null; };
-  return { gltf, scene, root, gun, meta, gripR: marker('GripR'), gripL: marker('GripL') };
+  return { gltf, scene, root, gun, meta, gripR: marker('GripR'), gripL: marker('GripL'), vgripMount: marker('VGripMount') };
 }
 
 /** Analytic two-bone arm IK on the FPRig skeleton (shoulder fixed, elbow keeps its authored bend plane). */
@@ -106,7 +106,8 @@ class ArmIK {
 
 /** One instance of an FP rig's arms (cloned per weapon rig). */
 export class FPArms {
-  constructor(fp) {
+  /** variant: name of an authored one-frame pose clip (e.g. 'grip_vgrip') applied over the rest hold. */
+  constructor(fp, variant = null) {
     const clone = SkeletonUtils.clone(fp.scene);
     const root = clone.getObjectByName(fp.root.name) || clone;
     const gun = root.getObjectByName(fp.gun?.name || '__none__');
@@ -118,6 +119,17 @@ export class FPArms {
     });
     this.mesh = null;
     root.traverse((o) => { if (o.isSkinnedMesh) this.mesh = o; });
+    const clip = variant && fp.gltf.animations?.find((c) => c.name === variant);
+    if (clip) {
+      // First keyframe of each track straight onto the bones (no mixer: the pose must persist).
+      for (const t of clip.tracks) {
+        const dot = t.name.lastIndexOf('.');
+        const node = root.getObjectByName(t.name.slice(0, dot)), prop = t.name.slice(dot + 1);
+        if (node && node[prop]?.fromArray) node[prop].fromArray(t.values, 0);
+      }
+      root.updateMatrixWorld(true);
+    }
+    this.variant = clip ? variant : null;
     this.ik = { L: new ArmIK(root, 'L'), R: new ArmIK(root, 'R') };
     this.homeL = null;
   }

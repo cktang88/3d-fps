@@ -3,10 +3,10 @@ import fs from 'node:fs';
 const dir = new URL('.', import.meta.url).pathname;
 const W = ['m4', 'ak', 'scar', 'mp5', 'vss', 'rpk', 'm24', 'awm', 'm870', 'p226', 'm1911'];
 const wv = (id) => [
-  { name: `${id}_1hip`, frames: 1, eval: `__qa.god();__qa.freezeBots(true);__qa.releaseAll();__qa.place([0,0.1,10],0.15,0.02);__qa.loadout('${id}');__qa.sim(1.4);__game.player.spawnProtect=0;`, read: `({id:__game.currentWeapon.id,state:__game.currentWeapon.state,ammo:__game.currentWeapon.ammo})` },
+  { name: `${id}_1hip`, frames: 1, eval: `__qa.unfreeze();__qa.sim(3.5);__qa.god();__qa.freezeBots(true);__qa.releaseAll();__qa.place([0,0.1,10],0.15,0.02);__qa.loadout('${id}');__qa.sim(1.4);__game.player.spawnProtect=0;`, read: `({id:__game.currentWeapon.id,state:__game.currentWeapon.state,ammo:__game.currentWeapon.ammo})` },
   { name: `${id}_2ads`, frames: 1, eval: `__qa.down('Mouse2');__qa.sim(__game.currentWeapon.stats.ads+0.35);`, read: `({adsT:__game.currentWeapon.adsT,fov:__game.renderer.camera.fov})`, release: ['Mouse2'] },
-  { name: `${id}_3fire`, frames: 1, eval: `__qa.down('Mouse2',false);__qa.sim(0.5);__qa.press('Mouse0');__qa.sim(0.12);__qa.press('Mouse0');`, read: `({ammo:__game.currentWeapon.ammo,fx:__qa.fx()})`, release: ['Mouse0'] },
-  { name: `${id}_4reload`, frames: 1, eval: `__qa.down('Mouse0',false);__qa.sim(1.2);const w=__game.currentWeapon;w.ammo=Math.min(w.ammo,Math.max(1,w.stats.mag-3));__qa.tap('KeyR');__qa.sim((w.stats.tube?w.stats.shellReload*1.5:w.stats.tacReload)*0.45);`, read: `({state:__game.currentWeapon.state,type:__game.currentWeapon.reloadType})` },
+  { name: `${id}_3fire`, frames: 1, eval: `__qa.down('Mouse2',false);__qa.sim(0.5);__qa.press('Mouse0');__qa.sim(0.12);__qa.press('Mouse0');__qa.sim(1/30);__qa.down('Mouse0',false);__qa.freezeAfterNext();`, read: `({ammo:__game.currentWeapon.ammo,fx:__qa.fx()})` },
+  { name: `${id}_4reload`, frames: 1, eval: `__qa.unfreeze();__qa.down('Mouse0',false);__qa.sim(1.2);const w=__game.currentWeapon;w.ammo=Math.min(w.ammo,Math.max(1,w.stats.mag-3));__qa.tap('KeyR');__qa.sim((w.stats.tube?w.stats.shellReload*1.5:w.stats.tacReload)*0.45);`, read: `({state:__game.currentWeapon.state,type:__game.currentWeapon.reloadType})` },
   { name: `${id}_5sprint`, frames: 1, eval: `__qa.sim(5);__qa.place([0,0.1,22],0.15,0);__qa.down('ShiftLeft');__qa.down('KeyW');__qa.sim(0.7);`, read: `({sprintT:__game.currentWeapon.sprintT})`, release: ['ShiftLeft', 'KeyW'] },
 ];
 // Full reload + sprint sequences only for representative weapons (one per animation family); hip/ADS/fire for all.

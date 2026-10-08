@@ -166,9 +166,8 @@ export class ViewModel {
         void main(){
           vec2 c = vUv - 0.5; float r = length(c) * 2.0;
           vec3 col = texture2D(map, vUv).rgb * exposure;
-          // ACES-ish quick tonemap so the HDR RT matches the main image roughly.
-          col = col / (col + vec3(0.6)) * 1.25;
-          col = pow(col, vec3(1.0/2.2));
+          // The RT is linear HDR like the view pass it is composited into; post (tonemap/grade)
+          // runs on the final image, so no tonemap/gamma here (that double-encoded and washed it out).
           vec4 ret = texture2D(reticle, (vUv - 0.5) * 1.6 + 0.5);
           col = mix(col, ret.rgb * 1.4, ret.a);
           // Black crosshair lines.
@@ -296,7 +295,11 @@ export class ViewModel {
     const attScale = (tune.opticScale ?? 0.72) / 0.72;
     const under = undersideAt(gun, root, support.z, 0.05);
     const sideX = sideAt(gun, root, support.z - 0.04, 0.05);
-    if (att.underbarrel === 'vgrip' && !authoredForegrip) {
+    if (att.underbarrel === 'vgrip' && fp?.vgripMount) {
+      // FP rigs: the support hand was authored around a grip at this exact mount (pose clip grip_vgrip).
+      if (authoredForegrip) authoredForegrip.visible = false;
+      const vg = GunModels.vgrip(); vg.scale.setScalar(attScale); vg.position.copy(fp.vgripMount); gun.add(vg);
+    } else if (att.underbarrel === 'vgrip' && !authoredForegrip) {
       const vg = GunModels.vgrip(); vg.scale.setScalar(attScale); vg.position.set(support.x, under + 0.004, support.z + 0.02); gun.add(vg);
     } else if (att.underbarrel === 'agrip') {
       const ag = GunModels.agrip(); ag.scale.setScalar(attScale); ag.position.set(support.x, under + 0.004, support.z + 0.04); gun.add(ag);
@@ -305,7 +308,8 @@ export class ViewModel {
       const bp = GunModels.bipod(); bp.scale.setScalar(attScale); bp.position.set(0, undersideAt(gun, root, bz, 0.05) - 0.012, bz); gun.add(bp);
     }
     // Support hand rides the grip it is given: on a vertical grip the palm wraps the grip itself.
-    if (att.underbarrel === 'vgrip') {
+    if (att.underbarrel === 'vgrip' && fp?.vgripMount) pose.support = fp.vgripMount.toArray();
+    else if (att.underbarrel === 'vgrip') {
       const gy = authoredForegrip ? find(gun, 'Foregrip').position.y + 0.03 : under - 0.05 * attScale;
       pose.support = [support.x, Math.min(support.y, gy), support.z];
     } else if (att.underbarrel === 'agrip') pose.support = [support.x, Math.min(support.y, under - 0.02 * attScale), support.z];
@@ -349,7 +353,7 @@ export class ViewModel {
     const armsSrc = sidearm ? this.models.armsPistol : this.models.armsRifle;
     if (fp) {
       // Skinned arms posed onto this exact gun offline (contact-solved); the support arm is IK-driven.
-      rig.fp = new FPArms(fp);
+      rig.fp = new FPArms(fp, att.underbarrel === 'vgrip' && fp.vgripMount ? 'grip_vgrip' : null);
       rig.fp.object.traverse((o) => { if (o.isMesh) o.material.envMapIntensity = 0.9; });
       root.add(rig.fp.object);
       rig.pump = find(gun, 'Pump');

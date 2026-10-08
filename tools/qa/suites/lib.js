@@ -8,6 +8,7 @@
   const G = () => window.__game;
   Q.cleanup = () => {
     const g = G(); if (!g) return;
+    Q.unfreeze?.();
     Q.thawBots?.();
     if (Object.prototype.hasOwnProperty.call(g, 'onActorKilled')) delete g.onActorKilled;
     if (g.player?.events?._qaOrigMantle) { g.player.events.onMantle = g.player.events._qaOrigMantle; delete g.player.events._qaOrigMantle; }
@@ -38,6 +39,13 @@
     const g = G(); if (primary) g.settings.loadout.primary = primary; if (secondary) g.settings.loadout.secondary = secondary;
     g.applyLoadoutChange();
   };
+  // Freeze the world after the next rendered frame (dt≈0), so a screenshot shows exactly that state
+  // (e.g. the muzzle-flash frame). Call Q.unfreeze() in the next view.
+  Q.freezeAfterNext = () => {
+    const g = G(); if (g._qaUpd) return; const orig = g.update; g._qaUpd = orig; let n = 0;
+    g.update = function (dt) { if (n++ === 0) orig.call(this, 1e-4); };
+  };
+  Q.unfreeze = () => { const g = G(); if (g._qaUpd) { g.update = g._qaUpd; delete g._qaUpd; } };
   Q.decals = () => { let n = 0; for (const d of Object.values(G().effects.decals)) n += d.mesh.count; return n; };
   Q.fx = () => { const e = G().effects; return { tracers: e.tracers.length, sparks: e.sparks.count, dust: e.dust.count, flashes: e.flashes.count, decals: Q.decals(), bullets: G().ballistics.bullets.length }; };
   const bad = (v) => !Number.isFinite(v);
