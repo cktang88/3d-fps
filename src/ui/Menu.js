@@ -69,9 +69,9 @@ export class Menu {
           <button class="btn leave" data-act="leave" style="display:none"><span class="lbl">Leave Match</span><span class="desc">Return to main menu</span></button>
         </nav>
         <div class="profile" id="menuProfile"></div>
+        <div class="foot"><span><kbd>ESC</kbd> pause</span><span><kbd>T</kbd> gunsmith while dead</span></div>
       </div>
       <div class="main" id="menuMain"></div>
-      <div class="foot"><span><kbd>ESC</kbd> pause</span><span><kbd>T</kbd> gunsmith while dead</span><span class="ver">BUILD ${new Date().getFullYear()}.${String(new Date().getMonth() + 1).padStart(2, '0')}</span></div>
     </div>`);
     document.body.appendChild(this.el);
     this.main = this.el.querySelector('#menuMain');

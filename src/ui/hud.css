@@ -338,7 +338,7 @@ kbd { display: inline-block; min-width: 20px; padding: 0 5px; margin-right: 6px;
 .xpbar .gain { width: 0; background: var(--gold); box-shadow: 0 0 10px var(--gold); transition: width 1s var(--ease); }
 .xptxt { font: 600 11px var(--font); letter-spacing: 0.1em; color: var(--faint); display: flex; justify-content: space-between; gap: 12px; }
 
-.menu .foot { position: absolute; right: 3vw; bottom: 2.4vh; display: flex; gap: 22px; font: 600 11px var(--font); letter-spacing: 0.16em; color: var(--faint); text-transform: uppercase; }
+.menu .foot { margin-top: 12px; display: flex; gap: 18px; font: 600 11px var(--font); letter-spacing: 0.16em; color: var(--faint); text-transform: uppercase; }
 .menu .foot kbd { font-size: 10px; line-height: 15px; }
 
 .menu .main { flex: 1; padding: 6vh 3.5vw 7vh 1vw; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.2) transparent; }
@@ -354,7 +354,9 @@ kbd { display: inline-block; min-width: 20px; padding: 0 5px; margin-right: 6px;
 
 /* Home */
 .loadout { display: grid; grid-template-columns: 1.2fr 1fr 0.9fr; gap: 10px; }
-.wcard { cursor: pointer; padding: 14px 16px; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--cut-s); transition: background 0.15s, box-shadow 0.15s; }
+.wcard { cursor: pointer; position: relative; padding: 14px 16px; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px var(--line); transition: background 0.15s, box-shadow 0.15s; }
+.wcard::after, .wbtn::after { content: ''; position: absolute; right: 0; top: 0; border: 5px solid transparent; border-top-color: var(--faint); border-right-color: var(--faint); transition: border-color 0.15s; }
+.wcard:hover::after, .wbtn.sel::after { border-top-color: var(--gold); border-right-color: var(--gold); }
 .wcard:hover { background: rgba(255, 200, 61, 0.08); box-shadow: inset 0 0 0 1px rgba(255, 200, 61, 0.55); }
 .wcard.eq { cursor: default; }
 .wcard .slotlbl { font: 700 10px var(--font); letter-spacing: 0.3em; color: var(--gold); }
@@ -401,10 +403,10 @@ kbd { display: inline-block; min-width: 20px; padding: 0 5px; margin-right: 6px;
 
 /* Gunsmith */
 .wlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; }
-.wbtn { pointer-events: auto; cursor: pointer; position: relative; background: rgba(255, 255, 255, 0.04); color: var(--fg); border: none; box-shadow: inset 0 0 0 1px var(--line); padding: 9px 12px 8px; font-family: var(--font); text-align: left; clip-path: var(--cut-s); transition: background 0.15s, box-shadow 0.15s; }
+.wbtn { pointer-events: auto; cursor: pointer; position: relative; background: rgba(255, 255, 255, 0.04); color: var(--fg); border: none; box-shadow: inset 0 0 0 1px var(--line); padding: 9px 12px 8px; font-family: var(--font); text-align: left; transition: background 0.15s, box-shadow 0.15s; }
 .wbtn .wn { display: block; font: 600 20px/1.1 var(--font2); letter-spacing: 0.05em; }
 .wbtn small { display: block; font: 700 10px var(--font); color: var(--faint); letter-spacing: 0.16em; text-transform: uppercase; margin-top: 2px; }
-.wbtn em { position: absolute; right: 8px; top: 8px; font: 700 9px var(--font); font-style: normal; letter-spacing: 0.16em; color: var(--gold); }
+.wbtn em { position: absolute; right: 14px; top: 8px; font: 700 9px var(--font); font-style: normal; letter-spacing: 0.16em; color: var(--gold); }
 .wbtn.sel { box-shadow: inset 0 0 0 1px var(--gold); background: rgba(255, 200, 61, 0.12); }
 .wbtn:hover { background: rgba(255, 255, 255, 0.1); }
 .slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 14px; }

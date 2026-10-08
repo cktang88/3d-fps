@@ -27,6 +27,8 @@ page.on('pageerror', (e) => logs.push('[pageerror] ' + e.message + '\n' + e.stac
 await page.exposeFunction('__shot', async (name) => { fs.mkdirSync('tools/shots', { recursive: true }); await page.screenshot({ path: `tools/shots/probe_${name}.png`, timeout: 180000 }); });
 await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
 await page.waitForFunction(() => window.__game?.menu, null, { timeout: 240000 }).catch(() => {});
+// Harness-only guard: strip stray morph attributes that crash three's renderer (level prop bug).
+await page.evaluate(() => { const g = window.__game; g?.renderer?.scene.traverse((o) => { if (o.isMesh && o.geometry?.morphAttributes && Object.keys(o.geometry.morphAttributes).length && !o.morphTargetInfluences) o.geometry.morphAttributes = {}; }); });
 if (!process.env.NOSTART) await page.evaluate(() => { const g = window.__game; g.menu.close(); g.startMatch(window.__mode || 'tdm'); g.paused = false; });
 try {
   const res = await page.evaluate(async (body) => {

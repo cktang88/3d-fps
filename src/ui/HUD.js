@@ -57,7 +57,7 @@ export class HUD {
       <div id="flashbang"></div>
       <div id="scope"><div class="lens"></div><div class="h"></div><div class="v"></div><div class="mils"></div><div class="center"></div><div class="zoomlbl"></div><div class="breath"><i></i></div></div>
       <div id="damage"></div>
-      <div id="minimap"><canvas width="360" height="360"></canvas><div class="ring"></div><div class="north">N</div><div class="uav">UAV</div></div>
+      <div id="minimap"><canvas width="360" height="360"></canvas><div class="ring"></div><div class="north"></div><div class="uav">UAV</div></div>
       <div id="top">
         <div id="compass"><div class="strip"></div><div class="pings"></div><div class="caret"></div><div class="hdg">000</div></div>
         <div id="score">
