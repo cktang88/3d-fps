@@ -460,6 +460,8 @@ kbd { display: inline-block; min-width: 20px; padding: 0 5px; margin-right: 6px;
 #loading .title { font: 600 64px var(--font2); letter-spacing: 0.24em; padding-left: 0.24em; }
 #loading .bar { width: 340px; height: 3px; background: rgba(255, 255, 255, 0.1); }
 #loading .bar i { display: block; height: 100%; width: 0%; background: var(--gold); transition: width 0.25s var(--ease); box-shadow: 0 0 10px rgba(255, 200, 61, 0.6); }
+#loading .tag { margin-top: -14px; font: 700 12px var(--font); letter-spacing: 0.56em; color: var(--dim); padding-left: 0.56em; }
+#loading .tip { position: absolute; bottom: 8vh; font: 500 14px var(--font); letter-spacing: 0.08em; color: var(--faint); }
 #loading .msg { font: 700 12px var(--font); color: var(--faint); letter-spacing: 0.3em; text-transform: uppercase; }
 #clicktoplay { position: fixed; left: 50%; bottom: 12vh; transform: translateX(-50%); font: 700 18px var(--font); letter-spacing: 0.3em; color: var(--fg); pointer-events: none; display: none; text-shadow: var(--ts); animation: pulse 1.4s infinite; z-index: 11; }
 

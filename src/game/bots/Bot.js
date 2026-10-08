@@ -62,6 +62,7 @@ export class Bot {
     this.strafeTimer = 0;
     this.strafeDir = 1;
     this.aimErr = new THREE.Vector3();
+    this.aimErrT = new THREE.Vector3();
     this.aimErrTimer = 0;
     this.trackTime = 0;
     this.burstCount = 0;
@@ -217,6 +218,7 @@ export class Bot {
       if (!this.target || !this.memory.get(this.target)?.visible) this.target = attacker;
     }
     this.thinkTimer = Math.min(this.thinkTimer, 0.1);
+    this.aimErrTimer = 0; // flinch: re-roll aim error now (with the hit penalty)
   }
 
   onSuppressed(by, amt) {
@@ -412,9 +414,15 @@ export class Bot {
         e *= 1 + this.suppression;
         const dist = tgtPt.distanceTo(this.eye);
         const r = Math.tan(e * DEG) * dist;
-        this.aimErr.set(rand(-1, 1), rand(-0.6, 0.6), rand(-1, 1)).normalize().multiplyScalar(r * Math.random());
+        // Early in a track the error sits on a ring (shots go wide, not randomly through centre mass);
+        // it fills in as the bot settles. Vertical error is smaller (humans track height well).
+        const settle = Math.exp(-this.trackTime / this.diff.tau);
+        const mag = r * (settle * 0.6 + (1 - settle * 0.6) * Math.sqrt(Math.random()));
+        this.aimErrT.set(rand(-1, 1), rand(-0.55, 0.55), rand(-1, 1)).normalize().multiplyScalar(mag);
       }
-      lookAt = tgtPt.clone().add(this.aimErr);
+      // Error drifts smoothly toward its new target (no snapping between offsets).
+      this.aimErr.lerp(this.aimErrT, 1 - Math.exp(-dt * 7));
+      lookAt = tgtPt.add(this.aimErr);
       // Fire when aim is close enough.
       const dir = lookAt.clone().sub(this.eye).normalize();
       const fy = Math.atan2(-dir.x, -dir.z), fp = Math.asin(clamp(dir.y, -1, 1));
@@ -435,6 +443,7 @@ export class Bot {
       }
     } else {
       this.trackTime = 0;
+      this.aimErrTimer = 0;
     }
     if (!lookAt) {
       // Look along movement direction or toward last-known threat.
@@ -470,7 +479,8 @@ export class Bot {
     // ---- Move ----
     this.crouch = damp(this.crouch, crouchT, 8, dt);
     if (this.agent) {
-      const maxSpeed = (this.goal === 'engage' ? 3.2 : this.goal === 'cover' ? 5.2 : runSpeed) * (this.crouch > 0.5 ? 0.5 : 1);
+      let maxSpeed = this.goal === 'engage' ? 3.2 : this.goal === 'cover' ? 5.2 : runSpeed;
+      if (this.crouch > 0.5) maxSpeed = Math.min(maxSpeed, 1.5); // crouch-walk pace
       if (Math.abs(this.agent.maxSpeed - maxSpeed) > 0.1) this.agent.updateParameters({ maxSpeed });
       if (desiredVel) {
         this.agent.requestMoveVelocity({ x: desiredVel.x, y: 0, z: desiredVel.z });

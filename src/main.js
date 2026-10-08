@@ -11,6 +11,15 @@ const canvas = document.getElementById('game');
 const loading = document.getElementById('loading');
 const bar = loading.querySelector('.bar i');
 const msg = loading.querySelector('.msg');
+const TIPS = [
+  'Double-tap Shift to tactical sprint, then press C to slide.',
+  'Press Space at a waist-high wall to vault without losing speed.',
+  'Wood, plaster and thin metal can be shot through. Concrete cannot.',
+  'Four kills without dying calls in a UAV.',
+  'Tactical reloads keep a round chambered and are faster.',
+  'Bots hear footsteps and gunfire. Walk with Alt or crouch to move quietly.',
+];
+loading.querySelector('.tip').textContent = 'TIP · ' + TIPS[(Math.random() * TIPS.length) | 0];
 
 const game = new Game(canvas, settings);
 window.__game = game; // debugging / automated playtests
