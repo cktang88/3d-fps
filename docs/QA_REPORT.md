@@ -2,7 +2,7 @@
 
 Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Results: `tools/qa/results/<id>/`.
 
-**Last run:** 2026-10-08 21:45 UTC (fresh build after runner restart: `cd_logic`, `ab_boot_tdm`, `g_hud_ui`, `d_diag`, `c_optics`). Perf budget: ≤400 calls, ≤1.2M tris per view, ≤20 s fresh load (owner: perf a06576c27e6a80553).
+**Last run:** 2026-10-08 21:55 UTC. NOTE: runner snapshot bug, fixed 21:49. Jobs 20:10-21:03 ran on snapshot 1791490059096 and 21:06-21:49 on 1791493580852, so the PASS/VERIFIED marks below were verified against code as of ~21:04 and are being re-run on fresh snapshots now. Perf budget: ≤400 calls, ≤1.2M tris per view, ≤20 s fresh load (owner: perf a06576c27e6a80553).
 
 ## Pass / fail by area
 

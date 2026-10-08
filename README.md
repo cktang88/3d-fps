@@ -76,7 +76,7 @@ Code is original except where noted. Third-party assets:
   (https://sketchfab.com/3d-models/ef698ce36b1545a78ce592dd3db4c7ed); textures re-encoded (WebP), meshes merged.
   Animation rig/clip source: "FREE [Military Soldier] RIGGED" by BAMEN — CC BY 4.0
   (https://sketchfab.com/3d-models/free-military-soldier-rigged-e9c56308a67d4a3db62e914fafa4d198), fallback body;
-  animation clips from Quaternius Universal Animation Library — CC0, retargeted at load.
+  animation clips from Quaternius Universal Animation Library 1 & 2 (Standard) — CC0 (https://quaternius.com), retargeted at load.
 - **Shotgun model**: by Harry_L — CC BY (https://sketchfab.com/models/53b158b0d5a54b4491b09d1fb3058e29), via Mugen87/dive.
 - **Gunshot & firearm foley**: The Free Firearm Sound Library (CC0) — https://github.com/buddingmonkey/FreeFirearmsSFXLibrary
   and edits from operation-steel-tide.

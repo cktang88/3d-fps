@@ -5,6 +5,7 @@ import { Spring, Spring3, damp, clamp, DEG, smoothstep, easeInOutSine, rand } fr
 import { muzzleFlashAtlas, muzzleSideTex, reticleTex, glowTex } from '../../render/ProcTex.js';
 
 const V = (a) => new THREE.Vector3(a[0], a[1], a[2]);
+const PROBE_LAYER = 4; // render layer for the viewmodel light probe
 const _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4(), _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
 
 function find(root, name) {
@@ -177,12 +178,15 @@ export class ViewModel {
       // Same face set-up as THREE.CubeCamera (WebGL coordinate system, negative fov flip).
       const dirs = [[1, 0, 0, 0, 1, 0], [-1, 0, 0, 0, 1, 0], [0, 1, 0, 0, 0, -1], [0, -1, 0, 0, 0, 1], [0, 0, 1, 0, 1, 0], [0, 0, -1, 0, 1, 0]];
       for (const d of dirs) {
-        const c = new THREE.PerspectiveCamera(-90, 1, 0.1, 80);
+        const c = new THREE.PerspectiveCamera(-90, 1, 0.1, 30);
         c.up.set(d[3], d[4], d[5]); c.userData.dir = new THREE.Vector3(d[0], d[1], d[2]);
+        c.layers.set(PROBE_LAYER); // static level + sky + lights only (tagged lazily, see _tagProbeLayer)
         this.probeCams.push(c);
       }
       this.probeFace = 0;
       this.probeInterval = q >= 2 ? 0.25 : 0.5;
+      this.probeEvery = q >= 2 ? 2 : 4; // render one cube face every Nth frame
+      this._probeTick = 0;
       this.probeTimer = 0;
       this.shTarget = null; // world-space SH from the last readback
       this.shWorld = new THREE.SphericalHarmonics3();
@@ -1263,7 +1267,8 @@ export class ViewModel {
 
     // ---- Local light probe (round-robin cube faces + async SH readback).
     const skip = !!window.__qaSkipRender;
-    if (this.probeRT && !skip) {
+    if (this.probeRT && !skip && (this._probeTick = (this._probeTick + 1) % this.probeEvery) === 0) {
+      if (!this._probeTagged) this._tagProbeLayer();
       const sm = r.shadowMap, au = sm.autoUpdate, nu = sm.needsUpdate;
       sm.autoUpdate = false; sm.needsUpdate = false;
       const prevT = r.getRenderTarget(), prevF = r.getActiveCubeFace?.() ?? 0;
@@ -1354,13 +1359,25 @@ export class ViewModel {
     for (const l of this.vmLocal) l.intensity = 0;
   }
 
+  /** Probe sees static level geometry, the sky and lights — not bots, props or particles. */
+  _tagProbeLayer() {
+    const g = this.game;
+    this._probeTagged = true;
+    g.renderer.scene.traverse((o) => {
+      if (o.isLight || o === g.level?.sky || (o.isMesh && /^lvl_/.test(o.name))) o.layers.enable(PROBE_LAYER);
+    });
+  }
+
   _mirrorLocalLights(eye, dt) {
     const g = this.game;
     this._lightScanT -= dt;
     if (this._lightScanT <= 0) {
       this._lightScanT = 2;
       const list = [];
-      g.renderer.scene.traverse((o) => { if ((o.isPointLight || o.isSpotLight) && !o.userData.vmIgnore) list.push(o); });
+      g.renderer.scene.traverse((o) => {
+        if (o.isLight) o.layers.enable(PROBE_LAYER); // three filters lights by camera layers
+        if ((o.isPointLight || o.isSpotLight) && !o.userData.vmIgnore) list.push(o);
+      });
       this._lightCache = list;
     }
     const cands = [];

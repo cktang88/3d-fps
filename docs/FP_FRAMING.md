@@ -8,8 +8,8 @@ This is the spec the first-person rigs are built to (`tools/blender/`), and the 
 34 gameplay screenshots (Steam store `appdetails` screenshots, 1920x1080) of hip-fire and ADS from Call of Duty
 MWII/MWIII, Battlefield 4/2042/6, Insurgency + Insurgency: Sandstorm, Ready or Not, Squad, Hell Let Loose,
 Counter-Strike 2, Hunt: Showdown 1896, Rainbow Six Siege, Arma Reforger, Gray Zone Warfare and Delta Force.
-They were measured on a 10% grid. The images are not redistributed; `tools/blender/README.md` has the fetch
-command. Measurements are given as % of screen width (x, from the left) and height (y, from the top), with the
+They were measured on a 10% grid. The images are not redistributed: fetch them again with
+`https://store.steampowered.com/api/appdetails?appids=<id>&filters=screenshots`. Measurements are given as % of screen width (x, from the left) and height (y, from the top), with the
 crosshair at (50%, 50%).
 
 ## 2. Camera
@@ -64,9 +64,30 @@ are below and outside the arms (R (0.45, 0.05, -0.75), L (-0.30, 0.25, -0.75)), 
 
 * **Intersection.** For each rig, the automatic BVH check in `build_rig.py` reports the maximum penetration of hand,
   finger and forearm vertices into the gun. It uses nearest-face normals confirmed by an 8-ray exit vote, so
-  single-sided decals do not count. The per-weapon numbers are in `tools/blender/out/rig_<id>.json`. Target:
-  < 2 mm for anything visible from the FP camera. The authored ccransh templates themselves penetrate their own
-  guns by 9–12 mm (self-test `build_rig.py tpl_rifle`), so the solver is required, not optional.
+  single-sided decals do not count. The per-weapon JSON report is written to `<work>/rig_<id>.json`. Target:
+  < 2 mm. The authored ccransh templates themselves penetrate their own guns by 9–12 mm (self-test
+  `build_rig.py tpl_rifle`), so the solver is required, not optional.
+
+  Solver stages: (1) the template hand is transferred by grip markers; (2) a rigid 6-DOF least-squares palm fit plus a
+  snug slide-back; (3) arm IK with forearm twist distributed over three twist bones; (4) per-finger
+  de-penetration and wrap-to-contact; (5) a corrective contact pass baked into the rest pose. That last pass
+  projects residual vertices onto the surface plus 0.3 mm, with a 12 mm cosine falloff to neighbours.
+
+  | Weapon | Hands after pose solve (mm) | Forearms after pose solve (mm) | **Final (exported), mm** | Vertical-grip variant, mm |
+  |---|---|---|---|---|
+  | M4A1 | 5.77 | 0.00 | **1.89** | 4.01 |
+  | AK-47 / RPK | 3.60 | 0.00 | **0.10** | 4.64 |
+  | SCAR-L | 7.89 | 0.00 | **0.15** | 3.30 |
+  | MP5A5 | 9.98 | 0.00 | **0.09** | 3.48 |
+  | VSS | 10.93 | 0.00 | **0.19** | 4.05 |
+  | M24 | 8.63 | 0.00 | **0.15** | – |
+  | AWM | 16.13 | 2.41 | **0.19** | – |
+  | M870 (Remington) | 13.91 | 14.89 | **0.22** | – |
+  | P226 | 10.97 | 0.00 | **1.85** | – |
+  | M1911 | 4.15 | 0.00 | **0.65** | – |
+
+  The vertical-grip variant (`grip_vgrip` pose clip) is bone-only, so the corrective vertex pass does not apply
+  to it yet. That is why those numbers are 3–5 mm.
 * **In game.** Hip, ADS, sprint and reload-midpoint screenshots for every weapon must show zero visible clipping
   between the arms and the gun or its attachments.
 
@@ -103,11 +124,26 @@ leaves its grip: pump strokes, magazine swaps (the hidden reload clip drives the
 ```
 blender -b --python tools/blender/extract_templates.py -- <sf> <work>        # grip templates from the ccransh packs
 blender -b --python tools/blender/prep_guns.py -- <sf> <work> [ids]          # normalise guns (canonical frame, K x real)
+blender -b --python tools/blender/blank_marks.py -- <work>/gun_<id>.glb <id>  # erase maker roll-marks (trademarks)
+blender -b --python tools/blender/measure_sights.py -- <work>                # iron sight line + rail -> FP_TUNE
+blender -b --python tools/blender/prep_optics.py -- <sf> <out optics.glb>     # optics in the steel-tide contract
+blender -b --python tools/blender/review_fp.py -- <fp.glb> <prefix>          # re-measure + render an exported rig
 blender -b --python tools/blender/zoom.py -- <glb> <png> y0 y1 z0 z1 step    # gridded views for reading markers
 python3 tools/blender/gridify.py <png>…                                      # draw the metric grid (system python + PIL)
 blender -b --python tools/blender/build_rig.py -- <id> <sf> <work> <out.glb> # pose, solve, report, render, export
 tools/blender/build_all.sh <blender> <sf> <work> <outdir>                    # all ten rigs
-tools/blender/optimize.sh <outdir>                                           # gltf-transform: webp, prune, weld
+tools/blender/optimize.sh <outdir> public/assets/models/fp                  # gltf-transform: dedup, prune, 1K, weld, quantize, webp
+# then list the ids in public/assets/models/fp/manifest.json (GunModels only requests listed rigs)
+```
+
+The export step also bakes **ambient occlusion** with Cycles: one 1K atlas per rig on a dedicated UV set, covering
+gun and arms together so the grip-in-hand contact and magazine wells darken. It is wired as glTF `occlusionTexture`
+and loaded by three.js as `aoMap`.
+
+Note on rig sizes: 1.8–5.2 MB each, 29 MB for all ten. Textures from the many-material sources dominate (VSS,
+AK, P226). They can be cut further by atlasing.
+
+```
 ```
 
 ## 7. Credits (CC-BY 4.0 unless noted; modifications: re-posed, re-rigged, rescaled, re-textured to webp)
@@ -127,3 +163,7 @@ tools/blender/optimize.sh <outdir>                                           # g
 | Sig Sauer P226 | Alexcanot | sketchfab.com/3d-models/sig-sauer-p226-e3d4f1ab22f342f4a0891743353c114c | CC-BY 4.0 |
 | M1911 pistol | egorbelous | sketchfab.com/3d-models/m1911-pistol-80a0b8a6c4314da4a7b3a7cfe6cec1d4 | CC-BY 4.0 |
 | M4A1, AK-47 (unchanged meshes, re-rigged) | Operation Steel Tide (AetherRadar) | github.com/AetherRadar/operation-steel-tide | MIT |
+| Generic Red Dot Scope (red dot) | valterjherson1 | sketchfab.com/3d-models/generic-red-dot-scope-rifle-attachment-lowpoly-8bf2794c30d04fa0aed1e3df92cd8a9e | CC-BY 4.0 |
+| EoTech EXPS3-0 Holographic Weapon Sight (holo; logos removed) | valterjherson1 | sketchfab.com/3d-models/eotech-exps3-0-holographic-weapon-sight-lowpoly-45e4fcdfb1b34756ab9e866564a12f66 | CC-BY 4.0 |
+| Advanced Combat Optical Gunsight (4x scope) | Argentavisss | sketchfab.com/3d-models/advanced-combat-optical-gunsight-game-ready-4675fc83ccc54c018d4d03ee1709e8f5 | CC-BY 4.0 |
+| Nightforce ATACR 4-20x50 F1 Riflescope (sniper; markings removed) | ense7en | sketchfab.com/3d-models/nightforce-atacr-4-20x50-f1-riflescope-2ae2ddbc7ee049e3afcc3117f4ce6aa5 | CC-BY 4.0 |

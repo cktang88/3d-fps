@@ -109,6 +109,7 @@ export class Perf {
     const R = this.game.renderer, vm = this.game.viewmodel;
     if (scene === R.scene) {
       if (vm && camera === vm.scopeCam) return 'pip_scope';
+      if (vm?.probeCams?.includes(camera)) return 'vm_light_probe';
       if (camera === R.camera) return target && this._aoTargets().has(target) ? 'ao_transparency' : 'world';
       return 'world_other_cam';
     }

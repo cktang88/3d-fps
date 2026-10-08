@@ -39,6 +39,7 @@
     if (f.objects) out.views[v.name].detail = P.constructor.summarize(f.objects, 25);
     if (v.name === 'courtyard') out.census = P.census();
   }
+  out.bots = { n: g.bots.length, rootsVisible: g.bots.filter((b) => b.model?.root.visible).length, sparesVisible: g.bots.filter((b) => b.spareModel?.root.visible && b.spareModel.root.parent).length, lowLod: g.bots.filter((b) => b.model?._geoLod?.low).length };
   out.top = P.top(25);
   out.load = P.loadTimeline();
   return out;
