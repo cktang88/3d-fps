@@ -195,9 +195,11 @@ export class Renderer {
     this.smaa = new SMAAEffect({ preset: SMAAPreset.HIGH });
     this.aaPass = new EffectPass(this.camera, this.smaa);
 
-    this.composer.addPass(this.hdrPass);
+    const DBG = location.search;
+    if (!DBG.includes('nohdr')) this.composer.addPass(this.hdrPass);
     this.composer.addPass(this.gradePass);
     this.composer.addPass(this.aaPass);
+    if (DBG.includes('noao')) this.aoPass.enabled = false;
 
     this.damagePulse = 0;
     this.ads = 0;

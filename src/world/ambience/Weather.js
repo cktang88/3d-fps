@@ -248,7 +248,10 @@ export class Weather {
     this.lHemi = new THREE.HemisphereLight(0xb8c6ff, 0x30343c, 0);
     this.scene.add(this.lDir, this.lDir.target, this.lHemi);
     this.boltMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(5, 5.4, 7), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
-    this.bolt = new THREE.Mesh(new THREE.BufferGeometry(), this.boltMat);
+    const g0 = new THREE.BufferGeometry();
+    g0.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(9), 3));
+    this.bolt = new THREE.Mesh(g0, this.boltMat);
+    this.bolt.visible = false;
     this.bolt.frustumCulled = false;
     this.bolt.renderOrder = 2;
     this.scene.add(this.bolt);

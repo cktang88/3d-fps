@@ -516,6 +516,7 @@ export class Level {
   }
 
   finalizeProps() {
+    if (location.search.includes('noprops')) return;
     for (const [k, list] of Object.entries(this.propInst)) {
       const p = this.props[k];
       if (!p || !list.length) continue;
@@ -524,7 +525,7 @@ export class Level {
         const im = new THREE.InstancedMesh(part.geo, part.mat, list.length);
         list.forEach((m, i) => im.setMatrixAt(i, m));
         im.instanceMatrix.needsUpdate = true;
-        im.castShadow = big && !part.mat.userData.noUnify;
+        im.castShadow = big && !part.mat.userData.noUnify && !location.search.includes('nopropshadow');
         im.receiveShadow = true;
         im.computeBoundingSphere();
         im.name = 'prop_' + k;
@@ -570,13 +571,9 @@ export class Level {
     this.box('paving', -2, 0.015, 26, 30, 0.03, 6, { uv: 2.5, collide: false, map: false });
     this.box('concreteDirty', 37, 0.014, 0, 34, 0.028, 50, { uv: 4, collide: false, map: false });
 
-    this.buildPerimeter();
-    this.buildWarehouse();
-    this.buildOffice();
-    this.buildContainerYard();
-    this.buildRuins();
-    this.buildCourtyard();
-    this.buildBackdrop();
+    for (const k of ['Perimeter', 'Warehouse', 'Office', 'ContainerYard', 'Ruins', 'Courtyard', 'Backdrop']) {
+      if (!location.search.includes('skip' + k)) this['build' + k]();
+    }
     this.defineSpawns();
     this.finalize();
   }
@@ -831,7 +828,8 @@ export class Level {
   }
 
   interiorLight(x, y, z, color = 0xffe2b0, intensity = 40, dist = 26, flicker = false) {
-    const l = new THREE.PointLight(color, intensity, dist, 1.7);
+    const l = new THREE.PointLight(color, location.search.includes('nolights') ? 0 : intensity, dist, 1.7);
+    if (location.search.includes('nolights')) l.visible = false;
     l.position.set(x, y, z);
     this.group.add(l);
     this.interiorLights.push(l);
@@ -1165,6 +1163,12 @@ export class Level {
       const noCastG = geos.filter((x) => x.cast === false).map((x) => x.g);
       for (const [list, cast] of [[castG, true], [noCastG, false]]) {
         if (!list.length) continue;
+        for (let i = list.length - 1; i >= 0; i--) {
+          const arr = list[i].attributes.position.array;
+          let ok = true;
+          for (let k = 0; k < arr.length; k++) if (!Number.isFinite(arr[k])) { ok = false; break; }
+          if (!ok) { console.warn('Level: dropping non-finite geometry in', mat.name); list.splice(i, 1); }
+        }
         for (const g of list) {
           if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
           if (!g.attributes.normal) g.computeVertexNormals();
@@ -1206,7 +1210,7 @@ export class Level {
     scene.environment = env;
     scene.environmentIntensity = 0.75;
     // Grounded skybox: HDR projected onto a dome so its field horizon reads as real ground.
-    const sky = new GroundedSkybox(hdr, 14, 600, 96);
+    const sky = location.search.includes('oldsky') ? new GroundedSkybox(hdr, 12, 400, 64) : new GroundedSkybox(hdr, 14, 600, 96);
     sky.position.y = 14 - 0.05;
     sky.material.depthWrite = false;
     sky.renderOrder = -1;
@@ -1241,15 +1245,15 @@ export class Level {
     const fogCol = info.horizon.clone().multiplyScalar(0.85);
     const scatterCol = info.sunHorizon.clone().sub(info.horizon).multiplyScalar(0.9);
     scatterCol.r = Math.max(scatterCol.r, 0.25); scatterCol.g = Math.max(scatterCol.g, 0.14); scatterCol.b = Math.max(scatterCol.b, 0.05);
-    installAtmosphere({ sunDir: info.dir, sunColor: scatterCol, heightFalloff: 0.06, heightShare: 0.7, scatter: 1.0 });
+    if (!location.search.includes('nofog')) installAtmosphere({ sunDir: info.dir, sunColor: scatterCol, heightFalloff: 0.06, heightShare: 0.7, scatter: 1.0 });
     scene.fog = new THREE.FogExp2(fogCol, 0.0105);
     g.renderer.setSun?.(info.dir, new THREE.Color(1.0, 0.7, 0.42));
     // Fake volumetric shafts through the warehouse's south windows + the main door, with dust motes.
     this.shaftOpenings.push({ center: V(-9, 2.4, -27), w: 5.6, h: 4.6, normal: V(0, 0, 1), length: 14 });
     const shafts = buildLightShafts(this.shaftOpenings, sunDir, new THREE.Color(1.0, 0.72, 0.45), { length: 24, intensity: 0.14 });
-    this.group.add(shafts);
+    if (!location.search.includes('noshaft')) this.group.add(shafts);
     const dust = buildDust([new THREE.Box3(V(-17, 0.5, -44), V(17, 7.5, -28))], 700, new THREE.Color(1.0, 0.8, 0.6).multiplyScalar(0.55), sunDir);
-    this.group.add(dust);
+    if (!location.search.includes('noshaft')) this.group.add(dust);
     // Per-frame animation driven from the sky's render callback (always drawn).
     const t0 = performance.now();
     sky.onBeforeRender = () => {

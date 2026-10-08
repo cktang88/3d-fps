@@ -27,7 +27,8 @@ const LOADOUTS = [
   { w: 'm4', att: { optic: 'holo', muzzle: 'suppressor' } },
 ];
 
-const _v = new THREE.Vector3(), _w = new THREE.Vector3();
+const CORPSE = { alive: false, position: new THREE.Vector3() };
+const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _f = new THREE.Vector3(), _e = new THREE.Vector3();
 
 /**
  * Bot = perception + memory + utility-scored goal selection + small action FSM + aim model.
@@ -87,7 +88,7 @@ export class Bot {
     this.weapon.laserOn = false;
   }
 
-  get center() { return _v.set(this.position.x, this.position.y + 1.1 - this.crouch * 0.35, this.position.z).clone(); }
+  get center() { return new THREE.Vector3(this.position.x, this.position.y + 1.1 - this.crouch * 0.35 + this.jumpY, this.position.z); }
   get head() { return new THREE.Vector3(this.position.x, this.position.y + 1.62 - this.crouch * 0.5 + this.jumpY, this.position.z); }
   get eye() { return new THREE.Vector3(this.position.x, this.position.y + 1.55 - this.crouch * 0.5 + this.jumpY, this.position.z); }
 
@@ -112,14 +113,26 @@ export class Bot {
     this.weapon.refill();
     this.weapon.equip();
     this.spawnProtect = 1.5;
+    this.velocity.set(0, 0, 0);
+    this.jumpY = 0; this.jumpV = 0;
+    this.trackTime = 0;
     if (this.agent) this.agent.teleport(pos);
+    // Leave the previous body on the floor: swap to the spare character so the corpse can finish
+    // its fall / sink while we respawn elsewhere.
+    if (this.model && this.model.deadTime > 0 && this.model.root.visible && this.spareModel) {
+      const corpse = this.model;
+      this.model = this.spareModel;
+      this.spareModel = corpse;
+      this.corpse = corpse;
+      if (!this.model.root.parent && corpse.root.parent) corpse.root.parent.add(this.model.root);
+    }
     this.model?.onSpawn(this);
   }
 
   // ---------------- Perception ----------------
   perceive(dt) {
     const g = this.game;
-    const eye = this.eye;
+    const eye = _e.copy(this.eye);
     const fwd = _w.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     for (const a of g.actors) {
       if (a === this || !a.alive) continue;
@@ -128,7 +141,7 @@ export class Bot {
       const dist = toA.length();
       if (dist > 90) continue;
       toA.divideScalar(dist);
-      const flat = Math.hypot(toA.x, toA.z) > 1e-4 ? new THREE.Vector3(toA.x, 0, toA.z).normalize() : fwd;
+      const flat = Math.hypot(toA.x, toA.z) > 1e-4 ? _f.set(toA.x, 0, toA.z).normalize() : fwd;
       const cosA = flat.dot(fwd);
       const inFov = cosA > Math.cos(55 * DEG);
       const inPeriph = cosA > Math.cos(80 * DEG) && dist < 45;
@@ -138,14 +151,18 @@ export class Bot {
         visible = g.physics.lineOfSight(eye, a.head) || g.physics.lineOfSight(eye, a.center);
       }
       if (visible) {
-        if (!rec) { rec = { seen: 0, lastPos: new THREE.Vector3(), lastTime: 0, vel: new THREE.Vector3(), visible: false, spotted: false }; this.memory.set(a, rec); }
+        if (!rec) { rec = this._newRec(a.position); this.memory.set(a, rec); }
+        if (!rec.visible) rec.vel.set(0, 0, 0), rec.lastPos.copy(a.position);
         let factor = inFov ? 1 : 0.5;
         if (a.crouching) factor *= 0.75;
         factor *= clamp(1.4 - dist / 80, 0.35, 1.4);
-        if (a.lastFiredTime !== undefined && this.time - 0 >= 0 && g.time - a.lastFiredTime < 0.3) factor *= 2;
+        if (a.lastFiredTime !== undefined && g.time - a.lastFiredTime < 0.3) factor *= 2;
         rec.seen += factor * dt;
-        const react = this.reactionTime ?? (this.reactionTime = Math.max(0.1, this.diff.reaction[0] + (Math.random() * 2 - 1) * this.diff.reaction[1]));
-        if (rec.seen > react || dist < 4) rec.spotted = true;
+        // Each fresh sighting rolls its own human-like reaction time (difficulty table).
+        if (!rec.spotted && rec.react === undefined) rec.react = this._rollReaction();
+        if (rec.seen > rec.react || dist < 3) {
+          if (!rec.spotted) { rec.spotted = true; rec.spottedAt = g.time; }
+        }
         rec.vel.subVectors(a.position, rec.lastPos).divideScalar(Math.max(dt, 0.05));
         if (rec.vel.length() > 12) rec.vel.set(0, 0, 0);
         rec.lastPos.copy(a.position);
@@ -154,6 +171,9 @@ export class Bot {
       } else if (rec) {
         rec.visible = false;
         rec.seen = Math.max(0, rec.seen - dt * 0.5);
+        // Out of sight for a while: re-acquiring needs a (shorter) reaction again. Pre-aiming a known
+        // angle still helps — seen time only partially decays.
+        if (rec.spotted && g.time - rec.lastTime > 1.2) { rec.spotted = false; rec.react = this._rollReaction() * 0.6; rec.seen = Math.min(rec.seen, rec.react * 0.4); }
       }
       // Hearing: player footsteps.
       if (a.noise && dist < a.noise) this.hear(a, a.position);
@@ -164,10 +184,21 @@ export class Bot {
     }
   }
 
+  _rollReaction() {
+    const [m, s] = this.diff.reaction;
+    // Roughly normal (sum of uniforms), clamped to stay human.
+    const n = (Math.random() + Math.random() + Math.random() - 1.5) * 1.4;
+    return clamp(m + n * s, m * 0.6, m * 1.8);
+  }
+
+  _newRec(pos) {
+    return { seen: 0, lastPos: pos.clone(), lastTime: this.game.time, vel: new THREE.Vector3(), visible: false, spotted: false, react: undefined };
+  }
+
   hear(actor, pos) {
     if (!this.alive || actor === this || (this.game.mode.teams && actor.team === this.team)) return;
     let rec = this.memory.get(actor);
-    if (!rec) { rec = { seen: 0, lastPos: pos.clone(), lastTime: this.game.time, vel: new THREE.Vector3(), visible: false, spotted: false, heard: true }; this.memory.set(actor, rec); }
+    if (!rec) { rec = this._newRec(pos); rec.heard = true; this.memory.set(actor, rec); }
     if (!rec.visible) { rec.lastPos.copy(pos); rec.lastTime = this.game.time; rec.heard = true; }
   }
 
@@ -175,11 +206,13 @@ export class Bot {
     this.lastHitTime = this.game.time;
     this.suppression = Math.min(1, this.suppression + 0.4);
     if (attacker && attacker !== this && attacker.alive) {
-      const rec = this.memory.get(attacker) || { seen: 0, lastPos: new THREE.Vector3(), lastTime: 0, vel: new THREE.Vector3(), visible: false };
+      const rec = this.memory.get(attacker) || this._newRec(attacker.position);
       rec.lastPos.copy(attacker.position);
       rec.lastTime = this.game.time;
-      rec.spotted = true; // damage reveals attacker direction
-      rec.seen = Math.max(rec.seen, (this.reactionTime ?? 0.4) * 0.6);
+      // Being hit reveals the attacker's direction: the bot turns to look, and needs only part of a
+      // reaction to engage once they're actually in view.
+      if (rec.react === undefined) rec.react = this._rollReaction();
+      rec.seen = Math.max(rec.seen, rec.react * 0.6);
       this.memory.set(attacker, rec);
       if (!this.target || !this.memory.get(this.target)?.visible) this.target = attacker;
     }
@@ -263,12 +296,21 @@ export class Bot {
     this.grenades--;
     const from = this.eye;
     const to = rec.lastPos.clone();
+    this.model?.onThrow?.(this);
     this.game.throwGrenade(this, from, to);
   }
 
   // ---------------- Update ----------------
   update(dt) {
     this.time += dt;
+    if (this.corpse) { this.corpse.update(dt, CORPSE); if (!this.corpse.root.visible) this.corpse = null; }
+    if (!this.spareModel && this.model) {
+      // Second body for corpse hand-off (built once, off the hot path of the first death).
+      this.spareModel = this.model.tpl.instance(this.team);
+      this.spareModel.root.visible = false;
+      this.model.root.parent?.add(this.spareModel.root);
+      this.spareModel.root.traverse((o) => { if (o.isMesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) this.game.materials?.applyIndoor?.(m); });
+    }
     if (!this.alive) { this.model?.update(dt, this); return; }
     if (this.spawnProtect > 0) this.spawnProtect -= dt;
     this.suppression = Math.max(0, this.suppression - dt * 0.4);

@@ -213,7 +213,11 @@ export class CharacterTemplate {
     this.hitAdd = THREE.AnimationUtils.makeClipAdditive(hitUp, 0);
     this.death = pick('death');
     this.downed = pick('downed', 'aim_crouch_idle');
-    this.gait = this._measureGait(full);
+    // Gait table: natural ground speed of each in-place clip (planted-foot travel, measured offline from
+    // the clips) and the phase where the left foot is furthest forward, so blended clips stay in step.
+    const G = { walk: [1.15, 0.02], run: [4.6, 0.03], sprint: [6.2, 0.83], crouchWalk: [0.85, 0] };
+    this.gait = {};
+    for (const [k, [speed, offset]] of Object.entries(G)) { const dur = full[k].duration; this.gait[k] = { speed, dur, stride: speed * dur, offset }; }
   }
 
   /** Rest-pose (bind) object-space positions in metres, feet at y=0, for triplanar detail. */
@@ -236,47 +240,6 @@ export class CharacterTemplate {
       tmp.computeVertexNormals();
       o.geometry.setAttribute('aRestN', tmp.attributes.normal);
     });
-  }
-
-  /**
-   * Stride measurement: play each locomotion clip on a scratch skeleton and track the planted foot.
-   * natural speed = how fast the planted foot travels backward; offset = phase where the left foot
-   * is furthest forward, so blended gait clips stay in step.
-   */
-  _measureGait(full) {
-    const m = SkeletonUtils.clone(this.gltf.scene);
-    m.scale.setScalar(this.scale);
-    const b = findBones(m);
-    const mixer = new THREE.AnimationMixer(m);
-    const out = {};
-    const lf = new THREE.Vector3(), rf = new THREE.Vector3();
-    const defaults = { walk: 1.5, run: 4.0, sprint: 5.6, crouchWalk: 1.2 };
-    for (const key of ['walk', 'run', 'sprint', 'crouchWalk']) {
-      const clip = full[key];
-      mixer.stopAllAction();
-      const a = mixer.clipAction(clip); a.reset(); a.play();
-      const N = 60, dur = clip.duration, S = [];
-      for (let i = 0; i <= N; i++) {
-        a.time = (i / N) * dur; mixer.update(0); m.updateMatrixWorld(true);
-        b.lFoot.getWorldPosition(lf); b.rFoot.getWorldPosition(rf);
-        S.push([lf.y, lf.z, rf.y, rf.z]);
-      }
-      let dist = 0, time = 0;
-      for (const [yi, zi] of [[0, 1], [2, 3]]) {
-        const minY = Math.min(...S.map((s) => s[yi]));
-        for (let i = 0; i < N; i++) {
-          if (S[i][yi] < minY + 0.03 && S[i + 1][yi] < minY + 0.03) { dist += Math.abs(S[i + 1][zi] - S[i][zi]); time += dur / N; }
-        }
-      }
-      let speed = time > 0 ? dist / time : defaults[key];
-      if (!(speed > 0.3 && speed < 9)) speed = defaults[key];
-      let best = 0, bz = -Infinity;
-      for (let i = 0; i < N; i++) if (S[i][1] > bz) { bz = S[i][1]; best = i; }
-      out[key] = { speed, dur, stride: speed * dur, offset: best / N };
-      a.stop();
-    }
-    mixer.uncacheRoot(m);
-    return out;
   }
 
   instance(team) {
@@ -773,7 +736,7 @@ export class Character {
       mode, t: 0, fadeW: 0, rate: headshot ? 1.3 : 0.9 + Math.random() * 0.25,
       fromYaw: this.bodyYaw, toYaw: this.bodyYaw, dir: dir.clone(), angle: 0, angVel: 0, landed: false,
       slide: explosive ? 3.2 : shotgun ? 2.2 : headshot ? 0.6 : 1.1 + Math.random() * 0.6, slid: 0, maxSlide: 0,
-      groundY: bot.position.y, lift: 0,
+      groundY: bot.position.y, lift: 0, origin: bot.position.clone(),
     };
     if (mode === 'clip') {
       // Turn toward the impact so the authored fall goes with the bullet (bounded so it reads as a spin).
@@ -835,7 +798,7 @@ export class Character {
       d.slid += Math.max(0, step);
       d.slideV = Math.max(0, d.slideV - 7 * dt);
     }
-    root.position.set(bot.position.x + d.dir.x * d.slid, d.groundY, bot.position.z + d.dir.z * d.slid);
+    root.position.set(d.origin.x + d.dir.x * d.slid, d.groundY, d.origin.z + d.dir.z * d.slid);
 
     // Blend all live layers out, the death layer in.
     d.fadeW = Math.min(1, d.fadeW + dt / (d.mode === 'clip' ? 0.12 : 0.18));

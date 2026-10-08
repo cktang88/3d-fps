@@ -13,6 +13,33 @@ function find(root, name) {
 }
 function findAny(root, names) { for (const n of names) { const f = find(root, n); if (f) return f; } return null; }
 
+/** Lowest visible gun surface (root-local y) within a z slab around `z` near the centre line. */
+function undersideAt(gun, root, z, half) {
+  return scanAt(gun, root, z, half, (v, acc) => (Math.abs(v.x) < 0.05 ? Math.min(acc, v.y) : acc), Infinity, -0.1);
+}
+/** Right-most gun surface (root-local x) within a z slab. */
+function sideAt(gun, root, z, half) {
+  return scanAt(gun, root, z, half, (v, acc) => Math.max(acc, v.x), -Infinity, 0.03);
+}
+function scanAt(gun, root, z, half, fn, init, fallback) {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const m = new THREE.Matrix4(), v = new THREE.Vector3();
+  let acc = init;
+  gun.traverse((o) => {
+    if (!o.isMesh || !o.visible || o.userData.glass) return;
+    let vis = true; for (let p = o; p && p !== gun; p = p.parent) if (!p.visible) vis = false;
+    if (!vis || /Magazine|Spare/i.test(o.parent?.name || '') || /Magazine/i.test(o.name)) return;
+    m.multiplyMatrices(inv, o.matrixWorld);
+    const pos = o.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(m);
+      if (Math.abs(v.z - z) < half) acc = fn(v, acc);
+    }
+  });
+  return Number.isFinite(acc) ? acc : fallback;
+}
+
 /** Matrix of `node` expressed in `root`'s local space. */
 function relMatrix(node, root, out = new THREE.Matrix4()) {
   root.updateMatrixWorld(true);
@@ -161,7 +188,7 @@ export class ViewModel {
     m.visible = false;
     this.game.renderer.scene.add(m);
     const beamGeo = new THREE.CylinderGeometry(0.0012, 0.0012, 1, 4, 1, true);
-    beamGeo.translate(0, -0.5, 0); beamGeo.rotateX(-Math.PI / 2); // along −z
+    beamGeo.translate(0, 0.5, 0); beamGeo.rotateX(-Math.PI / 2); // y∈[0,1] → z∈[−1,0]: down range
     this.beam = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 0.1, 0.08), transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
     this.beam.visible = false;
     return m;
@@ -219,8 +246,11 @@ export class ViewModel {
 
     // ---- Attachments ----
     const att = s.att;
-    const authoredSup = find(gun, 'Suppressor'), authoredMuzzleDev = find(gun, 'MuzzleDevice');
-    const authoredForegrip = find(gun, 'Foregrip'), authoredOptic = find(gun, 'OpticMount');
+    // Authored attachment nodes count only when they carry geometry (the AK ships empty markers).
+    const hasMesh = (o) => { let r = false; o?.traverse((c) => { if (c.isMesh) r = true; }); return r; };
+    const authored = (n) => { const o = find(gun, n); return hasMesh(o) ? o : null; };
+    const authoredSup = authored('Suppressor'), authoredMuzzleDev = authored('MuzzleDevice');
+    const authoredForegrip = authored('Foregrip'), authoredOptic = authored('OpticMount');
     const rear = findAny(gun, ['RearIronSight']), front = findAny(gun, ['FrontIronSight']);
     let muzzleTip = findAny(gun, ['MuzzleDeviceTip', 'MuzzleSocket']);
     if (!muzzleTip) {
@@ -230,7 +260,7 @@ export class ViewModel {
       muzzleTip.position.set(0, 0.06, bb.min.z + 0.02);
       gun.add(muzzleTip);
     }
-    if (authoredSup) authoredSup.visible = att.muzzle === 'suppressor';
+    if (authoredSup) { authoredSup.visible = att.muzzle === 'suppressor'; if (tune.supOffset) authoredSup.position.add(V(tune.supOffset)); }
     if (authoredMuzzleDev) authoredMuzzleDev.visible = !att.muzzle || att.muzzle !== 'suppressor';
     if (authoredForegrip) authoredForegrip.visible = att.underbarrel === 'vgrip';
     if (authoredOptic) authoredOptic.visible = false;
@@ -242,12 +272,14 @@ export class ViewModel {
       if (authoredSup) tip = find(authoredSup, 'SuppressorTip') || tip;
       else {
         const sup = GunModels.suppressor(sidearm ? 0.2 : 0.32, sidearm ? 0.026 : 0.036);
+        sup.scale.setScalar(sidearm ? 1 : (tune.opticScale ?? 0.72) / 0.72);
         sup.position.copy(muzzleTip.position);
         muzzleTip.parent.add(sup);
         tip = find(sup, 'tip');
       }
     } else if (att.muzzle && !(authoredMuzzleDev && att.muzzle === 'flashhider')) {
       const md = GunModels.muzzleDevice(att.muzzle, sidearm ? 0.016 : 0.022);
+      md.scale.setScalar(sidearm ? 1 : (tune.opticScale ?? 0.72) / 0.72);
       md.position.copy(muzzleTip.position);
       muzzleTip.parent.add(md);
       if (authoredMuzzleDev) authoredMuzzleDev.visible = false;
@@ -256,15 +288,26 @@ export class ViewModel {
     rig.muzzle = tip;
     // Under-barrel.
     const support = V(pose.support);
+    // Attachments are modelled at the steel-tide (~1.7x) scale; the M4 asset is larger, AK/MP5 smaller.
+    const attScale = (tune.opticScale ?? 0.72) / 0.72;
+    const under = undersideAt(gun, root, support.z, 0.05);
+    const sideX = sideAt(gun, root, support.z - 0.04, 0.05);
     if (att.underbarrel === 'vgrip' && !authoredForegrip) {
-      const vg = GunModels.vgrip(); vg.position.copy(support).add(new THREE.Vector3(0, -0.05, 0.02)); gun.add(vg);
+      const vg = GunModels.vgrip(); vg.scale.setScalar(attScale); vg.position.set(support.x, under + 0.004, support.z + 0.02); gun.add(vg);
     } else if (att.underbarrel === 'agrip') {
-      const ag = GunModels.agrip(); ag.position.copy(support).add(new THREE.Vector3(0, -0.06, 0.06)); gun.add(ag);
+      const ag = GunModels.agrip(); ag.scale.setScalar(attScale); ag.position.set(support.x, under + 0.004, support.z + 0.04); gun.add(ag);
     } else if (att.underbarrel === 'bipod') {
-      const bp = GunModels.bipod(); bp.position.copy(support).add(new THREE.Vector3(0, -0.06, -0.12)); gun.add(bp);
+      const bz = support.z - 0.16 * attScale;
+      const bp = GunModels.bipod(); bp.scale.setScalar(attScale); bp.position.set(0, undersideAt(gun, root, bz, 0.05) - 0.012, bz); gun.add(bp);
     }
+    // Support hand rides the grip it is given: on a vertical grip the palm wraps the grip itself.
+    if (att.underbarrel === 'vgrip') {
+      const gy = authoredForegrip ? find(gun, 'Foregrip').position.y + 0.03 : under - 0.05 * attScale;
+      pose.support = [support.x, Math.min(support.y, gy), support.z];
+    } else if (att.underbarrel === 'agrip') pose.support = [support.x, Math.min(support.y, under - 0.02 * attScale), support.z];
     if (att.laser) {
-      const lz = GunModels.laser(); lz.position.copy(support).add(new THREE.Vector3(0.05, 0.02, -0.04)); gun.add(lz);
+      const lz = GunModels.laser(); lz.scale.setScalar(attScale);
+      lz.position.set(sideX + 0.018 * attScale, (support.y + under) / 2 + 0.01, support.z - 0.06); gun.add(lz);
       rig.laser = find(lz, 'emitter');
     }
     if (s.drum && rig.magazine) {
@@ -669,9 +712,16 @@ export class ViewModel {
       const k = Math.sin(t * Math.PI);
       pos.z += 0.025 * k; rot.x += 0.05 * k; rot.z += 0.04 * k;
     }
-    // Equip: rise from below.
-    const eq = smoothstep(this.equipT);
-    pos.y -= (1 - eq) * 0.35; rot.x -= (1 - eq) * 0.9; rot.z += (1 - eq) * 0.3;
+    // Equip: swing up from the hip with weight — fast rise, slight overshoot, then settle.
+    {
+      const e = this.equipT;
+      const rise = 1 - Math.pow(1 - e, 3);
+      const settle = Math.sin(e * Math.PI * 2.2) * Math.pow(1 - e, 1.5);
+      pos.y -= (1 - rise) * 0.32; pos.x += (1 - rise) * 0.06; pos.z += (1 - rise) * 0.05;
+      rot.x -= (1 - rise) * 0.85 - settle * 0.05; rot.z += (1 - rise) * 0.45 + settle * 0.04; rot.y += (1 - rise) * 0.2;
+    }
+    // ADS in/out travels on a slight arc (dip + roll into the shoulder) instead of a straight lerp.
+    { const arc = Math.sin(adsE * Math.PI); pos.y -= arc * 0.012; rot.z += arc * 0.05 * (rig.sidearm ? 0.5 : 1); }
     // Inspect: rotate to show the right side then the left.
     if (this.inspectT > 0) {
       const t = this.inspectT;
@@ -965,9 +1015,13 @@ export class ViewModel {
         this.scopeCam.updateMatrixWorld();
         const r2 = g.renderer.renderer;
         const prevTarget = r2.getRenderTarget();
+        // Reuse this frame's shadow maps (the main pass already updated them).
+        const sa = r2.shadowMap.autoUpdate;
+        r2.shadowMap.autoUpdate = false;
         r2.setRenderTarget(this.scopeRT);
         r2.render(g.renderer.scene, this.scopeCam);
         r2.setRenderTarget(prevTarget);
+        r2.shadowMap.autoUpdate = sa;
       }
     }
   }

@@ -22,7 +22,7 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: W, height: H } });
 page.setDefaultTimeout(600000);
 const logs = [];
-page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning' || process.env.VERBOSE) logs.push(`[${m.type()}] ${m.text()}`); });
+page.on('console', (m) => { if (m.text().startsWith('[probe]')) console.log(m.text()); else if (m.type() === 'error' || m.type() === 'warning' || process.env.VERBOSE) logs.push(`[${m.type()}] ${m.text()}`); });
 page.on('pageerror', (e) => logs.push('[pageerror] ' + e.message + '\n' + e.stack));
 await page.exposeFunction('__shot', async (name) => { fs.mkdirSync('tools/shots', { recursive: true }); await page.screenshot({ path: `tools/shots/probe_${name}.png`, timeout: 180000 }); });
 await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
@@ -35,7 +35,7 @@ try {
     const g = window.__game;
     const out = [];
     const h = {
-      log: (...a) => out.push(a.map((x) => (typeof x === 'number' ? +x.toFixed(3) : typeof x === 'object' ? JSON.stringify(x) : x)).join(' ')),
+      log: (...a) => out.push(console.log('[probe]', ...a) ?? a.map((x) => (typeof x === 'number' ? +x.toFixed(3) : typeof x === 'object' ? JSON.stringify(x) : x)).join(' ')),
       frames: (n) => new Promise((r) => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }),
       shot: (n) => window.__shot(n),
       cmd: (o = {}) => ({ moveX: 0, moveY: 0, sprint: false, sprintPressed: false, crouchPressed: false, crouchHeld: false, jumpPressed: false, jumpHeld: false, aim: false, walk: false, leanLeft: false, leanRight: false, ...o }),

@@ -20,7 +20,7 @@ export class Match {
     const mode = g.mode;
     Object.assign(mode, { key, name: def.name, teams: def.teams, scoreLimit: def.scoreLimit, timeLeft: def.time, score: [0, 0], friendlyFire: false });
     // Clear old bots.
-    for (const b of g.bots) { g.renderer.scene.remove(b.model.root); if (b.agent) g.nav.removeAgent(b.agent); }
+    for (const b of g.bots) { g.renderer.scene.remove(b.model.root); if (b.spareModel) { g.renderer.scene.remove(b.spareModel.root); b.spareModel.weaponObj?.parent?.remove(b.spareModel.weaponObj); } b.model.weaponObj?.parent?.remove(b.model.weaponObj); if (b.agent) g.nav.removeAgent(b.agent); }
     g.bots.length = 0;
     g.actors.length = 0;
     g.actors.push(g.player);

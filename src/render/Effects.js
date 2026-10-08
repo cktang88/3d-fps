@@ -281,7 +281,6 @@ class ShellPool {
   }
 
   update(dt) {
-    const down = new THREE.Vector3();
     for (let i = 0; i < this.max; i++) {
       const s = this.items[i];
       if (!s) continue;
@@ -293,13 +292,13 @@ class ShellPool {
       }
       if (!s.rest) {
         s.v.y -= 9.81 * dt;
-        const step = s.v.clone().multiplyScalar(dt);
+        const step = _o.copy(s.v).multiplyScalar(dt);
         const len = step.length();
         if (len > 1e-5) {
-          const hit = this.physics.raycast(s.p, step.clone().divideScalar(len), len + 0.01, G.WORLD);
+          const hit = this.physics.raycast(s.p, _d.copy(step).divideScalar(len), len + 0.01, G.WORLD);
           if (hit) {
             s.p.copy(hit.point).addScaledVector(hit.normal, 0.005);
-            const vn = hit.normal.clone().multiplyScalar(s.v.dot(hit.normal));
+            const vn = hit.normal.multiplyScalar(s.v.dot(hit.normal));
             s.v.sub(vn).multiplyScalar(0.55).addScaledVector(vn, -0.35);
             s.rv.multiplyScalar(0.6);
             if (s.bounces < 3 && vn.length() > 0.6) this.audio.click('shell', s.p, 0.5 / (1 + s.bounces));

@@ -232,7 +232,6 @@ export class DistantBattle {
           drag: 0.028, wind: 0.75, rotV: rand(-0.06, 0.06), turb: 0.05,
         });
       }
-      if (warm) continue;
     }
     if (warm) this.smoke.update(dt, ctx.wind, null, null, null);
   }

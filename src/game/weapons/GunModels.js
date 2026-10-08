@@ -40,7 +40,7 @@ export const RELOAD_PHASES = {
 export const VM_TUNE = {
   default: { scale: 0.68, hipAnchor: [0.21, -0.12, -0.4], hipRot: [0.03, 0.08, -0.15], opticScale: 0.72,
     reloadPos: [-0.06, 0.06, -0.03], reloadRot: [-0.08, 0.18, -0.35] },
-  m4a1: { primary: [0.0, -0.17, 0.215], opticScale: 1 },
+  m4a1: { primary: [0.0, -0.17, 0.215], opticScale: 1, supOffset: [0, 0.018, 0.035] },
   ak74: { scale: 0.82, opticScale: 0.62, ironRelief: 0.34, ironRear: [0, 0.076, -0.53], ironFront: [0, 0.083, -1.08] },
   scarl: { hipOffset: [0, -0.025, -0.04] },
   mp5a5: { opticScale: 0.62, hipOffset: [-0.03, 0.025, -0.02] },
