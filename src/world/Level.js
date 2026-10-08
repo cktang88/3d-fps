@@ -50,7 +50,6 @@ const PROPS = {
   pipes: ['modular_industrial_pipes_01/modular_industrial_pipes_01.glb'],
   woodCrate: ['wooden_crate_02/wooden_crate_02.glb'],
   cementBag: ['cement_bag/cement_bag.glb'],
-  plasticCrate: ['plastic_crate_03/plastic_crate_03.glb'],
   wheelRim: ['rusted_wheel_rim_01/rusted_wheel_rim_01.glb'],
   wetSign: ['WetFloorSign_01/WetFloorSign_01.glb'],
   stove: ['barrel_stove/barrel_stove.glb'],
@@ -919,7 +918,7 @@ export class Level {
     this.prop('cardboard', -9.4, 36, 2.1, { nav: false, y: 0.78, mount: true }); this.prop('cardboard', -12, 34.5, 0.2, { nav: false });
     this.prop('trashbag', -0.6, 33.0, 0.4, { nav: false }); this.prop('trashbag', -12.8, 43.0, 1.8, { nav: false });
     this.prop('wetSign', 4.2, 37.2, 0.6, { nav: false, collide: false });
-    this.prop('plasticCrate', -7.4, 42.7, 0.2, { y: F, nav: false });
+    this.prop('cardboard', -7.4, 42.7, 0.2, { y: F, nav: false });
     // Ceiling fluorescents (cool) — one flickers on each floor.
     for (const [x, z] of [[-10, 35], [-10, 41], [-1, 35], [-1, 41], [4, 41]]) this.prop('fluoro', x, z, 0, { y: F - 0.29, mount: true });
     for (const [x, z] of [[-9, 35], [-9, 41], [2, 35], [2, 41], [-5, 38]]) this.prop('fluoro', x, z, Math.PI / 2, { y: 2 * F - 0.05, mount: true });

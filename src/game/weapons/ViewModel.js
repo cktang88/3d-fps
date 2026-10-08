@@ -464,7 +464,7 @@ export class ViewModel {
         // Normal blend with an HDR tint: stays a saturated, glowing red even over bright skies / walls
         // (additive washes out to white there).
         map: tex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false,
-        color: new THREE.Color(1.6, 0.9, 0.85),
+        color: new THREE.Color(2.6, 0.55, 0.45),
       }));
       ret.renderOrder = 30;
       ret.frustumCulled = false;

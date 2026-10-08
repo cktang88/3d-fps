@@ -72,6 +72,8 @@ export function applyGunLook(m, opts = {}) {
   const g = grime();
   const wear = opts.wear ?? 0.5, sat = opts.sat ?? 0.88, rmin = opts.rmin ?? 0.28, lumMax = opts.lumMax ?? 0.55;
   const micro = opts.micro ?? 1;
+  // How much of the (warm golden-hour) IBL hue survives on diffuse / specular. Wood & cloth keep more.
+  const keepD = opts.keepDiffuse ?? 0.45, keepS = opts.keepSpec ?? 0.3;
   m.userData.gunLook = true;
   if (m.normalMap && m.normalScale) {
     const k = THREE.MathUtils.clamp(Math.abs(m.normalScale.x), 0.6, 1.25);
@@ -84,11 +86,12 @@ export function applyGunLook(m, opts = {}) {
     sh.uniforms.gunGrime = { value: g };
     sh.uniforms.gunLook = { value: new THREE.Vector4(wear, sat, rmin, lumMax) };
     sh.uniforms.gunMicro = { value: micro };
+    sh.uniforms.gunKeep = { value: new THREE.Vector2(keepD, keepS) };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vObjPos; varying vec3 vObjN;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObjPos = position; vObjN = normal;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform sampler2D gunGrime; uniform vec4 gunLook; uniform float gunMicro; varying vec3 vObjPos; varying vec3 vObjN;\n' +
+      .replace('#include <common>', '#include <common>\nuniform sampler2D gunGrime; uniform vec4 gunLook; uniform float gunMicro; uniform vec2 gunKeep; varying vec3 vObjPos; varying vec3 vObjN;\n' +
         'float tri(vec3 p, vec3 n, float s){ vec3 w = abs(n); w /= (w.x+w.y+w.z+1e-4); return texture2D(gunGrime, p.yz*s).r*w.x + texture2D(gunGrime, p.xz*s).r*w.y + texture2D(gunGrime, p.xy*s).r*w.z; }')
       .replace('#include <map_fragment>', `#include <map_fragment>
         float gA = tri(vObjPos, vObjN, 6.0);
@@ -108,8 +111,8 @@ export function applyGunLook(m, opts = {}) {
       .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
         {
           const vec3 LW = vec3(0.2126, 0.7152, 0.0722);
-          reflectedLight.indirectSpecular = mix(vec3(dot(reflectedLight.indirectSpecular, LW)), reflectedLight.indirectSpecular, 0.3);
-          reflectedLight.indirectDiffuse = mix(vec3(dot(reflectedLight.indirectDiffuse, LW)), reflectedLight.indirectDiffuse, 0.45);
+          reflectedLight.indirectSpecular = mix(vec3(dot(reflectedLight.indirectSpecular, LW)), reflectedLight.indirectSpecular, gunKeep.y);
+          reflectedLight.indirectDiffuse = mix(vec3(dot(reflectedLight.indirectDiffuse, LW)), reflectedLight.indirectDiffuse, gunKeep.x);
           reflectedLight.directSpecular = mix(vec3(dot(reflectedLight.directSpecular, LW)), reflectedLight.directSpecular, 0.6);
         }`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
@@ -119,7 +122,7 @@ export function applyGunLook(m, opts = {}) {
         metalnessFactor = clamp(min(metalnessFactor, 0.55) + metalWear * 0.4, 0.0, 1.0);
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.42, 0.44), metalWear * 0.35);`);
   };
-  m.customProgramCacheKey = () => (prevKey ? prevKey() : '') + '|gunlook2';
+  m.customProgramCacheKey = () => (prevKey ? prevKey() : '') + '|gunlook3';
   m.needsUpdate = true;
   return m;
 }
@@ -138,7 +141,7 @@ const LIB = {
   polymerGrey: () => gunMaterial(0x3a3c3f, 0.0, 0.6, { wear: 0.15 }),
   tan: () => gunMaterial(0x8a7a5c, 0.0, 0.62, { wear: 0.2 }),
   od: () => gunMaterial(0x3f4535, 0.05, 0.6, { wear: 0.25 }),
-  wood: () => gunMaterial(0x5a3a22, 0.0, 0.5, { wear: 0.1 }),
+  wood: () => applyGunLook(new THREE.MeshStandardMaterial({ color: 0x5a3a22, metalness: 0, roughness: 0.5 }), { wear: 0.1, keepDiffuse: 0.85, sat: 0.95 }),
   brass: () => gunMaterial(0xb08a45, 1.0, 0.32, { wear: 0.05 }),
   glass: () => new THREE.MeshPhysicalMaterial({ color: 0x0d1a24, metalness: 0, roughness: 0.04, clearcoat: 1, envMapIntensity: 2.2 }),
   rubber: () => gunMaterial(0x111112, 0.0, 0.85, { wear: 0.05 }),
@@ -154,7 +157,7 @@ function unifyMaterial(mat, modelKey) {
     mat.envMapIntensity = 1.0;
     if (n.includes('wood')) mat.roughness = Math.max(mat.roughness, 0.45);
     // Authored PBR (M4 / AK): same normalisation, lighter procedural wear (they carry their own).
-    applyGunLook(mat, { wear: modelKey === 'shotgun' ? 0.45 : 0.25, micro: 0.6, rmin: n.includes('wood') ? 0.42 : 0.3 });
+    applyGunLook(mat, { wear: modelKey === 'shotgun' ? 0.45 : 0.25, micro: 0.6, rmin: n.includes('wood') ? 0.42 : 0.3, keepDiffuse: n.includes('wood') ? 0.85 : 0.45, sat: n.includes('wood') ? 0.95 : 0.88 });
     return mat;
   }
   if (n.includes('glass')) return M('glass');
@@ -191,7 +194,7 @@ export class GunModels {
     for (const a of [this.armsRifle, this.armsPistol, this.armsReload]) {
       a?.scene.traverse((o) => {
         if (!o.isMesh) return;
-        for (const m of Array.isArray(o.material) ? o.material : [o.material]) applyGunLook(m, { wear: 0, micro: 0.5, rmin: 0.5, sat: 0.85, lumMax: 0.45 });
+        for (const m of Array.isArray(o.material) ? o.material : [o.material]) applyGunLook(m, { wear: 0, micro: 0.5, rmin: 0.5, sat: 0.85, lumMax: 0.45, keepDiffuse: 0.7 });
       });
     }
     for (const [k, s] of Object.entries(this.src)) {

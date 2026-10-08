@@ -31,7 +31,7 @@ function splitClip(clip, upper) {
 }
 
 const BONES = {
-  hips: 'mixamorigHips', spine: 'mixamorigSpine', spine1: 'mixamorigSpine1', spine2: 'mixamorigSpine2', neck: 'mixamorigNeck', head: 'mixamorigHead',
+  hips: 'mixamorigHips', spine: 'mixamorigSpine', spine1: 'mixamorigSpine1', spine2: 'mixamorigSpine2', neck: 'mixamorigNeck', head: 'mixamorigHead', headTop: 'mixamorigHeadTop_End',
   lArm: 'mixamorigLeftArm', lFore: 'mixamorigLeftForeArm', lHand: 'mixamorigLeftHand', lMid: 'mixamorigLeftHandMiddle1',
   rArm: 'mixamorigRightArm', rFore: 'mixamorigRightForeArm', rHand: 'mixamorigRightHand', rMid: 'mixamorigRightHandMiddle1',
   lUp: 'mixamorigLeftUpLeg', lLeg: 'mixamorigLeftLeg', lFoot: 'mixamorigLeftFoot', lToe: 'mixamorigLeftToeBase',
@@ -235,7 +235,7 @@ export class CharacterTemplate {
     this.toppleUp = splitClip(this.death, true);
     // Gait table: natural ground speed of each in-place clip (planted-foot travel, measured offline from
     // the clips) and the phase where the left foot is furthest forward, so blended clips stay in step.
-    const G = { walk: [1.15, 0.02], run: [4.6, 0.03], sprint: [6.2, 0.83], crouchWalk: [0.85, 0] };
+    const G = { walk: [1.2, 0.02], run: [4.8, 0.03], sprint: [6.2, 0.05], crouchWalk: [0.8, 0] };
     this.gait = {};
     for (const [k, [speed, offset]] of Object.entries(G)) { const dur = full[k].duration; this.gait[k] = { speed, dur, stride: speed * dur, offset }; }
   }
@@ -947,10 +947,10 @@ export class Character {
     const P = (bone, out) => out.setFromMatrixPosition(bone.matrixWorld);
     const hb = this._hb;
     const head = P(b.head, _v1), neck = P(b.neck, _v2), sp2 = P(b.spine2, _v3), hips = P(b.hips, _v4);
-    // Head: from just above the neck to the crown, nudged forward toward the face.
-    _v5.subVectors(head, neck);
-    hb[0].a.copy(neck).addScaledVector(_v5, 0.7);
-    hb[0].b.copy(head).addScaledVector(_v5, 1.0);
+    // Head: skull base → just under the crown (capsule radius reaches the top of the helmet).
+    if (b.headTop) P(b.headTop, _v5); else _v5.copy(head).y += 0.22;
+    hb[0].a.copy(head).lerp(_v5, 0.1);
+    hb[0].b.copy(head).lerp(_v5, 0.5);
     // Torso: pelvis → chest, chest → base of neck.
     hb[1].a.copy(hips).y += 0.02; hb[1].b.copy(sp2);
     hb[2].a.copy(sp2); hb[2].b.copy(neck).lerp(sp2, 0.25);

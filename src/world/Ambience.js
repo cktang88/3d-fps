@@ -37,7 +37,7 @@ export class Ambience {
   }
 
   async init() {
-    await this.fires.load();
+    await Promise.all([this.fires.load(), this.flyover.load(this.game.assets).catch((e) => console.warn('heli model', e))]);
     // Pre-roll fire smoke so plumes are already established on first sight.
     const ctx = this._ctx(0.25);
     for (let i = 0; i < 50; i++) this.fires.update(0.25, ctx);

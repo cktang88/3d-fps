@@ -126,6 +126,81 @@ export class Flyover {
     this.nextJet = rand(70, 110);
   }
 
+  /**
+   * Swap the primitive heli for the photoreal UH-60 (Sketchfab, CC-BY, see SOURCE.md) when it loads:
+   * static rotor blades are hidden and replaced by our motion-blur discs at the real hub positions.
+   */
+  async load(assets) {
+    const g = await assets.model('amb_uh60', 'ambience/models/uh60/uh60.glb');
+    if (!g) return;
+    const root = g.scene;
+    root.updateMatrixWorld(true);
+    const box = (o) => new THREE.Box3().setFromObject(o);
+    let blades = null, tail = null, nose = null;
+    const meshes = [];
+    root.traverse((o) => { if (o.isMesh) meshes.push(o); });
+    for (const m of meshes) {
+      const n = m.material?.name || '', b = box(m), sz = b.getSize(V(0, 0, 0));
+      if (n.includes('mainrotor') && (!blades || Math.max(sz.x, sz.z) > Math.max(...box(blades).getSize(V(0, 0, 0)).toArray()))) blades = m;
+      if (n === 'DefaultWhite') tail = m;
+      if (n.includes('instr1')) nose = m;
+    }
+    if (!blades) return;
+    const bb = box(blades), bsz = bb.getSize(V(0, 0, 0)), hub = bb.getCenter(V(0, 0, 0));
+    const scale = 16.4 / Math.max(bsz.x, bsz.z);
+    // Hide static blades (and the blade-root ring) and the static tail rotor.
+    for (const m of meshes) {
+      const n = m.material?.name || '', b = box(m), sz = b.getSize(V(0, 0, 0));
+      if (n.includes('mainrotor') && Math.max(sz.x, sz.z) > Math.max(bsz.x, bsz.z) * 0.3) m.visible = false;
+      if (m === tail) m.visible = false;
+      if (n.includes('Material.004')) m.visible = false;
+      m.castShadow = true; m.receiveShadow = true;
+      if (m.material) this.amb.unify(m.material);
+    }
+    const tb = tail ? box(tail) : null;
+    const fuse = new THREE.Box3();
+    for (const m of meshes) if (m.visible) fuse.union(box(m));
+    const fc = fuse.getCenter(V(0, 0, 0));
+    // Forward = from fuselage centre towards the cockpit instruments (horizontal).
+    const fwd = (nose ? box(nose).getCenter(V(0, 0, 0)) : fuse.min.clone()).sub(fc).setY(0).normalize();
+    const yaw = Math.atan2(fwd.x, fwd.z); // rotate model so fwd -> +z
+    const holder = new THREE.Group();
+    holder.add(root);
+    root.position.sub(V(hub.x, fuse.min.y + (fuse.max.y - fuse.min.y) * 0.4, hub.z));
+    holder.rotation.y = -yaw;
+    holder.scale.setScalar(scale);
+    const group = new THREE.Group();
+    group.add(holder);
+    group.updateMatrixWorld(true);
+    // World positions of hub / tail rotor in group space.
+    const hubL = holder.localToWorld(V(0, bb.max.y - (fuse.min.y + (fuse.max.y - fuse.min.y) * 0.4), 0));
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(8.2, 64), rotorDiscMat(4, 0.62));
+    disc.rotation.x = -Math.PI / 2; disc.position.copy(hubL).add(V(0, 0.05, 0)); group.add(disc);
+    let tdisc = this.heli.tdisc;
+    if (tb) {
+      const tc = holder.localToWorld(tb.getCenter(V(0, 0, 0)).sub(V(hub.x, fuse.min.y + (fuse.max.y - fuse.min.y) * 0.4, hub.z)));
+      const ts = tb.getSize(V(0, 0, 0));
+      tdisc = new THREE.Mesh(new THREE.CircleGeometry(Math.max(ts.x, ts.y, ts.z) * scale * 0.5, 32), rotorDiscMat(4, 0.6));
+      tdisc.position.copy(tc); tdisc.rotation.y = Math.PI / 2; group.add(tdisc);
+    }
+    const fs = fuse.getSize(V(0, 0, 0)).multiplyScalar(scale);
+    const len = Math.max(fs.x, fs.z), half = Math.min(fs.x, fs.z) / 2;
+    const glow = this.heli.navR.material.map;
+    const light = (col, x, y, z, s) => {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: col, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+      sp.position.set(x, y, z); sp.scale.setScalar(s); group.add(sp); return sp;
+    };
+    const navR = light(new THREE.Color(6, 0.3, 0.2), -half * 0.9, 0, len * 0.12, 0.7);
+    const navG = light(new THREE.Color(0.3, 6, 0.6), half * 0.9, 0, len * 0.12, 0.7);
+    const beacon = light(new THREE.Color(9, 0.6, 0.3), 0, hubL.y - 0.6, -2.2, 1.3);
+    const strobe = light(new THREE.Color(10, 10, 10), 0, hubL.y - 0.4, -len * 0.55, 1.5);
+    const blades2 = new THREE.Group(); // keep API: thin blade proxy hidden (disc carries the read)
+    group.visible = false;
+    this.scene.remove(this.heli.group);
+    this.scene.add(group);
+    this.heli = { group, disc, tdisc, blades: blades2, navR, navG, beacon, strobe };
+  }
+
   /** Smooth path across the compound: P0 far out → over the map → far out the other side. */
   _path(alt, offset, dist) {
     const a = rand(0, Math.PI * 2);

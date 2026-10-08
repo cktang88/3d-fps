@@ -117,15 +117,16 @@ export class Fires {
   async load() {
     const a = this.game.assets;
     const P = 'ambience/';
-    const [stove, rim, tyre, diff, nor, arm] = await Promise.all([
+    const [stove, rim, tyre, diff, nor, arm, car] = await Promise.all([
       a.model('amb_barrel_stove', P + 'models/barrel_stove/barrel_stove.gltf'),
       a.model('amb_rim', P + 'models/rusted_wheel_rim_01/rusted_wheel_rim_01.gltf'),
       a.model('amb_tyre', P + 'models/old_tyre/old_tyre.gltf'),
       a.texture(P + 'textures/rusty_metal_04_diff_1k.jpg', true),
       a.texture(P + 'textures/rusty_metal_04_nor_gl_1k.jpg', false),
       a.texture(P + 'textures/rusty_metal_04_arm_1k.jpg', false),
+      a.model('amb_burnt_car', P + 'models/burnt_car/burnt_car.glb'),
     ]);
-    this.models = { stove, rim, tyre };
+    this.models = { stove, rim, tyre, car };
     this.ember = emberTex();
     this.mats = {
       burnt: new THREE.MeshStandardMaterial({
@@ -208,6 +209,7 @@ export class Fires {
   }
 
   _buildCar(root, d, local, site) {
+    if (this.models.car) return this._buildCarScan(root, d, local, site);
     const ext = [], int = [];
     // Lower body: extruded side profile of a sedan (bumper → hood → belt → trunk) with wheel arches.
     const body = new THREE.Shape();
@@ -312,6 +314,59 @@ export class Fires {
     );
     site.smokeAt = [local(-0.3, 2.0, 0), local(1.4, 1.5, 0)];
     site.lightPos = local(0.2, 1.7, 0);
+    site.spread = 0.6; site.rate = 7; site.smokeCol = [0.07, 0.065, 0.06]; site.smokeEnd = [0.16, 0.15, 0.145]; site.size = 1.1;
+  }
+
+  /** Photoscanned burnt-out sedan (Sketchfab, CC-BY — see SOURCE.md), re-lit with our PBR pipeline. */
+  _buildCarScan(root, d, local, site) {
+    const src = this.models.car.scene.clone(true);
+    src.updateMatrixWorld(true);
+    src.traverse((o) => {
+      if (!o.isMesh) return;
+      const m0 = o.material;
+      if (m0?.name?.includes('004')) { o.visible = false; return; } // stray ground quad in the scan
+      // The scan ships unlit; give it a matte, slightly metallic burnt-steel response so sun/fire light it.
+      const m = new THREE.MeshStandardMaterial({ name: 'amb_burnt_car', map: m0.map, roughness: 0.82, metalness: 0.25, color: new THREE.Color(0.92, 0.88, 0.85) });
+      this.amb.unify(m);
+      o.material = m;
+      o.castShadow = true; o.receiveShadow = true;
+      this.carMat = m;
+    });
+    const vis = new THREE.Box3();
+    src.traverse((o) => { if (o.isMesh && o.visible) vis.union(new THREE.Box3().setFromObject(o)); });
+    const sz = vis.getSize(V(0, 0, 0)), c = vis.getCenter(V(0, 0, 0));
+    const longX = sz.x > sz.z;
+    const scale = 5.25 / Math.max(sz.x, sz.z);
+    const holder = new THREE.Group();
+    holder.add(src);
+    src.position.set(-c.x, -vis.min.y, -c.z);
+    holder.scale.setScalar(scale);
+    if (!longX) holder.rotation.y = Math.PI / 2; // our local frame: length along X
+    root.add(holder);
+    const L = Math.max(sz.x, sz.z) * scale, W = Math.min(sz.x, sz.z) * scale, H = sz.y * scale;
+    if (this.models.tyre) {
+      const { obj, size } = this._fitModel(this.models.tyre, 0.64);
+      const inner = obj.children[0];
+      const bb = new THREE.Box3().setFromObject(inner), s2 = bb.getSize(V(0, 0, 0));
+      if (s2.y >= Math.min(s2.x, s2.z)) { if (s2.x < s2.z) obj.rotation.z = Math.PI / 2; else obj.rotation.x = Math.PI / 2; }
+      obj.position.set(-L / 2 - 0.5, Math.min(size.x, size.y, size.z) / 2, W / 2 + 0.7);
+      obj.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.material.color.multiplyScalar(0.5); } });
+      root.add(obj);
+      this._collider(local(-L / 2 - 0.5, 0.12, W / 2 + 0.7), V(0.3, 0.12, 0.3), d.rot, 'dirt', 'rgba(0,0,0,0)');
+    }
+    this._scorch(root, 7.5);
+    this._collider(local(0, H / 2, 0), V(L / 2 - 0.1, H / 2, W / 2 - 0.05), d.rot, 'metal');
+    const fy = H * 0.42;
+    site.flames.push(
+      { p: local(-0.15, fy, 0.12), w: 1.45, h: 2.2, k: 1.0 },
+      { p: local(-0.8, fy, -0.2), w: 1.2, h: 1.8, k: 0.9 },
+      { p: local(0.45, fy + 0.1, -0.25), w: 0.85, h: 1.3, k: 0.85 },
+      { p: local(L * 0.33, H * 0.55, 0.1), w: 1.05, h: 1.25, k: 0.85 },
+      { p: local(L * 0.28, 0.02, W / 2 + 0.05), w: 0.55, h: 0.55, k: 0.65 },
+      { p: local(-L * 0.3, 0.02, -W / 2 - 0.05), w: 0.5, h: 0.45, k: 0.6 },
+    );
+    site.smokeAt = [local(-0.3, H + 0.9, 0), local(L * 0.3, H + 0.5, 0)];
+    site.lightPos = local(0.2, H + 0.5, 0);
     site.spread = 0.6; site.rate = 7; site.smokeCol = [0.07, 0.065, 0.06]; site.smokeEnd = [0.16, 0.15, 0.145]; site.size = 1.1;
   }
 
