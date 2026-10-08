@@ -34,7 +34,7 @@ export const MOVE = {
   leanOffset: 0.35,
 };
 
-const UP = new THREE.Vector3(0, 1, 0);
+const UP = new THREE.Vector3(0, 1, 0), DOWN = new THREE.Vector3(0, -1, 0);
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _fwd = new THREE.Vector3(), _right = new THREE.Vector3();
 
 export class Player {
@@ -76,6 +76,7 @@ export class Player {
     this.leanSmoothed = 0;
     this.mantle = null; // active mantle/vault motion
     this.stepDist = 0;
+    this.stepOffset = 0; // visual eye offset that smooths step-ups (m, <= 0)
     this.fallSpeed = 0;
     this.moveIntent = new THREE.Vector2();
     this.noise = 0; // how loud the player is for AI hearing (m radius)
@@ -256,6 +257,7 @@ export class Player {
     }
     this.lean = damp(this.lean, leanT, 10, dt);
 
+    this.stepOffset = damp(this.stepOffset, 0, 16, dt);
     this._move(dt);
     this._footsteps(dt);
 
@@ -330,9 +332,18 @@ export class Player {
     const desired = { x: this.velocity.x * dt, y: this.velocity.y * dt, z: this.velocity.z * dt };
     this.kcc.computeColliderMovement(this.collider, desired, this.R.QueryFilterFlags.EXCLUDE_SENSORS,
       groups(0xffff, G.WORLD));
-    const m = this.kcc.computedMovement();
+    const mv = this.kcc.computedMovement();
+    const m = { x: mv.x, y: mv.y, z: mv.z };
     this.wasGrounded = this.grounded;
     this.grounded = this.kcc.computedGrounded();
+
+    // Manual step-up (Rapier's autostep is unreliable with capsules on box stairs):
+    // if a grounded move was blocked horizontally, retry as up -> across -> down.
+    const wantH = Math.hypot(desired.x, desired.z);
+    if ((this.grounded || this.wasGrounded) && this.velocity.y <= 0.5 && wantH > 1e-4 && Math.hypot(m.x, m.z) < wantH * 0.8) {
+      const st = this._tryStep(desired, m);
+      if (st) { m.x = st.x; m.y = st.y; m.z = st.z; this.grounded = true; }
+    }
 
     this.position.x += m.x; this.position.y += m.y; this.position.z += m.z;
     this._syncBody();
@@ -358,6 +369,40 @@ export class Player {
       this.airTime += dt;
     }
     if (this.position.y < -50) this.takeDamage(1000, null, { type: 'fall' });
+  }
+
+  /** Up/across/down step probe. Returns the total displacement or null if it doesn't help. */
+  _tryStep(desired, base) {
+    const filter = groups(0xffff, G.WORLD), flags = this.R.QueryFilterFlags.EXCLUDE_SENSORS;
+    const k = this.kcc, c = this.collider;
+    const p0 = this.position, cy = p0.y + this.height / 2;
+    // Up.
+    k.computeColliderMovement(c, { x: 0, y: MOVE.stepHeight, z: 0 }, flags, filter);
+    const up = k.computedMovement().y;
+    if (up < 0.05) { this._syncBody(); return null; }
+    // Across (at least a few cm so slow walking still finds the tread).
+    const wantH = Math.hypot(desired.x, desired.z);
+    const sc = Math.max(1, 0.04 / wantH);
+    c.setTranslation({ x: p0.x, y: cy + up, z: p0.z });
+    k.computeColliderMovement(c, { x: desired.x * sc, y: 0, z: desired.z * sc }, flags, filter);
+    const a = k.computedMovement();
+    const ax = a.x / sc, az = a.z / sc;
+    if (Math.hypot(ax, az) <= Math.hypot(base.x, base.z) + 1e-3) { this._syncBody(); return null; }
+    // Down.
+    c.setTranslation({ x: p0.x + ax, y: cy + up, z: p0.z + az });
+    k.computeColliderMovement(c, { x: 0, y: -(up + 0.1), z: 0 }, flags, filter);
+    const d = k.computedMovement().y;
+    const grounded = k.computedGrounded();
+    this._syncBody();
+    const rise = up + d;
+    if (!grounded || rise < 0.02 || rise > MOVE.stepHeight + 0.01) return null;
+    // Must land on a walkable tread.
+    _w.set(p0.x + ax, p0.y + rise + 0.1, p0.z + az);
+    const gh = this.phys.raycast(_w, DOWN, 0.4, G.WORLD);
+    if (gh && gh.normal.y < 0.7) return null;
+    this.velocity.y = Math.min(this.velocity.y, 0);
+    this.stepOffset -= rise; // camera smooths the pop
+    return { x: ax, y: rise, z: az };
   }
 
   _footsteps(dt) {
@@ -430,14 +475,17 @@ export class Player {
     }
     const standRoom = clear(endPos, MOVE.standHeight);
     const hv = Math.hypot(this.velocity.x, this.velocity.z);
-    const duration = type === 'vault' ? 0.5 : type === 'climb' ? 0.42 : 0.72;
+    // Vaults scale with approach speed so a sprint vault stays fluid; mantles scale with height.
+    const travel = Math.hypot(endPos.x - this.position.x, endPos.z - this.position.z);
+    const duration = type === 'vault' ? clamp(travel / Math.max(hv * 0.95, 4.2), 0.34, 0.52)
+      : type === 'climb' ? 0.36 + ledge * 0.06 : 0.5 + (ledge - 1.15) * 0.18;
     this.mantle = {
       type, t: 0, duration,
       start: this.position.clone(),
       peak: new THREE.Vector3(this.position.x + (endPos.x - this.position.x) * 0.5, topHit.point.y + 0.08, this.position.z + (endPos.z - this.position.z) * 0.5),
       ledgeY: topHit.point.y,
       end: endPos,
-      exitSpeed: type === 'vault' ? Math.max(hv * 0.75, 3.2) : Math.min(hv, 2),
+      exitSpeed: type === 'vault' ? Math.max(hv * 0.92, 3.6) : Math.min(hv * 0.6, 3),
       fwd,
       crouchAfter: !standRoom,
     };

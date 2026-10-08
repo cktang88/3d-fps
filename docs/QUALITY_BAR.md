@@ -18,3 +18,8 @@ fire and sodium light; haze glows toward the sun; god rays cut through warehouse
 rages — artillery flashes on the clouds, smoke columns, descending flares, tracer arcs, a helicopter sweeping by.
 Inside the depot: burning wrecks, embers and ash drifting through light shafts. Cinematic grade: warm highlights,
 cool teal shadows.
+
+## Visual cohesion pipeline (no "random downloads" look)
+All assets pass through one shared look: albedo/roughness/normal-intensity normalisation, consistent texel density,
+a global weathering + wetness layer, contact grounding (AO + dirt decals), identical sun/IBL/fog, and a single
+colour grade as the final glue. Details: `docs/ART_PIPELINE.md`.

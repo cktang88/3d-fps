@@ -73,7 +73,7 @@ export class FPCamera {
 
     // Position.
     const eye = player.position.clone();
-    eye.y += player.eyeHeight.x + this.dip.x * 0.1 + bobY;
+    eye.y += player.eyeHeight.x + this.dip.x * 0.1 + bobY + (player.stepOffset || 0);
     eye.addScaledVector(right, player.lean * MOVE.leanOffset + bobX);
     // When leaning, the head also drops a little.
     eye.y -= Math.abs(player.lean) * 0.08;

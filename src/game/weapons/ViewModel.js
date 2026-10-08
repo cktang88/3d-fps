@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GunModels, POSES, RELOAD_PHASES, HIP_POS, M } from './GunModels.js';
+import { GunModels, POSES, RELOAD_PHASES, M, vmTune } from './GunModels.js';
 import { Spring, Spring3, damp, clamp, DEG, smoothstep, easeInOutSine, rand } from '../../core/MathUtil.js';
 import { muzzleFlashAtlas, muzzleSideTex, reticleTex, glowTex } from '../../render/ProcTex.js';
 
@@ -171,17 +171,19 @@ export class ViewModel {
     const modelKey = s.model;
     const src = this.models.src[modelKey];
     const poseKey = s.pose;
-    const pose = POSES[poseKey] || POSES.m4a1;
+    const tune = vmTune(poseKey);
+    const basePose = POSES[poseKey] || POSES.m4a1;
+    const pose = { ...basePose, primary: tune.primary || basePose.primary, support: tune.support || basePose.support };
     const sidearm = pose.kind === 'sidearm';
     const root = new THREE.Group();
     root.name = 'WeaponRoot';
-    const scale = poseKey === 'ak74' ? 0.82 : 0.68;
+    const scale = tune.scale;
     root.scale.setScalar(scale);
     const gun = src.clone(true);
     root.add(gun);
     root.updateMatrixWorld(true);
 
-    const rig = { root, gun, weapon, pose, poseKey, sidearm, scale, kind: pose.kind, stats: s };
+    const rig = { root, gun, weapon, pose, poseKey, sidearm, scale, kind: pose.kind, stats: s, tune };
     rig.magazine = find(gun, 'Magazine');
     rig.spare = find(gun, 'SpareMagazine');
     if (rig.spare) rig.spare.visible = false;
@@ -276,9 +278,8 @@ export class ViewModel {
       this._alignStaticArms(rig);
     }
     // Hip / ADS positions (WeaponRoot in view-camera space).
-    const hk = sidearm ? 'sidearm' : poseKey === 'm4a1' ? 'm4a1' : poseKey === 'ak74' ? 'ak74' : pose.kind === 'long' ? 'long' : poseKey === 'shotgun' ? 'shotgun' : 'rifle';
-    rig.hip = V(HIP_POS[hk]);
-    rig.hipRot = new THREE.Euler(0.018, 0.045, -0.018);
+    rig.hip = V(tune.hip);
+    rig.hipRot = new THREE.Euler(tune.hipRot[0], tune.hipRot[1], tune.hipRot[2]);
     const a = rig.aim.point;
     if (sidearm) rig.ads = new THREE.Vector3(-a.x * scale, -a.y * scale, -0.5);
     else rig.ads = new THREE.Vector3(-a.x * scale, -a.y * scale, rig.aim.scope ? -0.36 - a.z * scale : -0.52 - a.z * scale * 0.3);
@@ -437,7 +438,7 @@ export class ViewModel {
     for (const [k, r] of this.rigs) if (k.startsWith(weaponId)) {
       if (r.aim.reticle) this.viewCam.remove(r.aim.reticle);
       this.rigs.delete(k);
-      if (this.rig === r) this.rig = null;
+      if (this.rig === r) { this.holder.remove(r.root); this.rig = null; }
     }
   }
 

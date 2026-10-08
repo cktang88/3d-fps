@@ -34,6 +34,27 @@ export const HIP_POS = {
   long: [0.3, -0.29, -0.66], sidearm: [0.38, -0.18, -0.55], compact: [0.31, -0.27, -0.62], shotgun: [0.31, -0.25, -0.62],
 };
 
+/**
+ * Per-platform first-person presentation (our own AAA-style framing on top of the ported grip math).
+ * scale: WeaponRoot scale. hip: WeaponRoot position in view-camera space. hipRot: [pitch, yaw, roll]
+ * (yaw > 0 converges the muzzle toward the crosshair). primary/support override the POSES grips.
+ * adsZ: eye relief (distance from the eye to the sight's rear reference) when aiming.
+ */
+export const VM_TUNE = {
+  default: { scale: 0.68, hip: [0.31, -0.27, -0.62], hipRot: [0.018, 0.045, -0.018], adsZ: 0.5 },
+  m4a1: { hip: [0.34, -0.3, -0.68] },
+  ak74: { scale: 0.82, hip: [0.3, -0.2, -0.62] },
+  scarl: {},
+  mp5a5: {},
+  vss: {},
+  m24: { hip: [0.3, -0.29, -0.66] },
+  awm: { hip: [0.3, -0.29, -0.66] },
+  shotgun: { hip: [0.31, -0.25, -0.62] },
+  p226: { hip: [0.38, -0.18, -0.55] },
+  m1911: { hip: [0.38, -0.18, -0.55] },
+};
+export const vmTune = (key) => ({ ...VM_TUNE.default, ...(VM_TUNE[key] || {}) });
+
 let _grime = null;
 const grime = () => (_grime ||= grimeTex(256, 77));
 

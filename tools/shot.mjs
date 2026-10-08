@@ -10,7 +10,7 @@ fs.mkdirSync(out, { recursive: true });
 const W = +(process.env.W || 1280), H = +(process.env.H || 720);
 const PORT = process.env.PORT || '5199';
 
-const server = spawn('npx', ['vite', '--port', PORT, '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'] });
+const server = spawn('npx', ['vite', '--port', PORT, '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
 await new Promise((res) => server.stdout.on('data', (d) => { if (String(d).includes('Local') || String(d).includes('ready')) res(); }));
 
 const browser = await chromium.launch({
@@ -71,5 +71,5 @@ try {
 }
 console.log(logs.slice(0, 40).join('\n'));
 await browser.close();
-server.kill();
+try { process.kill(-server.pid, 'SIGTERM'); } catch { server.kill(); }
 process.exit(0);
