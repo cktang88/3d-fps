@@ -176,19 +176,9 @@ export class GunModels {
     const c = bb2.getCenter(new THREE.Vector3());
     inner.position.sub(c);
     wrap.updateMatrixWorld(true);
-    const heightNear = (zSign) => {
-      const box = new THREE.Box3();
-      scene.traverse((o) => {
-        if (!o.isMesh) return;
-        const g = o.geometry; const pos = g.attributes.position; const v = new THREE.Vector3();
-        for (let i = 0; i < pos.count; i += 7) {
-          v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
-          if (Math.sign(v.z) === zSign && Math.abs(v.z) > 0.6) box.expandByPoint(v);
-        }
-      });
-      return box.isEmpty() ? 0 : box.max.y - box.min.y;
-    };
-    if (heightNear(-1) > heightNear(1)) inner.rotation.y += Math.PI; // stock was at −Z, flip
+    // The source asset (verified visually) has its stock toward −Z after the long-axis rotation;
+    // its raked pistol grip and butt pad make that unambiguous, so flip it deterministically.
+    inner.rotation.y += Math.PI;
     wrap.updateMatrixWorld(true);
     bb2 = new THREE.Box3().setFromObject(wrap);
     const c2 = bb2.getCenter(new THREE.Vector3());
