@@ -11,7 +11,8 @@
     { name: 'containers', pos: [37, 0, 4], yaw: 0.1, pitch: 0.03 },
     { name: 'office', pos: [-12.5, 0, 40.5], yaw: -1.9, pitch: 0 },
     { name: 'scope_ads', pos: [0, 0.1, 10], yaw: 0.15, pitch: 0.02, scar: true },
-  ];
+    { name: 'courtyard_legacy', pos: [0, 0, 20], yaw: 0.3, pitch: 0.02, legacy: true },
+  ].filter((v) => !window.__perfOnly || window.__perfOnly.includes(v.name));
   const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
   const out = { quality: g.settings.quality, views: {} };
   Q.god(); Q.freezeBots(false); Q.releaseAll();
@@ -20,6 +21,7 @@
     Q.place(v.pos, v.yaw, v.pitch);
     Q.sim(v.scar ? 0.8 : 0.3);
     g.player.yaw = v.yaw; g.player.pitch = v.pitch;
+    window.__perfLegacy = !!v.legacy;
     window.__qaSkipRender = true; await frame();
     const cap = P.capture();
     window.__qaSkipRender = false;
@@ -32,6 +34,7 @@
       total: `${f.total.calls} calls / ${Math.round(f.total.tris / 1000)}k tris`, calls: f.total.calls, tris: f.total.tris,
       shadow: `${f.shadow.calls} calls / ${Math.round(f.shadow.tris / 1000)}k tris (x${f.shadow.n})`, passes, cpuMs: f.cpuMs, wallMs: Math.round(performance.now() - t0),
     };
+    window.__perfLegacy = false;
     if (v.scar) Q.down('Mouse2', false);
     if (v.name === 'courtyard') out.census = P.census();
   }

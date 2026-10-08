@@ -1095,14 +1095,19 @@ export class ViewModel {
         this.scopeCam.updateProjectionMatrix();
         this.scopeCam.updateMatrixWorld();
         const r2 = g.renderer.renderer;
-        const prevTarget = r2.getRenderTarget();
-        // Reuse this frame's shadow maps (the main pass already updated them).
-        const sa = r2.shadowMap.autoUpdate;
-        r2.shadowMap.autoUpdate = false;
-        r2.setRenderTarget(this.scopeRT);
-        r2.render(g.renderer.scene, this.scopeCam);
-        r2.setRenderTarget(prevTarget);
-        r2.shadowMap.autoUpdate = sa;
+        // Perf: PiP resolution per quality (Low 256 / Med 384 / High 512 / Ultra 768); skipped on QA sim-only frames.
+        const res = [256, 384, 512, 768][g.settings.quality] ?? 512;
+        if (this.scopeRT.width !== res) this.scopeRT.setSize(res, res);
+        if (!window.__qaSkipRender) {
+          const prevTarget = r2.getRenderTarget();
+          // Reuse this frame's shadow maps (the main pass already updated them).
+          const sa = r2.shadowMap.autoUpdate;
+          r2.shadowMap.autoUpdate = false;
+          r2.setRenderTarget(this.scopeRT);
+          r2.render(g.renderer.scene, this.scopeCam);
+          r2.setRenderTarget(prevTarget);
+          r2.shadowMap.autoUpdate = sa;
+        }
       }
     }
   }

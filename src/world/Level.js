@@ -46,7 +46,6 @@ const PROPS = {
   generator: ['portable_generator/portable_generator.glb'],
   hangLamp: ['hanging_industrial_lamp/hanging_industrial_lamp.glb', { emissive: /glass/, emissiveColor: 0xffa858, emissiveIntensity: 6 }],
   fluoro: ['mounted_fluorescent_lights/mounted_fluorescent_lights.glb', { emissive: /glass/, emissiveColor: 0xe6f2ff, emissiveIntensity: 2.5 }],
-  duct: ['modular_airduct_circular_01/modular_airduct_circular_01.glb'],
   pipes: ['modular_industrial_pipes_01/modular_industrial_pipes_01.glb'],
   woodCrate: ['wooden_crate_02/wooden_crate_02.glb'],
   cementBag: ['cement_bag/cement_bag.glb'],
@@ -150,7 +149,7 @@ export class Level {
       const t = i / 12;
       pts.push(a.clone().lerp(b, t).add(V(0, -sag * 4 * t * (1 - t), 0)));
     }
-    const g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 12, r, 4, false);
+    const g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), sag > 0.2 ? 10 : 2, r, 3, false);
     return this.mesh('cable', g, { cast: true });
   }
 
@@ -607,7 +606,7 @@ export class Level {
           g.applyMatrix4(new THREE.Matrix4().makeRotationY(-Math.atan2(dir.z, dir.x)).setPosition(mid));
           this.fencePanel(g, 6, 2.0);
           this.cyl('steel', a.clone().add(V(0, 1.95, 0)), b.clone().add(V(0, 1.95, 0)), 0.025, 6);
-          for (const k of [0.15, 0.3, 0.45]) {
+          for (const k of [0.2, 0.45]) {
             const off = inward.clone().multiplyScalar(-0.45 * (k / 0.45)), y = ph + 2.3 + 0.35 * (k / 0.45) - 0.12;
             this.wire(V(p.x, y, p.z).add(off), V(q.x, y, q.z).add(off), 0.05, 0.008);
           }
@@ -757,7 +756,6 @@ export class Level {
     this.prop('crane', -1.5, -35.2, 0, { y: H - 1.75 - 5.1, mount: true });
     for (const zz of [-37.2, -33.2]) this.box('steel', 0, H - 1.85, zz, 35.4, 0.2, 0.25, { nav: false, map: false, collide: false });
     // Ceiling ducting.
-    for (const x of [-12.5, -8.3, -4.1, 0.1, 4.3]) this.prop('duct', x, -45.5, 0, { y: H - 2.3, mount: true });
     // Catwalk along north wall at 4 m: perforated grating deck on a steel frame.
     const cy = 4;
     this.box('grating', 0, cy - 0.03, z0 + 2.2, 35.4, 0.06, 4, { uv: 1.2, map: false });
@@ -910,12 +908,32 @@ export class Level {
     this.box('steel', 6.65, F + 0.5, 36.7, 0.05, 1.0, 7.2, { map: false, nav: false });
     this.box('steel', 6.65, F + 1.0, 36.7, 0.06, 0.06, 7.2, { map: false, nav: false, collide: false });
     // Furniture: desks, filing cabinets (cover), using wood + metal.
-    const desk = (x, z, y = 0, r = 0) => {
-      this.box('woodDark', x, y + 0.75, z, 1.6, 0.06, 0.8, { rot: r, map: false, uv: 1 });
-      this.box('metalPainted', x, y + 0.37, z, 1.5, 0.72, 0.7, { rot: r, map: false, uv: 1, nav: true });
+    const desk = (x, z, y = 0) => {
+      const o = { map: false, uv: 1, collide: false, nav: false };
+      this.box('woodDark', x, y + 0.75, z, 1.6, 0.05, 0.8, o);                       // top
+      for (const dx of [-0.74, 0.74]) for (const dz of [-0.34, 0.34]) this.box('steel', x + dx, y + 0.36, z + dz, 0.04, 0.72, 0.04, o);
+      this.box('metalPainted', x, y + 0.48, z + 0.36, 1.44, 0.42, 0.02, o);           // modesty panel
+      this.box('metalPainted', x + 0.5, y + 0.36, z, 0.42, 0.7, 0.66, o);             // drawer pedestal
+      for (const dy of [0.18, 0.4, 0.6]) this.box('steel', x + 0.5, y + dy, z - 0.335, 0.14, 0.02, 0.02, o);
+      this.game.physics.addStaticBox(V(x, y + 0.39, z), V(0.8, 0.39, 0.4), null, { surface: 'wood' });
+      const pg = new THREE.BoxGeometry(1.6, 0.78, 0.8); pg.translate(x, y + 0.39, z); this.navGeos.push(pg);
+      this.blob(x, z, 2.0, 1.2, 0, y + 0.012, 0.5);
     };
     desk(-10, 35); desk(-7, 41); desk(1, 35.5); desk(2, 41.5); desk(-9, 35, F); desk(2, 36, F); desk(-6, 42, F);
-    const cab = (x, z, y = 0) => this.box('metalPainted', x, y + 0.7, z, 0.5, 1.4, 0.6, { map: false, uv: 1 });
+    const cab = (x, z, y = 0) => {
+      this.box('metalPainted', x, y + 0.7, z, 0.5, 1.4, 0.6, { map: false, uv: 1 });
+      const fz = z < 38 ? z + 0.305 : z - 0.305, fx = x < -4 ? x + 0.255 : x - 0.255;
+      // Drawer seams + handles on the open face (toward the room).
+      const alongX = Math.abs(x - -13.4) < 0.01 || Math.abs(x - 9.4) < 0.01;
+      for (const dy of [0.35, 0.7, 1.05]) {
+        if (alongX) this.box('metalDark', fx, y + dy, z, 0.012, 0.012, 0.5, { map: false, collide: false, nav: false });
+        else this.box('metalDark', x, y + dy, fz, 0.42, 0.012, 0.012, { map: false, collide: false, nav: false });
+      }
+      for (const dy of [0.2, 0.55, 0.9, 1.25]) {
+        if (alongX) this.box('steel', fx + Math.sign(fx - x) * 0.01, y + dy, z, 0.02, 0.025, 0.14, { map: false, collide: false, nav: false });
+        else this.box('steel', x, y + dy, fz + Math.sign(fz - z) * 0.01, 0.14, 0.025, 0.02, { map: false, collide: false, nav: false });
+      }
+    };
     cab(-13.4, 42); cab(-13.4, 41.2); cab(-4.6, 33); cab(9.4, 43.2, F); cab(-13.4, 33, F);
     // Clutter.
     this.prop('cardboard', -11, 42, 0.3, { nav: false }); this.prop('cardboard', 3, 42.6, 1.2, { nav: false });
@@ -982,7 +1000,9 @@ export class Level {
       // Rubble.
       for (let i = 0; i < 9; i++) {
         const s = rand(0.3, 0.9);
-        this.box(i % 2 ? 'brick' : 'concreteDirty', cx + rand(-w / 2, w / 2 + 1.5), s * 0.3, cz + rand(-d / 3, d / 3), s * 1.4, s * 0.6, s, { rot: rand(0, 3), map: false, uv: 1 });
+        let rx = cx + rand(-w / 2, w / 2 + 1.5), rz = cz + rand(-d / 3, d / 3);
+        if (Math.hypot(rx - cx, rz - cz) < 1.8) rx = cx + Math.sign(rx - cx || 1) * 1.8 + (rx - cx) * 0.2; // keep the centre walkable
+        this.box(i % 2 ? 'brick' : 'concreteDirty', rx, s * 0.3, rz, s * 1.4, s * 0.6, s, { rot: rand(0, 3), map: false, uv: 1 });
       }
       // Small debris (visual only).
       for (let i = 0; i < 18; i++) {
@@ -1150,7 +1170,7 @@ export class Level {
       this.spawns[0].push({ pos: V(-53, 0, -30 + i * 8.5), yaw: -Math.PI / 2 });
       this.spawns[1].push({ pos: V(55, 0, -30 + i * 8.5), yaw: Math.PI / 2 });
     }
-    const ffa = [[-50, -50], [0, -52], [50, -52], [-52, 0], [55, 0], [-50, 50], [0, 52], [52, 50], [-12, -40], [12, -32], [-8, 38], [30, 0], [-30, 0], [0, 10], [-40, 22], [40, -18]];
+    const ffa = [[-50, -50], [0, -52], [50, -52], [-52, 0], [55, 0], [-50, 50], [0, 52], [52, 50], [-12, -40], [12, -32], [-7, 35], [30, 0], [-30, 0], [0, 10], [-34.5, 21], [37.5, -18]];
     for (const [x, z] of ffa) this.spawns.ffa.push({ pos: V(x, 0, z), yaw: Math.atan2(x, z) });
   }
 
@@ -1210,7 +1230,7 @@ export class Level {
     scene.environment = env;
     scene.environmentIntensity = 0.42;
     // Grounded skybox: HDR projected onto a dome so its field horizon reads as real ground.
-    const sky = new GroundedSkybox(hdr, 14, 600, 96);
+    const sky = new GroundedSkybox(hdr, 14, 600, 48);
     sky.position.y = 14 - 0.05;
     sky.material.depthWrite = false;
     sky.renderOrder = -1;
@@ -1255,7 +1275,8 @@ export class Level {
     sun.target.position.set(0, 0, 0);
     sun.castShadow = true;
     const q = g.settings.quality;
-    sun.shadow.mapSize.set(q >= 2 ? 4096 : 2048, q >= 2 ? 4096 : 2048);
+    const sms = [1024, 2048, 4096, 4096][q] ?? 4096; // keep in sync with Renderer.applySettings (perf)
+    sun.shadow.mapSize.set(sms, sms);
     const S = 84;
     Object.assign(sun.shadow.camera, { left: -S, right: S, top: S * 0.62, bottom: -S * 0.62, near: 40, far: 340 });
     sun.shadow.bias = -0.00025;
@@ -1270,9 +1291,9 @@ export class Level {
     // Height fog coloured from the HDRI horizon, glowing toward the sun.
     // Fog: the HDRI horizon, darkened and cooled (storm haze), glowing warm toward the sun.
     const fogCol = info.horizon.clone().multiplyScalar(0.42).lerp(new THREE.Color(0.2, 0.24, 0.3), 0.45);
-    const scatterCol = info.sunHorizon.clone().sub(info.horizon).multiplyScalar(0.55);
+    const scatterCol = info.sunHorizon.clone().sub(info.horizon).multiplyScalar(0.32);
     scatterCol.r = Math.max(scatterCol.r, 0.25); scatterCol.g = Math.max(scatterCol.g, 0.14); scatterCol.b = Math.max(scatterCol.b, 0.05);
-    installAtmosphere({ sunDir: info.dir, sunColor: scatterCol, heightFalloff: 0.06, heightShare: 0.7, scatter: 1.0 });
+    installAtmosphere({ sunDir: info.dir, sunColor: scatterCol, heightFalloff: 0.06, heightShare: 0.7, scatter: 1.0, indoor: INDOOR_VOLUMES() });
     scene.fog = new THREE.FogExp2(fogCol, 0.0042);
     g.renderer.setSun?.(info.dir, new THREE.Color(1.0, 0.7, 0.42));
     // Fake volumetric shafts through the warehouse's south windows + the main door, with dust motes.
@@ -1297,11 +1318,7 @@ export class Level {
   }
 
   applyInteriorOcclusion() {
-    const vols = [
-      new THREE.Box3(V(-18, -1, -49), V(18, 9.1, -27)),
-      new THREE.Box3(V(-14, -1, 32), V(10, 6.95, 44)),
-      new THREE.Box3(V(12, -1, -18.5), V(18, 3.1, -13.5)),
-    ];
+    const vols = INDOOR_VOLUMES();
     this.indoorVolumes = vols;
     this.mats.setIndoorVolumes(vols);
     this.game.renderer.scene.traverse((o) => {
@@ -1315,6 +1332,14 @@ export class Level {
   }
 
   isIndoors(p) { return this.indoorVolumes?.some((b) => b.containsPoint(p)) ?? false; }
+}
+
+function INDOOR_VOLUMES() {
+  return [
+    new THREE.Box3(V(-18, -1, -49), V(18, 9.1, -27)),
+    new THREE.Box3(V(-14, -1, 32), V(10, 6.95, 44)),
+    new THREE.Box3(V(12, -1, -18.5), V(18, 3.1, -13.5)),
+  ];
 }
 
 function blobMaterial(opacity) {

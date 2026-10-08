@@ -178,7 +178,7 @@ export class Renderer {
     );
     this.sunDir = null;
     this.godRays = new GodRaysEffect(this.camera, this.sunSource, {
-      resolutionScale: 0.5, kernelSize: KernelSize.SMALL, density: 0.94, decay: 0.93, weight: 0.24, exposure: 0.5,
+      resolutionScale: 0.5, kernelSize: KernelSize.SMALL, density: 0.94, decay: 0.93, weight: 0.18, exposure: 0.45,
       samples: 48, clampMax: 1.0, blur: true,
     });
     this.lens = new LensEffect(this.bloom, lensDirtTexture());
@@ -229,6 +229,13 @@ export class Renderer {
     this.caOn = on('fxCA');
     this.noise.blendMode.opacity.value = on('fxGrain') ? 0.035 : 0;
     this.renderer.shadowMap.enabled = true;
+    // Perf: sun shadow-map size per quality (Low 1024 / Medium 2048 / High+ 4096), applied live.
+    const shadowSize = [1024, 2048, 4096, 4096][q];
+    this.scene.traverse((o) => {
+      if (!o.isDirectionalLight || !o.castShadow || o.shadow.mapSize.x === shadowSize) return;
+      o.shadow.mapSize.set(shadowSize, shadowSize);
+      o.shadow.map?.dispose(); o.shadow.map = null;
+    });
     this.resize();
   }
 
@@ -270,6 +277,11 @@ export class Renderer {
     this.grade.uniforms.get('saturation').value = 0.92 - lowHealth * 0.55;
     this._updateSun();
     this.renderer.info.reset();
+    // Perf: shadow maps render exactly once per frame (in the world pass). With autoUpdate every
+    // renderer.render(scene) re-rendered them — N8AO's two transparency passes and the PiP scope included.
+    const sm = this.renderer.shadowMap;
+    sm.autoUpdate = !!window.__perfLegacy; // QA A/B switch (docs/PERF.md)
+    sm.needsUpdate = true;
     this.composer.render(dt);
   }
 }

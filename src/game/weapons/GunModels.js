@@ -90,18 +90,19 @@ export function applyGunLook(m, opts = {}) {
     sh.uniforms.gunLook = { value: new THREE.Vector4(wear, sat, rmin, lumMax) };
     sh.uniforms.gunMicro = { value: micro };
     sh.uniforms.gunKeep = { value: new THREE.Vector2(keepD, keepS) };
+    sh.uniforms.gunTint = { value: new THREE.Color(...(opts.tint || [1, 1, 1])) };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vObjPos; varying vec3 vObjN;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObjPos = position; vObjN = normal;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform sampler2D gunGrime; uniform vec4 gunLook; uniform float gunMicro; uniform vec2 gunKeep; varying vec3 vObjPos; varying vec3 vObjN;\n' +
+      .replace('#include <common>', '#include <common>\nuniform sampler2D gunGrime; uniform vec4 gunLook; uniform float gunMicro; uniform vec2 gunKeep; uniform vec3 gunTint; varying vec3 vObjPos; varying vec3 vObjN;\n' +
         'float tri(vec3 p, vec3 n, float s){ vec3 w = abs(n); w /= (w.x+w.y+w.z+1e-4); return texture2D(gunGrime, p.yz*s).r*w.x + texture2D(gunGrime, p.xz*s).r*w.y + texture2D(gunGrime, p.xy*s).r*w.z; }')
       .replace('#include <map_fragment>', `#include <map_fragment>
         float gA = tri(vObjPos, vObjN, 6.0);
         float gB = tri(vObjPos, vObjN, 23.0);
         {
           float l = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-          diffuseColor.rgb = mix(vec3(l), diffuseColor.rgb, gunLook.y);
+          diffuseColor.rgb = mix(vec3(l), diffuseColor.rgb, gunLook.y) * gunTint;
           diffuseColor.rgb *= min(1.0, gunLook.w / max(l, 1e-3));
           diffuseColor.rgb = max(diffuseColor.rgb, vec3(0.018));
           diffuseColor.rgb *= mix(1.0, 0.9 + 0.2 * gA, gunMicro);
@@ -160,7 +161,7 @@ function unifyMaterial(mat, modelKey) {
     mat.envMapIntensity = 1.0;
     if (n.includes('wood')) mat.roughness = Math.max(mat.roughness, 0.45);
     // Authored PBR (M4 / AK): same normalisation, lighter procedural wear (they carry their own).
-    applyGunLook(mat, { wear: modelKey === 'shotgun' ? 0.45 : 0.25, micro: 0.6, rmin: n.includes('wood') ? 0.42 : 0.3, keepDiffuse: n.includes('wood') ? 0.85 : 0.45, sat: n.includes('wood') ? 0.95 : 0.88 });
+    applyGunLook(mat, { wear: modelKey === 'shotgun' ? 0.45 : 0.25, micro: 0.6, rmin: n.includes('wood') ? 0.42 : 0.3, keepDiffuse: n.includes('wood') ? 0.9 : 0.45, tint: n.includes('wood') ? [1.25, 0.92, 0.66] : undefined, sat: n.includes('wood') ? 1.2 : 0.88, lumMax: n.includes('wood') ? 0.5 : 0.55 });
     return mat;
   }
   if (n.includes('glass')) return M('glass');
@@ -186,7 +187,10 @@ export class GunModels {
     // Per-weapon first-person rigs (gun + posed gloved arms, tools/blender, docs/FP_FRAMING.md) replace the
     // static gun + rigidly mounted arms for the models they cover.
     this.fp = {};
-    await Promise.all(FP_IDS.map(async (k) => {
+    // Only request rigs listed in models/fp/manifest.json (missing manifest = none shipped yet, no 404s).
+    let ids = [];
+    try { const r = await fetch('./assets/models/fp/manifest.json'); if (r.ok) ids = (await r.json()).ids || []; } catch { /* none */ }
+    await Promise.all(ids.filter((k) => FP_IDS.includes(k)).map(async (k) => {
       const g = await this.assets.model('fp_' + k, `models/fp/${k}.glb`);
       const fp = g && parseFP(g, k);
       if (fp?.gun) { this.fp[k] = fp; this.src[k] = fp.gun; }

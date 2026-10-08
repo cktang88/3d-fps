@@ -392,43 +392,53 @@ TOL = 0.0006 * K       # 0.6 mm real
 CONTACT = 0.0035 * K   # fingertips closer than 3.5 mm count as touching
 
 
-def push_hand_out(side, iters=30, max_move=0.022, max_rot=20.0):
-    """Rigid 6-DOF least-squares fit of the hand (IK control) out of the gun: small rotation w and
-    translation t so that t + w x (p - c) ~= depth * normal at every penetrating hand/finger vertex."""
+def push_hand_out(side, iters=40, max_move=0.045, max_rot=35.0, snug=True):
+    """Rigid 6-DOF least-squares fit of the hand (IK control) so the PALM (hand + metacarpals) leaves the gun:
+    small rotation w and translation t with  n.(t + w x r) = depth  at every penetrating palm vertex.
+    Then slide back along the mean surface normal until the palm just touches (snug grip)."""
     import numpy as np
-    hb = verts_of([f'Hand_{side}'] + [f'Bone_{side}.{i}' for c in FINGERS for i in c])
+    hb = verts_of([f'Hand_{side}'] + [f'Bone_{side}.{c[0]}' for c in FINGERS])
     ctrl = pb[f'IK_Hand_Cntrl_{side}']
     moved = Vector(); rot = 0.0
     for _ in range(iters):
         co = eval_co(hb)
-        rows, rhs, cen = [], [], Vector()
         pen = []
         for p in co:
             d = inside_depth(gun_bvh, p, 0.03 * K)
-            if d > TOL:
-                n = gun_bvh.find_nearest(p, 0.03 * K)[1]
-                pen.append((p, n, d + 0.2 * TOL))
+            if d > 0.3 * TOL:
+                pen.append((p, gun_bvh.find_nearest(p, 0.03 * K)[1], d + 0.3 * TOL))
         if not pen:
             break
         cen = sum(co, Vector()) / len(co)
-        for p, n, d in pen:
-            r = p - cen
-            # n . (t + w x r) = d   ->  n.t + (r x n).w = d
-            rxn = r.cross(n)
-            rows.append([n.x, n.y, n.z, rxn.x, rxn.y, rxn.z]); rhs.append(d)
-        A = np.array(rows); bb = np.array(rhs)
-        lam = np.diag([1e-6] * 3 + [0.02 * K * K] * 3)  # rotations are damped
-        x = np.linalg.solve(A.T @ A + lam, A.T @ bb)
+        A = np.array([[n.x, n.y, n.z, *(p - cen).cross(n)] for p, n, d in pen]); bb = np.array([d for _, _, d in pen])
+        x = np.linalg.solve(A.T @ A + np.diag([1e-6] * 3 + [0.01 * K * K] * 3), A.T @ bb)
         t = Vector(x[:3]); w = Vector(x[3:])
-        if t.length > 0.002 * K: t = t.normalized() * 0.002 * K
-        ang = w.length
-        if ang > math.radians(2): w = w.normalized() * math.radians(2); ang = math.radians(2)
+        if t.length > 0.003 * K: t = t.normalized() * 0.003 * K
+        ang = min(w.length, math.radians(3))
         if (moved + t).length > max_move * K or rot + math.degrees(ang) > max_rot:
             break
         R = Matrix.Rotation(ang, 4, w.normalized()) if ang > 1e-6 else Matrix()
         ctrl.matrix = Matrix.Translation(cen + t) @ R @ Matrix.Translation(-cen) @ ctrl.matrix
         moved += t; rot += math.degrees(ang)
-    log('hand fit', side, 'move mm', round(moved.length / K * 1000, 1), 'rot deg', round(rot, 1))
+    back = 0.0
+    if snug:
+        # Direction toward the gun = minus the mean normal at the nearest surface points of the palm.
+        co = eval_co(hb)
+        nsum = Vector(); dmin = 1e9
+        for p in co:
+            h = gun_bvh.find_nearest(p, 0.04 * K)
+            if h[0] is not None:
+                nsum += h[1] / max(h[3], 1e-4); dmin = min(dmin, h[3])
+        if nsum.length > 0 and dmin < 0.04 * K:
+            dirn = -nsum.normalized()
+            step = 0.0005 * K
+            for _ in range(60):
+                m0 = ctrl.matrix.copy()
+                m = m0.copy(); m.translation += dirn * step; ctrl.matrix = m
+                if max(depths(hb)) > TOL:
+                    ctrl.matrix = m0; break
+                back += step
+    log('hand fit', side, 'move mm', round(moved.length / K * 1000, 1), 'rot deg', round(rot, 1), 'snug mm', round(back / K * 1000, 1))
     return moved
 
 
@@ -444,7 +454,7 @@ def curl_sign(bone):
     return 1 if (pc - tip2).length < (pc - tip).length else -1
 
 
-def solve_finger(side, chain, wrap=True, max_iter=60, limit=35.0):
+def solve_finger(side, chain, wrap=True, max_iter=80, limit=45.0):
     """De-penetrate a finger (search curl X / abduct Z per segment, distal first, limited deviation),
     then curl wrap fingers until the tip touches the surface."""
     segs = [pb[f'Bone_{side}.{i}'] for i in (chain[1:] if len(chain) == 4 else chain)]
@@ -511,7 +521,6 @@ def solve_finger(side, chain, wrap=True, max_iter=60, limit=35.0):
 for side in ([] if os.environ.get('FP_NOIK') else SIDES):
     push_hand_out(side)
     solve_arm(side)
-    push_hand_out(side, iters=4)
 if not FAST:
     for side in SIDES:
         for ch in FINGERS:
@@ -558,19 +567,12 @@ if os.environ.get('FP_SIDE'):
     side_render(vis, os.path.join(WORK, f'rig_{GID}_side.png'), step=0.05)
     side_render(vis, os.path.join(WORK, f'rig_{GID}_top.png'), step=0.05, view='top')
     bpy.context.scene.camera = None
-setup_render('', 1280, 720, samples=24)
+setup_render('', 960, 540, samples=12)
 for o in bpy.data.objects:
     if o.name.startswith('pole_'): o.hide_render = True
 ov = os.environ.get('FP_OVERRIDE')
 make_camera(CAM_W, vfov_deg=52.0)
 render(os.path.join(WORK, f'rig_{GID}_fp.png'))
-# Overview from outside (right, above, behind) incl. the eye position, to judge arm / shoulder layout.
-eye = Ginv @ Vector((0, 0, 0)); tgt = Ginv @ (Vector((0.0, 0.3, -0.12)) * K)
-for nm, off in (('ov_r', (0.9, 0.05, 0.25)), ('ov_t', (0.05, 0.25, 1.0))):
-    loc = Ginv @ (Vector(off) * K)
-    make_camera(Matrix.Translation(loc) @ (tgt - loc).to_track_quat('-Z', 'Z' if nm == 'ov_r' else 'Y').to_matrix().to_4x4(), vfov_deg=50)
-    mk = bpy.data.objects.new('eye', None); mk.empty_display_type = 'SPHERE'
-    render(os.path.join(WORK, f'rig_{GID}_{nm}.png'))
 if not FAST:
     # Close-ups of each hand (orbit from the outside / below).
     for side in SIDES:

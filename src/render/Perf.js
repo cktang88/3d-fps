@@ -66,16 +66,16 @@ export class Perf {
       f.shadow.tris += info.triangles - t0;
       if (willRender) f.shadow.n++;
     };
-    // Hook the composer frame boundary.
-    const origFrame = R.render.bind(R);
-    R.render = function (...a) {
+    // Hook the whole game frame (the PiP scope renders during viewmodel.update, before Renderer.render).
+    const G = this.game, origFrame = G.update.bind(G);
+    G.update = function (...a) {
       if (!self._waiters.length) return origFrame(...a);
       self._frame = { passes: {}, shadow: { calls: 0, tris: 0, n: 0 } };
       const tm = performance.now();
       try { return origFrame(...a); } finally {
         const f = self._frame; self._frame = null;
         f.cpuMs = Math.round(performance.now() - tm);
-        f.total = { calls: info.calls, tris: info.triangles };
+        f.total = Object.values(f.passes).reduce((t, p) => ({ calls: t.calls + p.calls, tris: t.tris + p.tris }), { calls: f.shadow.calls, tris: f.shadow.tris });
         for (const p of Object.values(f.passes)) p.ms = Math.round(p.ms);
         self.lastFrame = f;
         const w = self._waiters; self._waiters = [];

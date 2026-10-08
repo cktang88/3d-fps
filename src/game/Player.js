@@ -30,6 +30,7 @@ export const MOVE = {
   eyeCrouch: 1.1,
   eyeSlide: 0.9,
   stepHeight: 0.45,
+  vaultMax: 1.28, // obstacles up to this height can be vaulted (if there's a drop behind)
   leanAngle: 12 * DEG,
   leanOffset: 0.35,
 };
@@ -186,7 +187,11 @@ export class Player {
 
     // --- Crouch / slide ---
     const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
-    if (cmd.crouchPressed && this.sprinting && this.grounded && horizSpeed > MOVE.sprint * 0.85 && this.slideCooldown <= 0) {
+    // Slide: crouch while sprinting (tolerant of a 1-frame ground flicker / sprint-state lag).
+    const slideReady = (this.sprinting || (cmd.sprint && movingForward && !this.crouching))
+      && (this.grounded || this.time - this.lastGroundedTime < 0.12)
+      && horizSpeed > MOVE.sprint * 0.75 * (weapon?.mobility() ?? 1) && this.slideCooldown <= 0;
+    if (cmd.crouchPressed && slideReady) {
       this._startSlide(fwd);
     } else if (cmd.crouchPressed && !this.sliding) {
       if (this.crouching) { if (this.canStand()) this.crouching = false; }
@@ -466,9 +471,9 @@ export class Player {
     if (!clear(ledgePos, MOVE.crouchHeight)) return false;
 
     // Vault: thin obstacle with floor on the far side at about our level.
-    let type = ledge > 1.15 ? 'mantle' : 'climb';
+    let type = ledge > MOVE.vaultMax ? 'mantle' : 'climb';
     let endPos = ledgePos.clone();
-    if (ledge <= 1.15) {
+    if (ledge <= MOVE.vaultMax) {
       const far = this.position.clone().addScaledVector(fwd, wallDist + 1.15).setY(topHit.point.y + 0.2);
       const farHit = this.phys.raycast(far, down, ledge + 1.5, G.WORLD);
       if (farHit && farHit.point.y < topHit.point.y - 0.3) {

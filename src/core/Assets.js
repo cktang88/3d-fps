@@ -54,13 +54,13 @@ export class Assets {
     } finally { this._tick(path); }
   }
 
-  /** PBR set from textures/<name>/{Color,NormalGL,Roughness}.jpg */
+  /** PBR set from textures/<name>/{Color,NormalGL,Roughness}.webp */
   async materialSet(name) {
     if (this.materialsets[name]) return this.materialsets[name];
     const [map, normalMap, roughnessMap] = await Promise.all([
-      this.texture(`textures/${name}/Color.jpg`, true),
-      this.texture(`textures/${name}/NormalGL.jpg`, false),
-      this.texture(`textures/${name}/Roughness.jpg`, false),
+      this.texture(`textures/${name}/Color.webp`, true),
+      this.texture(`textures/${name}/NormalGL.webp`, false),
+      this.texture(`textures/${name}/Roughness.webp`, false),
     ]);
     const set = { map, normalMap, roughnessMap };
     this.materialsets[name] = set;

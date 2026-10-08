@@ -370,7 +370,9 @@ export class Effects {
 
     // Pool of point lights for muzzle flashes / explosions (avoid shader recompiles: fixed count).
     this.lights = [];
-    for (let i = 0; i < 4; i++) {
+    // Perf: every PointLight costs every lit fragment even at intensity 0 — pool size by quality (Low 2, else 4).
+    const nLights = (game.settings?.quality ?? 2) === 0 ? 2 : 4;
+    for (let i = 0; i < nLights; i++) {
       const l = new THREE.PointLight(0xffaa55, 0, 9, 2);
       l.castShadow = false;
       scene.add(l);

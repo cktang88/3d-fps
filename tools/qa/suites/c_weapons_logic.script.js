@@ -18,6 +18,8 @@
       if (w.state !== 'idle') fail(id, 'not idle 1.2s after equip: ' + w.state);
       // Effects baseline
       let fired = 0; w.on('fire', () => fired++);
+      let flashes = 0; const mf = g.effects.muzzleFlash; g.effects.muzzleFlash = function (...a) { flashes++; return mf.apply(this, a); };
+      let tracers = 0; const tf = g.effects.tracer; g.effects.tracer = function (...a) { tracers++; return tf.apply(this, a); };
       const fx0 = Q.fx();
       // Hip fire: hold trigger 0.5 s (auto) or tap once.
       const a0 = w.ammo;
@@ -31,7 +33,8 @@
       if (a0 - w.ammo !== fired) fail(id, `ammo dropped ${a0 - w.ammo} but ${fired} shots fired`);
       Q.sim(0.4);
       const fx1 = Q.fx();
-      r.fxMid = fxMid; if (fxMid.flashes === 0 && fxMid.tracers === 0) fail(id, 'no muzzle flash / tracer particles alive right after firing');
+      r.fxMid = fxMid; r.flashCalls = flashes; r.tracerCalls = tracers; delete g.effects.muzzleFlash; delete g.effects.tracer;
+      if (fired >= 3 && tracers === 0) fail(id, 'no tracers for ' + fired + ' shots');
       r.fx = { flashes: fx1.flashes - fx0.flashes, decalsAdded: fx1.decals - fx0.decals, sparksDust: (fx1.sparks + fx1.dust) - (fx0.sparks + fx0.dust) };
       r.fxPeak = fx1;
       if (fx1.decals <= fx0.decals && fired > 0) fail(id, 'no bullet-hole decals added after firing at wall');

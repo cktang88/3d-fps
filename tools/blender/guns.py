@@ -24,7 +24,7 @@ GUNS = {
                   parts={'Magazine': r'^Mag_low', 'ChargingHandle': r'^CH_low'},
                   credit=('MP5 Submachine Gun', 'Rotuma', SF + 'mp5-submachine-gun-a73b61932a0e4eecb5db5c63c158aa24', 'CC-BY-4.0')),
     'vss': dict(src='sf:g_vss/model.glb', rot=(0, 0, -90), length=0.894,
-                parts={'Magazine': r'^Object_26$'}, credit=('Special Sniper Rifle VSS Vintorez', 'ArmsMuseum', SF + 'special-sniper-rifle-vss-vintorez-4d5d8c1b7b79429abfa4816f18330089', 'CC0-1.0')),
+                parts={'Magazine': r'^Object_26$', 'Glass': r'^Glass'}, scope={'Rear': (-0.50, -0.47, 0.14), 'Front': (0.13, 0.165, 0.15)}, credit=('Special Sniper Rifle VSS Vintorez', 'ArmsMuseum', SF + 'special-sniper-rifle-vss-vintorez-4d5d8c1b7b79429abfa4816f18330089', 'CC0-1.0')),
     'm24': dict(src='sf:g_m24/model.glb', rot=(0, 0, 90), length=1.092,
                 parts={'Glass': r'^Object_21$'},
                 credit=('M24 Bounty Hunter Sniper Rifle', 'Naudaff3D', SF + 'm24-bounty-hunter-sniper-rifle-d40e74e2259549f5b025807163f1028c', 'CC-BY-4.0')),

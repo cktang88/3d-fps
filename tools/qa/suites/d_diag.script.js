@@ -3,7 +3,7 @@
   const g = window.__game, Q = window.__qa, p = g.player, out = {};
   Q.god(); Q.freezeBots(true); Q.releaseAll(); Q.loadout('m4', 'p226');
   const st = () => ({ x: Q.r(p.position.x), y: Q.r(p.position.y), z: Q.r(p.position.z), v: Q.r(Q.hspeed()), gr: p.grounded, spr: p.sprinting, sl: p.sliding, cr: p.crouching, m: p.mantle?.type || 0, cd: Q.r(p.slideCooldown) });
-  const ev = []; const om = p.events.onMantle; p.events.onMantle = (t, l) => { ev.push([t, Q.r(l)]); om?.(t, l); };
+  const ev = []; const om = p.events._qaOrigMantle ?? (p.events._qaOrigMantle = p.events.onMantle); p.events.onMantle = (t, l) => { ev.push([t, Q.r(l)]); om?.(t, l); };
   // Slide
   Q.place([0, 0.1, 20], 0, 0); Q.sim(0.6); Q.down('KeyW'); Q.down('ShiftLeft'); Q.sim(1.2);
   out.slidePre = st(); Q.tap('KeyC'); const tr = []; Q.sim(0.5, 1 / 30, () => tr.push(st())); out.slideTrace = tr.slice(0, 6); Q.releaseAll(); Q.sim(1);
@@ -29,6 +29,6 @@
   // Down-rays to map the catwalk deck along x=-16.4 between z=-38..-50.
   const deck = []; for (let z = -38; z >= -50; z -= 1) { const o = new p.position.constructor(-16.4, 8, z); const h = g.physics.raycast(o, new p.position.constructor(0, -1, 0), 10); deck.push([z, h ? Q.r(h.point.y) : null]); }
   out.deckProfile = deck;
-  p.events.onMantle = om; Q.thawBots();
+  p.events.onMantle = om; delete p.events._qaOrigMantle; Q.thawBots();
   return out;
 })()

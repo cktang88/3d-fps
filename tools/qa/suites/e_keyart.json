@@ -8,6 +8,12 @@
  "h": 540,
  "views": [
   {
+   "name": "e00_settle",
+   "shot": false,
+   "frames": 1,
+   "eval": "__qa.sim(4)"
+  },
+  {
    "name": "e01_sun",
    "frames": 2,
    "eval": "__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([2,0,-8],2.68,0.06);__qa.sim(0.3);__game.player.yaw=2.68;__game.player.pitch=0.06;",
@@ -84,6 +90,12 @@
    "frames": 2,
    "eval": "__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([-48,4.2,-40.5],-0.9,-0.05);__qa.sim(0.3);__game.player.yaw=-0.9;__game.player.pitch=-0.05;",
    "read": "__qa.perf()"
+  },
+  {
+   "name": "e99_load",
+   "shot": false,
+   "frames": 1,
+   "read": "({hudOverlaps: __qa.hudOverlaps()})"
   }
  ]
 }

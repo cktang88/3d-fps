@@ -121,6 +121,7 @@ export class HUD {
     const dirs = { 0: 'N', 45: 'NE', 90: 'E', 135: 'SE', 180: 'S', 225: 'SW', 270: 'W', 315: 'NW' };
     this.compassPxPerDeg = 3.2;
     this.compassW = 440;
+    addEventListener('resize', () => (this._cwOk = false));
     let strip = '';
     for (let d = -360; d <= 720; d += 15) {
       const nd = ((d % 360) + 360) % 360;
@@ -404,6 +405,7 @@ export class HUD {
     }
 
     // Compass + heading.
+    if (!this._cwOk) { const cw = $('#compass', this.root).clientWidth; if (cw) { this.compassW = cw; this._cwOk = true; } }
     const yawDeg = ((-p.yaw / DEG) % 360 + 360) % 360;
     this.el.compass.style.transform = `translateX(${(this.compassW / 2 - yawDeg * this.compassPxPerDeg).toFixed(1)}px)`;
     this._set(this.el.hdg, 'hd', 'text', String(Math.round(yawDeg) % 360).padStart(3, '0'));
@@ -541,6 +543,7 @@ export class HUD {
   scoreboard(on) {
     const sb = this.el.sb;
     sb.classList.toggle('on', on);
+    this.root.classList.toggle('sbon', on);
     if (!on) return;
     const g = this.game, mode = g.mode, ms = g.matchStats;
     sb.classList.toggle('ffa', !mode.teams);

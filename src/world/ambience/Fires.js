@@ -5,6 +5,7 @@ import { syncFog } from './glsl.js';
 import { makeFlameMaterial } from './flame.js';
 import { smokeAtlas, glowTex } from '../../render/ProcTex.js';
 import { rand } from '../../core/MathUtil.js';
+import { addMergedShadowProxy } from '../../render/Lod.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
@@ -117,13 +118,15 @@ export class Fires {
   async load() {
     const a = this.game.assets;
     const P = 'ambience/';
+    // Reuse the level's Poly Haven props (already loaded as webp .glb) instead of loading duplicates.
+    const prop = (k, file) => a.models['prop_' + k] ?? a.model('prop_' + k, 'models/props/' + file);
     const [stove, rim, tyre, diff, nor, arm, car] = await Promise.all([
-      a.model('amb_barrel_stove', P + 'models/barrel_stove/barrel_stove.gltf'),
-      a.model('amb_rim', P + 'models/rusted_wheel_rim_01/rusted_wheel_rim_01.gltf'),
-      a.model('amb_tyre', P + 'models/old_tyre/old_tyre.gltf'),
-      a.texture(P + 'textures/rusty_metal_04_diff_1k.jpg', true),
-      a.texture(P + 'textures/rusty_metal_04_nor_gl_1k.jpg', false),
-      a.texture(P + 'textures/rusty_metal_04_arm_1k.jpg', false),
+      prop('stove', 'barrel_stove/barrel_stove.glb'),
+      prop('wheelRim', 'rusted_wheel_rim_01/rusted_wheel_rim_01.glb'),
+      prop('tyre', 'old_tyre/old_tyre.glb'),
+      a.texture(P + 'textures/rusty_metal_04_diff_1k.webp', true),
+      a.texture(P + 'textures/rusty_metal_04_nor_gl_1k.webp', false),
+      a.texture(P + 'textures/rusty_metal_04_arm_1k.webp', false),
       a.model('amb_burnt_car', P + 'models/burnt_car/burnt_car.glb'),
     ]);
     this.models = { stove, rim, tyre, car };
@@ -343,6 +346,7 @@ export class Fires {
     holder.scale.setScalar(scale);
     if (!longX) holder.rotation.y = Math.PI / 2; // our local frame: length along X
     root.add(holder);
+    addMergedShadowProxy?.(holder, 6000);
     const L = Math.max(sz.x, sz.z) * scale, W = Math.min(sz.x, sz.z) * scale, H = sz.y * scale;
     if (this.models.tyre) {
       const { obj, size } = this._fitModel(this.models.tyre, 0.64);

@@ -26,21 +26,21 @@
   if (!out.slideStarted) fail('slide did not start from sprint + crouch');
   Q.releaseAll(); Q.sim(0.5);
   // Vault over the low brick wall at x=-34 (z in [-4,4]); approach from x=-29 heading -X.
-  const mt = []; const origMantle = p.events.onMantle; p.events.onMantle = (type, ledge) => { mt.push([type, Q.r(ledge)]); origMantle?.(type, ledge); };
+  const mt = []; out.vaultNote = 'vault expected (wall 1.1 m), mantle = classified as climb-on'; const origMantle = p.events._qaOrigMantle ?? (p.events._qaOrigMantle = p.events.onMantle); p.events.onMantle = (type, ledge) => { mt.push([type, Q.r(ledge)]); origMantle?.(type, ledge); };
   settle([-29, 0.1, 0], Math.PI / 2); Q.down('KeyW'); Q.down('ShiftLeft'); Q.sim(0.5);
-  let jumped = false; Q.sim(2.0, 1 / 30, () => { if (!jumped && p.position.x < -32.4) { Q.tap('Space'); jumped = true; } });
+  let jumped = false; Q.sim(2.0, 1 / 30, () => { if (!jumped && p.position.x < -33.1) { Q.tap('Space'); jumped = true; } });
   out.vault = { events: mt.slice(), endPos: Q.p(), crossed: p.position.x < -34.6 };
   if (!mt.some((m) => m[0] === 'vault')) fail(`vault at brick wall x=-34 did not trigger (events ${JSON.stringify(mt)}, end ${JSON.stringify(Q.p())})`);
   if (p.position.x > -34.6) fail(`player did not cross the brick wall, x=${Q.r(p.position.x)}`);
   Q.releaseAll(); mt.length = 0;
   // Mantle onto the loading dock (top y=1.2, z in [-26,-23]); approach from z=-19 heading -Z at x=9.
   settle([9, 0.1, -19], 0); Q.down('KeyW'); Q.sim(0.5);
-  jumped = false; Q.sim(2.0, 1 / 30, () => { if (!jumped && p.position.z < -21.9) { Q.tap('Space'); Q.down('Space'); jumped = true; } });
+  jumped = false; let mDone = false; Q.sim(2.0, 1 / 30, () => { if (!jumped && p.position.z < -22.3) { Q.tap('Space'); Q.down('Space'); jumped = true; } if (jumped && !mDone && mt.length && !p.mantle) { mDone = true; Q.releaseAll(); } });
   Q.releaseAll(); Q.sim(0.5);
   out.mantle = { events: mt.slice(), endPos: Q.p(), onDock: p.position.y > 1.0 };
   if (!mt.length) fail('no mantle/climb event at the loading dock');
   if (p.position.y < 1.0) fail(`not on the loading dock after mantle, y=${Q.r(p.position.y)}`);
-  p.events.onMantle = origMantle;
+  p.events.onMantle = origMantle; delete p.events._qaOrigMantle;
   // Stairs to the warehouse catwalk: steel stairs at x=-16.4 starting z~-33.5 rising north (-Z).
   settle([-16.4, 0.1, -31.0], 0); const trace = []; Q.down('KeyW');
   Q.sim(4.5, 1 / 30, (t) => { if (Math.round(t * 30) % 15 === 0) trace.push([Q.r(p.position.z, 1), Q.r(p.position.y, 2)]); });

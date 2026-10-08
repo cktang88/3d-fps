@@ -203,9 +203,9 @@ kbd { display: inline-block; min-width: 20px; padding: 0 5px; margin-right: 6px;
 #prompt .cook i { width: 16px; height: 16px; border-radius: 50%; background: conic-gradient(var(--gold) var(--p), rgba(255, 255, 255, 0.15) 0); }
 #prompt .cook.hot { color: var(--enemy); }
 #prompt .cook.hot i { background: conic-gradient(var(--enemy) var(--p), rgba(255, 255, 255, 0.15) 0); animation: pulse 0.3s infinite; }
-#banner { position: absolute; left: 50%; top: 27%; transform: translateX(-50%); text-align: center; white-space: nowrap; opacity: 0; }
+#banner { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); text-align: center; white-space: nowrap; opacity: 0; }
 #banner.on { opacity: 1; }
-#banner .big { font: 600 60px/1 var(--font2); letter-spacing: 0.18em; padding: 0 0 6px; animation: bannerIn 0.6s var(--ease) both; }
+#banner .big { font: 600 clamp(34px, 4.6vw, 60px)/1 var(--font2); letter-spacing: 0.18em; padding: 0 0 6px; animation: bannerIn 0.6s var(--ease) both; }
 #banner .small { display: inline-block; font: 700 14px var(--font); color: var(--dim); letter-spacing: 0.3em; padding-top: 8px; border-top: 1px solid var(--line); animation: fadeUp 0.5s 0.15s var(--ease) both; }
 #banner.ally .big { color: var(--ally); } #banner.enemy .big { color: var(--enemy); }
 #banner.out { opacity: 0; transition: opacity 0.4s; }
@@ -473,4 +473,39 @@ kbd { display: inline-block; min-width: 20px; padding: 0 5px; margin-right: 6px;
   .loadout, .brief { grid-template-columns: 1fr 1fr; }
   .estats { grid-template-columns: repeat(2, 1fr); }
   .slots { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Scoreboard open: hide the feed so it never sits on the panel. */
+#hud.sbon #killfeed, #hud.sbon #tally, #hud.sbon #medals { opacity: 0; }
+
+/* Compact layout for short / small viewports (e.g. 960x540). */
+@media (max-height: 640px), (max-width: 1000px) {
+  .menu .side { width: min(330px, 36vw); padding: 3.5vh 1.6vw 2.5vh 3vw; overflow-y: auto; }
+  .menu .logo .mark { transform: scale(0.72); transform-origin: left center; width: 34px; }
+  .menu .logo .word { font-size: 44px; }
+  .menu .logo .word small { font-size: 10px; margin-top: 6px; }
+  .menu .sub { margin: 2vh 0 1.4vh; font-size: 11px; }
+  .btn { padding: 5px 10px 5px 10px; grid-template-columns: 24px 1fr; }
+  .btn .lbl { font-size: 16px; letter-spacing: 0.12em; }
+  .btn.play .lbl { font-size: 19px; }
+  .btn .desc, .btn.play .desc { font-size: 10px; }
+  .menu .profile { padding-top: 10px; }
+  .menu .profile .lvl { width: 44px; height: 44px; }
+  .menu .profile .lvl b { font-size: 20px; }
+  .menu .foot { display: none; }
+  .menu .main { padding: 3.5vh 2.5vw 4vh 0.5vw; }
+  .menu .card { padding: 13px 16px 15px; margin-bottom: 9px; }
+  .wcard .wn { font-size: 24px; }
+  .brief span, .notes p { font-size: 13px; }
+  .opts { grid-template-columns: 170px 1fr 52px; gap: 8px 14px; }
+  .endscreen .rtxt { font-size: 72px; }
+  .estats .st b { font-size: 26px; }
+  #minimap { width: 150px; height: 150px; left: 22px; top: 22px; }
+  #minimap .north::after { top: -71px; }
+  #killfeed { right: 20px; top: 20px; }
+  #killfeed .row { font-size: 13px; }
+  #compass { width: 340px; }
+  #health { left: 24px; bottom: 22px; width: 240px; }
+  #ammo { right: 24px; bottom: 22px; }
+  #ammo .mag { font-size: 52px; }
 }

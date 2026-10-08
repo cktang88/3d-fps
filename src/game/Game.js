@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Renderer } from '../render/Renderer.js';
 import { Effects } from '../render/Effects.js';
 import { Perf } from '../render/Perf.js';
+import { lodReady, installShadowProxyLayer } from '../render/Lod.js';
 import { Physics, G } from '../core/Physics.js';
 import { Input } from '../core/Input.js';
 import { Audio } from '../core/Audio.js';
@@ -52,6 +53,7 @@ export class Game {
     const s = this.settings;
     this.renderer = new Renderer(this.canvas, s);
     this.perf = new Perf(this); window.__perf = this.perf;
+    installShadowProxyLayer(this.renderer.renderer);
     this.perf.mark('renderer');
     this.input = new Input(this.canvas);
     this.audio = new Audio();
@@ -71,6 +73,7 @@ export class Game {
       this.assets.model('soldier', 'models/characters/soldier.glb'),
       this.assets.model('soldierTac', 'models/characters/soldier_tac.glb'),
       this.loadSounds(),
+      lodReady,
     ]);
     this.perf.mark('assets loaded');
     onProgress?.(0.92, 'Building level');

@@ -101,7 +101,7 @@ export function clampedHDR(tex, maxV = 12) {
  * forward in-scattering toward the sun, so distance haze glows warm against the light and cool away from it.
  * Must run before shaders compile. Applies to every material with fog enabled.
  */
-export function installAtmosphere({ sunDir, sunColor, heightFalloff = 0.07, heightShare = 0.75, scatter = 0.9 }) {
+export function installAtmosphere({ sunDir, sunColor, heightFalloff = 0.07, heightShare = 0.75, scatter = 0.9, indoor = [] }) {
   const v3 = (v) => `vec3(${v.x.toFixed(5)}, ${v.y.toFixed(5)}, ${v.z.toFixed(5)})`;
   const c3 = (c) => `vec3(${c.r.toFixed(4)}, ${c.g.toFixed(4)}, ${c.b.toFixed(4)})`;
   THREE.ShaderChunk.fog_pars_vertex = `#ifdef USE_FOG
@@ -133,7 +133,10 @@ export function installAtmosphere({ sunDir, sunColor, heightFalloff = 0.07, heig
     #else
       float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
     #endif
-    float sunAmt = pow(max(dot(fdir, ${v3(sunDir)}), 0.0), 6.0);
+    vec3 fwp = cameraPosition + fw; float fin = 0.0;
+    ${indoor.map((b) => `fin = max(fin, step(${b.min.x.toFixed(2)}, fwp.x) * step(fwp.x, ${b.max.x.toFixed(2)}) * step(${b.min.z.toFixed(2)}, fwp.z) * step(fwp.z, ${b.max.z.toFixed(2)}) * step(fwp.y, ${b.max.y.toFixed(2)}));`).join('\n    ')}
+    fogFactor *= 1.0 - fin * 0.7; // interiors: much less haze
+    float sunAmt = pow(max(dot(fdir, ${v3(sunDir)}), 0.0), 6.0) * (1.0 - fin);
     vec3 fcol = fogColor + ${c3(sunColor)} * sunAmt * ${scatter.toFixed(3)};
     gl_FragColor.rgb = mix(gl_FragColor.rgb, fcol, fogFactor);
   }

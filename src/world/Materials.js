@@ -229,8 +229,8 @@ export class Materials {
       ...alphaSets.map(async (s) => {
         const [map, normalMap, roughnessMap] = await Promise.all([
           this.assets.texture(`textures/${s}/ColorA.webp`, true),
-          this.assets.texture(`textures/${s}/NormalGL.jpg`, false),
-          this.assets.texture(`textures/${s}/Roughness.jpg`, false),
+          this.assets.texture(`textures/${s}/NormalGL.webp`, false),
+          this.assets.texture(`textures/${s}/Roughness.webp`, false),
         ]);
         alpha[s] = { map, normalMap, roughnessMap };
       }),

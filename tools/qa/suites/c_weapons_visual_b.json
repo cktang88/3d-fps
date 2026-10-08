@@ -4,8 +4,8 @@
   "tools/qa/suites/lib.js"
  ],
  "match": "tdm",
- "w": 640,
- "h": 360,
+ "w": 800,
+ "h": 450,
  "views": [
   {
    "name": "m24_1hip",
@@ -29,22 +29,6 @@
    "read": "({ammo:__game.currentWeapon.ammo,fx:__qa.fx()})",
    "release": [
     "Mouse0"
-   ]
-  },
-  {
-   "name": "m24_4reload",
-   "frames": 1,
-   "eval": "__qa.down('Mouse0',false);__qa.sim(1.2);const w=__game.currentWeapon;w.ammo=Math.min(w.ammo,Math.max(1,w.stats.mag-3));__qa.tap('KeyR');__qa.sim((w.stats.tube?w.stats.shellReload*1.5:w.stats.tacReload)*0.45);",
-   "read": "({state:__game.currentWeapon.state,type:__game.currentWeapon.reloadType})"
-  },
-  {
-   "name": "m24_5sprint",
-   "frames": 1,
-   "eval": "__qa.sim(5);__qa.place([0,0.1,22],0.15,0);__qa.down('ShiftLeft');__qa.down('KeyW');__qa.sim(0.7);",
-   "read": "({sprintT:__game.currentWeapon.sprintT})",
-   "release": [
-    "ShiftLeft",
-    "KeyW"
    ]
   },
   {
@@ -189,22 +173,6 @@
    "read": "({ammo:__game.currentWeapon.ammo,fx:__qa.fx()})",
    "release": [
     "Mouse0"
-   ]
-  },
-  {
-   "name": "m1911_4reload",
-   "frames": 1,
-   "eval": "__qa.down('Mouse0',false);__qa.sim(1.2);const w=__game.currentWeapon;w.ammo=Math.min(w.ammo,Math.max(1,w.stats.mag-3));__qa.tap('KeyR');__qa.sim((w.stats.tube?w.stats.shellReload*1.5:w.stats.tacReload)*0.45);",
-   "read": "({state:__game.currentWeapon.state,type:__game.currentWeapon.reloadType})"
-  },
-  {
-   "name": "m1911_5sprint",
-   "frames": 1,
-   "eval": "__qa.sim(5);__qa.place([0,0.1,22],0.15,0);__qa.down('ShiftLeft');__qa.down('KeyW');__qa.sim(0.7);",
-   "read": "({sprintT:__game.currentWeapon.sprintT})",
-   "release": [
-    "ShiftLeft",
-    "KeyW"
    ]
   }
  ]

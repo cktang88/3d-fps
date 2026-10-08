@@ -4,6 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { damp, clamp, DEG } from '../../core/MathUtil.js';
 import { POSES } from '../weapons/GunModels.js';
 import { G } from '../../core/Physics.js';
+import { rigidLodTemplate, addMergedShadowProxy } from '../../render/Lod.js';
 
 /*
  * Third-person soldier: Bamen military soldier (CC-BY 4.0) with retargeted Mixamo-named clips.
@@ -393,6 +394,7 @@ export class CharacterTemplate {
 // ----------------------------------------------------------------------------------------------
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();
 const _v5 = new THREE.Vector3(), _v6 = new THREE.Vector3(), _v7 = new THREE.Vector3();
+const _rq1 = new THREE.Quaternion(), _rq2 = new THREE.Quaternion(), _rv = new THREE.Vector3(), _rs = new THREE.Vector3();
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _q4 = new THREE.Quaternion();
 const _e1 = new THREE.Euler(0, 0, 0, 'YXZ'), _e2 = new THREE.Euler();
 const V3 = () => new THREE.Vector3(), Q = () => new THREE.Quaternion();
@@ -434,6 +436,8 @@ export class Character {
         o.frustumCulled = true;
       }
     });
+    // Perf: the body's ~11 skinned parts cast one merged, simplified shadow (1 shadow draw instead of 11).
+    addMergedShadowProxy(model, 3500);
     this.bones = findBones(model);
     this._addArmbands(mats.__band);
 
@@ -527,9 +531,13 @@ export class Character {
     this.weaponId = id;
     const src = this.tpl.gunModels.src[bot.weapon.stats.model];
     if (!src || !this.bones.rHand) return;
-    const gun = src.clone(true);
-    gun.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
+    // Perf: third-person LOD (meshopt, ≤3k tris; the source FP guns run up to ~100k) + normal frustum culling
+    // for rigid parts (the bot's whole gun used to be drawn every frame, in the shadow pass too).
+    // Cached per gun: simplified, SpareMagazine dropped, parts merged per material (~11 draws -> 2-4).
+    const gun = rigidLodTemplate(src, 3000, 0.006, /^SpareMagazine$/).clone(true);
+    gun.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = !o.isSkinnedMesh; } });
     const spare = gun.getObjectByName('SpareMagazine'); if (spare) spare.visible = false;
+    addMergedShadowProxy(gun, 1000);
     // Steel-tide rifles are authored ~1.75 units long; 0.47 gives real-world length.
     const s = 0.47;
     const wrap = new THREE.Group();
@@ -625,11 +633,18 @@ export class Character {
     const sp = this.speedS;
     const aimYaw = bot.yaw;
     let moveYaw = sp > 0.25 ? Math.atan2(-v.x, -v.z) : aimYaw;
-    let rel = wrapPi(moveYaw - aimYaw);
-    // Backpedal when moving away from the aim; hysteresis avoids flip-flopping at pure strafes.
-    const thr = (this.backward ? 95 : 115) * DEG;
-    this.backward = sp > 0.25 && Math.abs(rel) > thr;
-    if (this.backward) { moveYaw += Math.PI; rel = wrapPi(moveYaw - aimYaw); }
+    // Legs run along the movement (forward gait) or against it (backpedal). Clearly forward / clearly
+    // backward movement decides by itself; for strafes either works, so keep whichever needs the least
+    // hip rotation — ADAD strafing then reads as stepping back and forth, not a body spinning 180°.
+    const relF = Math.abs(wrapPi(moveYaw - aimYaw));
+    if (sp <= 0.25) this.backward = false;
+    else if (relF < 65 * DEG) this.backward = false;
+    else if (relF > 115 * DEG) this.backward = true;
+    else {
+      const costF = Math.abs(wrapPi(moveYaw - this.bodyYaw)), costB = Math.abs(wrapPi(moveYaw + Math.PI - this.bodyYaw));
+      if (this.backward ? costF + 0.5 < costB : costB + 0.5 < costF) this.backward = !this.backward;
+    }
+    if (this.backward) moveYaw += Math.PI;
     const targetBody = sp > 0.25 ? moveYaw : this._idleBodyYaw(aimYaw);
     const dy = wrapPi(targetBody - this.bodyYaw);
     const turn = dy * Math.min(1, dt * (sp > 0.25 ? 9 : 6));
@@ -753,39 +768,67 @@ export class Character {
 
   /** Procedural layer applied on top of the sampled pose, then weapon + IK + matrices. */
   _afterPose(bot, fresh) {
+    if (!fresh) { this._matrixFrame = -1; return; } // matrices refreshed lazily (hitboxes) / by the renderer
     const root = this.root, b = this.bones;
-    if (fresh) {
-      root.updateMatrixWorld(true);
-      const pitch = clamp(bot.pitch, -70 * DEG, 70 * DEG);
-      const aimYaw = bot.yaw;
-      // Aim right axis (world) for pitching the chest.
-      _v5.set(Math.cos(aimYaw), 0, -Math.sin(aimYaw));
-      const chain = [b.spine, b.spine1, b.spine2];
-      const share = [0.3, 0.33, 0.37];
-      for (let i = 0; i < 3; i++) {
-        const bone = chain[i];
-        if (!bone) continue;
-        bone.parent.getWorldQuaternion(_q1);
-        _q2.copy(_q1).invert();
-        // world-space rotation for this bone's share: twist about up, then pitch about aim right,
-        // plus recoil (pitch back) and a directional flinch on the upper chest.
-        let p = pitch * share[i];
-        if (i === 2) p += this.fireKick * 0.05;
-        _q3.setFromAxisAngle(UP, this.twist * share[i]);
-        _q4.setFromAxisAngle(_v5, p);
-        _q3.premultiply(_q4);
-        if (i >= 1 && this.hitJerk > 0) { _q4.setFromAxisAngle(this.hitAxis, this.hitJerk * 0.16 * (i === 2 ? 1.2 : 0.8)); _q3.premultiply(_q4); }
-        if (i === 2 && this.fireKick > 0) { _q4.setFromAxisAngle(UP, this.kickRoll * this.fireKick * 0.03); _q3.premultiply(_q4); }
-        // local' = inv(parentWorld) * R * parentWorld * local
-        _q4.copy(_q2).multiply(_q3).multiply(_q1);
-        bone.quaternion.premultiply(_q4);
-        bone.updateMatrixWorld(true);
-      }
-      this._placeWeapon(bot, pitch, aimYaw);
-      root.updateMatrixWorld(true);
-    } else {
-      root.updateMatrixWorld(true);
+    root.updateMatrixWorld(true);
+    const pitch = clamp(bot.pitch, -70 * DEG, 70 * DEG);
+    const aimYaw = bot.yaw;
+    // Procedural rotations: each bone's own matrixWorld is refreshed in place as we go down the chain
+    // (no subtree updates); the whole skeleton is refreshed once at the end.
+    _v5.set(Math.cos(aimYaw), 0, -Math.sin(aimYaw)); // aim right axis (world) for pitching the chest
+    const chain = [b.spine, b.spine1, b.spine2];
+    const share = [0.3, 0.33, 0.37];
+    for (let i = 0; i < 3; i++) {
+      const bone = chain[i];
+      // World-space rotation for this bone's share: twist about up, pitch about aim-right, plus recoil
+      // (pitch back) and a directional flinch on the upper chest.
+      let p = pitch * share[i];
+      if (i === 2) p += this.fireKick * 0.05;
+      _q3.setFromAxisAngle(UP, this.twist * share[i]);
+      _q4.setFromAxisAngle(_v5, p);
+      _q3.premultiply(_q4);
+      if (i >= 1 && this.hitJerk > 0) { _q4.setFromAxisAngle(this.hitAxis, this.hitJerk * 0.16 * (i === 2 ? 1.2 : 0.8)); _q3.premultiply(_q4); }
+      if (i === 2 && this.fireKick > 0) { _q4.setFromAxisAngle(UP, this.kickRoll * this.fireKick * 0.03); _q3.premultiply(_q4); }
+      this._rotateW(bone, _q3);
     }
+    // Head looks along the aim (the aim clip buries the chin in the stock; keep a slight cheek weld).
+    if (b.head && b.neck && b.head.parent === b.neck && b.neck.parent === b.spine2 && this.oneShotW < 0.5) {
+      const tp = pitch - 0.22;
+      _v2.set(-Math.sin(aimYaw) * Math.cos(tp), Math.sin(tp), -Math.cos(aimYaw) * Math.cos(tp));
+      const k = 1 - this.oneShotW * 2;
+      for (const [bone, share] of [[b.neck, 0.4], [b.head, 0.75]]) {
+        this._refreshW(b.neck); this._refreshW(b.head);
+        b.head.matrixWorld.decompose(_v1, _q1, _v3);
+        _v1.set(0, 0, 1).applyQuaternion(_q1); // face direction (Mixamo head +Z)
+        _q3.setFromUnitVectors(_v1, _v2); _q4.identity().slerp(_q3, share * k);
+        this._rotateW(bone, _q4);
+      }
+    }
+    root.updateMatrixWorld(true);
+    this._matrixFrame = this._frame;
+    this._placeWeapon(bot, pitch, aimYaw);
+  }
+
+  /** Rotate `bone` about its pivot by world rotation q (parent's matrixWorld must be current). */
+  _rotateW(bone, q) {
+    bone.parent.matrixWorld.decompose(_rv, _rq2, _rs);
+    _rq1.copy(_rq2).invert().multiply(q).multiply(_rq2);
+    bone.quaternion.premultiply(_rq1);
+    this._refreshW(bone);
+  }
+
+  /** Recompute just this bone's matrixWorld from its (current) parent. */
+  _refreshW(bone) {
+    bone.updateMatrix();
+    bone.matrixWorld.multiplyMatrices(bone.parent.matrixWorld, bone.matrix);
+  }
+
+  /** Apply a world-space rotation to a bone (about its own pivot). */
+  _rotateBoneWorld(bone, q) {
+    bone.parent.getWorldQuaternion(_rq1);
+    _rq2.copy(_rq1).invert().multiply(q).multiply(_rq1);
+    bone.quaternion.premultiply(_rq2);
+    bone.updateMatrixWorld(true);
   }
 
   _placeWeapon(bot, pitch, aimYaw) {
@@ -1059,6 +1102,7 @@ export class Character {
     if (!b.head) return [];
     if (this._hbFrame === this._frame && this._hb) return this._hb;
     this._hbFrame = this._frame;
+    if (this._matrixFrame !== this._frame) { this.root.updateMatrixWorld(true); this._matrixFrame = this._frame; }
     if (!this._hb) {
       const mk = (part, r, mult) => ({ part, a: new THREE.Vector3(), b: new THREE.Vector3(), r, mult });
       this._hb = [

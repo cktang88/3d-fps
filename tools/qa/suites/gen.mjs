@@ -9,7 +9,9 @@ const wv = (id) => [
   { name: `${id}_4reload`, frames: 1, eval: `__qa.down('Mouse0',false);__qa.sim(1.2);const w=__game.currentWeapon;w.ammo=Math.min(w.ammo,Math.max(1,w.stats.mag-3));__qa.tap('KeyR');__qa.sim((w.stats.tube?w.stats.shellReload*1.5:w.stats.tacReload)*0.45);`, read: `({state:__game.currentWeapon.state,type:__game.currentWeapon.reloadType})` },
   { name: `${id}_5sprint`, frames: 1, eval: `__qa.sim(5);__qa.place([0,0.1,22],0.15,0);__qa.down('ShiftLeft');__qa.down('KeyW');__qa.sim(0.7);`, read: `({sprintT:__game.currentWeapon.sprintT})`, release: ['ShiftLeft', 'KeyW'] },
 ];
-const job = (tag, ids) => ({ tag, setupFiles: ['tools/qa/suites/lib.js'], match: 'tdm', w: 640, h: 360, views: ids.flatMap(wv) });
+// Full reload + sprint sequences only for representative weapons (one per animation family); hip/ADS/fire for all.
+const FULL = new Set(['m4', 'ak', 'm870', 'p226', 'awm']);
+const job = (tag, ids) => ({ tag, setupFiles: ['tools/qa/suites/lib.js'], match: 'tdm', w: 800, h: 450, views: ids.flatMap((id) => (FULL.has(id) ? wv(id) : wv(id).slice(0, 3))) });
 fs.writeFileSync(dir + 'c_weapons_visual_a.json', JSON.stringify(job('c_wvis_a', W.slice(0, 6)), null, 1));
 fs.writeFileSync(dir + 'c_weapons_visual_b.json', JSON.stringify(job('c_wvis_b', W.slice(6)), null, 1));
 
@@ -31,7 +33,7 @@ const ART = [
 ];
 const art = {
   tag: 'e_keyart', setupFiles: ['tools/qa/suites/lib.js'], match: 'tdm', w: 960, h: 540,
-  views: ART.map(([name, pos, yaw, pitch]) => ({ name, frames: 2, eval: `__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([${pos}],${yaw},${pitch});__qa.sim(0.3);__game.player.yaw=${yaw};__game.player.pitch=${pitch};`, read: '__qa.perf()' })),
+  views: [{ name: 'e00_settle', shot: false, frames: 1, eval: '__qa.sim(4)' }].concat(ART.map(([name, pos, yaw, pitch]) => ({ name, frames: 2, eval: `__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([${pos}],${yaw},${pitch});__qa.sim(0.3);__game.player.yaw=${yaw};__game.player.pitch=${pitch};`, read: '__qa.perf()' }))).concat([{ name: 'e99_load', shot: false, frames: 1, read: '({hudOverlaps: __qa.hudOverlaps()})' }]),
 };
 fs.writeFileSync(dir + 'e_keyart.json', JSON.stringify(art, null, 1));
 console.log('ok');

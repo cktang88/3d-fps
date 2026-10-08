@@ -151,6 +151,23 @@ def prep(gid, spec, sfdir, work):
             for o in meshes:
                 b0, b1 = bbox([v.co for v in o.data.vertices])
                 print('  OBJ', o.name, [m.name for m in o.data.materials if m], len(o.data.vertices), [round(x, 3) for x in b0], [round(x, 3) for x in b1])
+        # Integrated scopes without a separate lens mesh: add lens discs at the eyepiece / objective
+        # (centre + radius measured from the scope tube vertices in the given y slabs).
+        for tag, (y0, y1, zmin) in (spec.get('scope') or {}).items():
+            sl = [v.co for o in meshes for v in o.data.vertices if y0 <= v.co.y <= y1 and v.co.z >= zmin]
+            if not sl:
+                continue
+            mn_, mx_ = bbox(sl)
+            r = 0.42 * min(mx_.x - mn_.x, mx_.z - mn_.z)
+            bm = bmesh.new()
+            bmesh.ops.create_circle(bm, cap_ends=True, segments=32, radius=r)
+            me = bpy.data.meshes.new('Glass' + tag)
+            bm.to_mesh(me); bm.free()
+            me.transform(Matrix.Translation(((mn_.x + mx_.x) / 2, y0 if tag == 'Rear' else y1, (mn_.z + mx_.z) / 2)) @ Matrix.Rotation(math.radians(90), 4, 'X'))
+            mat = bpy.data.materials.new('glass_scope'); me.materials.append(mat)
+            ob = bpy.data.objects.new('Glass' + tag, me); bpy.context.scene.collection.objects.link(ob)
+            meshes.append(ob)
+            print('SCOPE', gid, tag, 'r', round(r, 4), 'centre', round((mn_.x + mx_.x) / 2, 4), round((mn_.z + mx_.z) / 2, 4))
         # Group by role.
         roles = {}
         for o in meshes:

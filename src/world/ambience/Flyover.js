@@ -154,7 +154,8 @@ export class Flyover {
       if (n.includes('mainrotor') && Math.max(sz.x, sz.z) > Math.max(bsz.x, bsz.z) * 0.3) m.visible = false;
       if (m === tail) m.visible = false;
       if (n.includes('Material.004')) m.visible = false;
-      m.castShadow = true; m.receiveShadow = true;
+      // Flies 30-50 m up: its shadow is a smudge at best, not worth the shadow-pass triangles.
+      m.castShadow = false; m.receiveShadow = true;
       if (m.material) this.amb.unify(m.material);
     }
     const tb = tail ? box(tail) : null;

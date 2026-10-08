@@ -1,8 +1,18 @@
 // QA helper library — inlined into job.setup by submit.mjs ("setupFiles":["tools/qa/suites/lib.js"]).
 // Runs in the page before the match starts. Everything hangs off window.__qa.
 (() => {
+  // Warm pages are reused between jobs: undo anything a previous QA job patched.
+  const prev = window.__qa;
+  if (prev?.cleanup) try { prev.cleanup(); } catch (e) { console.warn('qa cleanup', e); }
   const Q = (window.__qa = {});
   const G = () => window.__game;
+  Q.cleanup = () => {
+    const g = G(); if (!g) return;
+    Q.thawBots?.();
+    if (Object.prototype.hasOwnProperty.call(g, 'onActorKilled')) delete g.onActorKilled;
+    if (g.player?.events?._qaOrigMantle) { g.player.events.onMantle = g.player.events._qaOrigMantle; delete g.player.events._qaOrigMantle; }
+    g.settings.godMode = false;
+  };
   // Simulate N seconds without rendering (fast on SwiftShader). cb(t) runs before each step.
   Q.sim = (seconds, dt = 1 / 30, cb) => {
     const g = G(); const r = g.renderer.render; g.renderer.render = () => {};
