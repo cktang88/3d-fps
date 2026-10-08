@@ -1,0 +1,6 @@
+{"tag":"ffa_hang","setupFiles":["tools/qa/suites/lib.js"],"match":"ffa","lofi":true,"w":480,"h":270,"timeoutS":420,
+ "views":[
+  {"name":"h1_noamb","shot":false,"frames":1,"eval":"const g=__game; g._qaAmb=g.ambience.update; g.ambience.update=()=>{}; window.__r=__qa.matchSim(120); g.ambience.update=g._qaAmb;","read":"({kills: window.__r.kills, nanAt: window.__r.nanAt, wallMs: window.__r.wallMs})"},
+  {"name":"h2_full_logged","shot":false,"frames":1,"eval":"const g=__game; let i=0; const t0=performance.now(); __qa.sim(120, 1/30, ()=>{ if(i%30===0) console.warn('QA step '+i+' t='+g.time.toFixed(1)+' alive='+g.bots.filter(b=>b.alive).length+' ms='+(performance.now()-t0).toFixed(0)); i++; }); window.__r2={steps:i};","read":"window.__r2"},
+  {"name":"h3_ffa_shot","frames":1,"eval":"window.__bi=__qa.lookAtBot(4);","read":"({bot: window.__bi, nan: __qa.nanScan(), score: __game.bots.map(b=>b.stats.kills)})"}
+ ]}
