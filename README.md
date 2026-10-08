@@ -92,7 +92,7 @@ Code is original except where noted. Third-party assets:
 - **Level textures added**: ambientCG Ground110, Fence006 (chain-link), MetalWalkway013 (grating), Leaking003 (wall
   streaks) — CC0.
 - **Ambience**: "Destroyed Ford Crown Vic" by alexdelker and "Sikorsky UH-60 Black Hawk" by helijah — CC BY 4.0 (Sketchfab;
-  simplified/re-lit, see `public/assets/ambience/models/*/SOURCE.md`); Unity Labs VFX flipbooks Explosion01 & WispySmoke02 — CC0;
+  simplified/re-lit, see `public/assets/ambience/models/*/SOURCE.md`); Unity Labs VFX flipbooks Explosion01, WispySmoke02 & Flame03 — CC0;
   Poly Haven rusty_metal_04 — CC0.
 - Design references: Mugen87/dive & Yuka (bot architecture), Quake/Source movement, CS/Valorant recoil design,
   F.E.A.R. & Killzone bot AI talks.
