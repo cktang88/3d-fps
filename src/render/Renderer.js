@@ -235,8 +235,9 @@ export class Renderer {
     const shadowSize = [1024, 2048, 4096, 4096][q];
     this.scene.traverse((o) => {
       if (!o.isDirectionalLight || !o.castShadow || o.shadow.mapSize.x === shadowSize) return;
+      // three resizes the existing map on its next shadow render. Don't dispose it: a null map makes the
+      // array shadow-sampler fall back to an empty depth texture without compare mode (GL sampler mismatch).
       o.shadow.mapSize.set(shadowSize, shadowSize);
-      o.shadow.map?.dispose(); o.shadow.map = null;
     });
     this.resize();
   }

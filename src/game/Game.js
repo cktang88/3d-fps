@@ -3,6 +3,7 @@ import { Renderer } from '../render/Renderer.js';
 import { Effects } from '../render/Effects.js';
 import { Perf } from '../render/Perf.js';
 import { lodReady, installShadowProxyLayer } from '../render/Lod.js';
+import { BotOcclusion } from '../render/Occlusion.js';
 import { Physics, G } from '../core/Physics.js';
 import { Input } from '../core/Input.js';
 import { Audio } from '../core/Audio.js';
@@ -101,6 +102,8 @@ export class Game {
     this.fpcam = new FPCamera(this.renderer.camera, this.renderer.viewCamera, s);
     this.viewmodel = new ViewModel(this, this.gunModels);
     this.charTemplate = new CharacterTemplate(this.assets.models.soldier, this.gunModels, this.assets.models.soldierTac);
+    this.charTemplate.camera = this.renderer.camera; // perf: render-time body LOD (Lod.DistanceLod)
+    this.botOcclusion = new BotOcclusion(this);
     this.hud = new HUD(this);
     this.hud.show(false);
     this.match = new Match(this);
@@ -111,6 +114,9 @@ export class Game {
     // Patch every material for indoor IBL attenuation (after all scene content exists).
     this.level.applyInteriorOcclusion();
     // Pre-compile shaders to avoid hitches on first view.
+    // Perf/robustness: create the sun shadow map now. Passes that run before the first world pass (scope, light
+    // probe) never update shadows, and a null map binds a compare-less fallback (GL sampler mismatch).
+    if (this.level.sun) { const sm = this.renderer.renderer.shadowMap; sm.needsUpdate = true; sm.render([this.level.sun], this.renderer.scene, this.renderer.camera); }
     this.renderer.renderer.compile(this.renderer.scene, this.renderer.camera);
     this.renderer.renderer.compile(this.renderer.viewScene, this.renderer.viewCamera);
     this.perf.mark('shaders compiled');
@@ -640,6 +646,7 @@ export class Game {
     this.audio.updateListener(this.renderer.camera);
     this.effects.update(dt, this.renderer.camera);
     this.ambience?.update(dt);
+    this.botOcclusion.update(); // perf: hide fully wall-occluded bots (shadow proxies keep casting)
     if (this.started) this.hud.update(live ? dt : 0); // HUD timers freeze while paused
     // Muffle on low health (visual + audio).
     const lowHealth = p.alive ? clamp(1 - p.health / 40, 0, 1) : 0.6;

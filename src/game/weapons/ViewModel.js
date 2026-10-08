@@ -1186,6 +1186,7 @@ export class ViewModel {
     const u = Math.min(THROW_PATH.length - 1, Math.max(0, Number.isFinite(this.throwU) ? this.throwU : 0));
     const i = Math.min(THROW_PATH.length - 2, Math.floor(u)), f = u - i;
     const a = THROW_PATH[i], b = THROW_PATH[i + 1];
+    if (!a || !b) { if (this.nade) this.nade.visible = false; return; }
     const vp = _v.set(a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f).multiplyScalar(0.85);
     // The mocap wind-up sits behind the ear; slide the whole path forward so the cocked hand and the
     // frag read at the top-left of frame, then sweep across and down through release.

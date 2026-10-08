@@ -681,6 +681,56 @@ if OUT != '-':
         d = depths(verts_of(REG['L_hand']), maxd=0.05 * K)
         REPORT['vgrip_L_max_mm'] = round(max([x for x in d if x > 0] or [0]) / K * 1000, 2)
         log('VGRIP L penetration mm', REPORT['vgrip_L_max_mm'])
+        # Corrective morph target for the variant: project still-penetrating vertices out (as the main pass) in
+        # posed space, convert the displacement to bind space through each vertex's skinning matrix.
+        bpy.context.view_layer.update()
+        me = arms_mesh.data
+        e = arms_mesh.evaluated_get(bpy.context.evaluated_depsgraph_get()); em = e.to_mesh()
+        posed = [arms_mesh.matrix_world @ v.co for v in em.vertices]
+        e.to_mesh_clear()
+        skin = {b.name: (pb[b.name].matrix @ b.matrix_local.inverted()).to_3x3() for b in arm.data.bones}
+        gnm = {g.index: g.name for g in arms_mesh.vertex_groups}
+        disp = {}
+        R_F = 0.010 * K
+        from mathutils.kdtree import KDTree
+        kd = KDTree(len(posed))
+        for i, p_ in enumerate(posed): kd.insert(p_, i)
+        kd.balance()
+        Lset = set(REG['L_hand'] + REG['L_forearm'])
+        for it in range(4):
+            cur = [posed[i] + disp.get(i, Vector()) for i in range(len(posed))]
+            hit_any = False
+            for i, p_ in enumerate(cur):
+                if DOM[i] not in Lset: continue
+                d = inside_depth(gun_bvh, p_, 0.03 * K)
+                if d > 0.0002 * K:
+                    hit_any = True
+                    loc, nrm, _, _ = gun_bvh.find_nearest(p_, 0.03 * K)
+                    delta = (loc + nrm * 0.0003 * K) - p_
+                    for (_, j, dist) in kd.find_range(posed[i], R_F):
+                        wgt = 1.0 if j == i else 0.5 * (1 + math.cos(math.pi * dist / R_F)) * 0.85
+                        dv = disp.get(j, Vector()) + delta * wgt
+                        disp[j] = dv
+            if not hit_any: break
+        if disp:
+            if not me.shape_keys: arms_mesh.shape_key_add(name='Basis', from_mix=False)
+            sk = arms_mesh.shape_key_add(name='vgrip_fix', from_mix=False)
+            Wi = arms_mesh.matrix_world.inverted().to_3x3()
+            for j, dv in disp.items():
+                v = me.vertices[j]
+                Ssum = Matrix(((0, 0, 0), (0, 0, 0), (0, 0, 0))); wsum = 0
+                for g in v.groups:
+                    n = gnm.get(g.group)
+                    if n in skin and g.weight > 0:
+                        Ssum = Ssum + skin[n] * g.weight; wsum += g.weight
+                if wsum <= 0: continue
+                sk.data[j].co = v.co + (Ssum * (1 / wsum)).inverted() @ (Wi @ dv)
+            sk.value = 1.0
+            bpy.context.view_layer.update()
+            d2 = depths(verts_of(REG['L_hand']), maxd=0.05 * K)
+            REPORT['vgrip_final_mm'] = round(max([x for x in d2 if x > 0] or [0]) / K * 1000, 2)
+            log('VGRIP FINAL (with vgrip_fix morph)', REPORT['vgrip_final_mm'])
+            sk.value = 0.0
         make_camera(CAM_W, vfov_deg=52.0); render(os.path.join(WORK, f'rig_{GID}_vgrip.png'))
         act = bpy.data.actions.new('grip_vgrip')
         arm.animation_data_create(); arm.animation_data.action = act

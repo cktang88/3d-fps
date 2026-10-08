@@ -145,6 +145,11 @@ export class FPArms {
       root.updateMatrixWorld(true);
     }
     this.variant = clip ? variant : null;
+    // Variant corrective morph (contact fix baked by build_rig.py), e.g. 'vgrip_fix' for 'grip_vgrip'.
+    if (this.variant && this.mesh?.morphTargetDictionary) {
+      const k = this.mesh.morphTargetDictionary[this.variant.replace('grip_', '') + '_fix'];
+      if (k !== undefined) { this.mesh.morphTargetInfluences = this.mesh.morphTargetInfluences.slice(); this.mesh.morphTargetInfluences[k] = 1; }
+    }
     this.ik = { L: new ArmIK(root, 'L'), R: new ArmIK(root, 'R') };
     this.homeL = null;
   }

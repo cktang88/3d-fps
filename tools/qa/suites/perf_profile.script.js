@@ -22,6 +22,8 @@
     Q.sim(v.scar ? 0.8 : 0.3);
     g.player.yaw = v.yaw; g.player.pitch = v.pitch;
     window.__perfLegacy = !!v.legacy;
+    // One warm rendered frame first: render-time LOD (bots, props) and occlusion settle on the frame they see.
+    window.__qaSkipRender = false; await frame();
     window.__qaSkipRender = true; await frame();
     const cap = P.capture({ detail: !!v.detail || v.name === 'courtyard' });
     window.__qaSkipRender = false;
@@ -32,7 +34,7 @@
     for (const [k, p] of Object.entries(f.passes)) passes[k] = `${p.calls} calls / ${Math.round(p.tris / 1000)}k tris (x${p.n})`;
     out.views[v.name] = {
       total: `${f.total.calls} calls / ${Math.round(f.total.tris / 1000)}k tris`, calls: f.total.calls, tris: f.total.tris,
-      shadow: `${f.shadow.calls} calls / ${Math.round(f.shadow.tris / 1000)}k tris (x${f.shadow.n})`, passes, cpuMs: f.cpuMs, wallMs: Math.round(performance.now() - t0),
+      botsHidden: g.botOcclusion?.hiddenCount, shadow: `${f.shadow.calls} calls / ${Math.round(f.shadow.tris / 1000)}k tris (x${f.shadow.n})`, passes, cpuMs: f.cpuMs, wallMs: Math.round(performance.now() - t0),
     };
     window.__perfLegacy = false;
     if (v.scar) Q.down('Mouse2', false);
@@ -40,6 +42,7 @@
     if (v.name === 'courtyard') out.census = P.census();
   }
   out.bots = { n: g.bots.length, rootsVisible: g.bots.filter((b) => b.model?.root.visible).length, sparesVisible: g.bots.filter((b) => b.spareModel?.root.visible && b.spareModel.root.parent).length, lowLod: g.bots.filter((b) => b.model?._geoLod?.low).length };
+  out.bodyRoots = (() => { const s = []; g.renderer.scene.traverseVisible((o) => { if (o.isSkinnedMesh && o.name === 'Object_101') { let r = o; while (r.parent && r.parent !== g.renderer.scene) r = r.parent; s.push(g.bots.some((b) => b.model?.root === r) ? 'bot' : g.bots.some((b) => b.spareModel?.root === r) ? 'spare' : (r.name || r.type)); } }); return s; })();
   out.top = P.top(25);
   out.load = P.loadTimeline();
   return out;

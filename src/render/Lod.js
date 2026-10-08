@@ -311,4 +311,19 @@ export class DistanceLod {
   }
 
   update(k) { this.set(this.low ? k > this.near : k > this.far); }
+
+  /**
+   * Drive the LOD at render time from `camera` (independent of AI/animation update rates or frozen actors):
+   * the first visible part's onBeforeRender measures `anchor`'s distance. A swap applies from the next draw.
+   */
+  bindCamera(camera, anchor) {
+    const p = new THREE.Vector3();
+    const fn = (r, s, cam) => {
+      if (cam !== camera) return;
+      p.setFromMatrixPosition(anchor.matrixWorld);
+      this.update(p.distanceTo(cam.position) * Math.tan(cam.fov * Math.PI / 360));
+    };
+    for (const [o] of this.parts) { const prev = o.onBeforeRender; o.onBeforeRender = prev && prev !== THREE.Object3D.prototype.onBeforeRender ? (...a) => { prev.apply(o, a); fn(...a); } : fn; }
+    return this;
+  }
 }

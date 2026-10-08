@@ -522,7 +522,7 @@ export class Character {
     // Perf: the body's ~11 skinned parts cast one merged, simplified shadow (1 shadow draw instead of 11).
     addMergedShadowProxy(model, 2000);
     // Perf: ~30% body mesh once a bot is small on screen (distance x tan(fov/2) > 24, i.e. ~20 m at hip FOV).
-    this._geoLod = new DistanceLod(model, 0.3, 0.01);
+    this._geoLod = tpl.camera ? new DistanceLod(model, 0.3, 0.01).bindCamera(tpl.camera, this.root) : new DistanceLod(model, 0.3, 0.01);
     this.bones = findBones(model);
     this._addArmbands(mats.__band);
 
@@ -835,7 +835,7 @@ export class Character {
     if (!cam) return 0;
     const dx = bot.position.x - cam.position.x, dy = bot.position.y - cam.position.y, dz = bot.position.z - cam.position.z;
     const d2 = dx * dx + dy * dy + dz * dz;
-    this._geoLod?.update(Math.sqrt(d2) * Math.tan(cam.fov * DEG * 0.5));
+    if (!this.tpl.camera) this._geoLod?.update(Math.sqrt(d2) * Math.tan(cam.fov * DEG * 0.5));
     if (d2 < 15 * 15) return 0; // close: every frame
     const d = Math.sqrt(d2);
     cam.getWorldDirection(_v7);
