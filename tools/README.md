@@ -32,3 +32,4 @@ unless the job sets `renderScript:true`. Use `fresh:true` to force a clean page 
 5. **Don't wait idle**: `submit.mjs ... --nowait` returns a job id; keep coding, then read
    `tools/qa/results/<id>/result.json`.
 6. Runner backend: headful Chromium on Xvfb + Mesa llvmpipe (~1.4× SwiftShader). Restart with `tools/qa/restart.sh`.
+- Each result dir also holds `job.json` (the original job) — resubmit with `node tools/qa/submit.mjs <owner> tools/qa/results/<id>/job.json`.

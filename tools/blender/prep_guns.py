@@ -172,9 +172,13 @@ def prep(gid, spec, sfdir, work):
         roles = {}
         for o in meshes:
             role = 'Shell' if o.name.startswith('Shell') else 'Body'
-            for rn, rx in spec.get('parts', {}).items():
-                if re.match(rx, o.name):
-                    role = rn
+            base = re.sub(r'\.\d+$', '', o.name)
+            if spec.get('skinned') and base in spec.get('parts', {}):
+                role = base  # split_skinned already named the part by its role
+            else:
+                for rn, rx in spec.get('parts', {}).items():
+                    if re.match(rx, o.name):
+                        role = rn
             roles.setdefault(role, []).append(o)
         root = bpy.data.objects.new('Gun_' + gid, None)
         bpy.context.scene.collection.objects.link(root)

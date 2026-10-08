@@ -59,7 +59,9 @@ async function ensureBrowser() {
   return launching;
 }
 
-for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, async () => { log('shutting down'); await browser?.close().catch(() => {}); process.exit(0); });
+// On shutdown stop claiming at once; in-flight jobs stay in running/ and are re-queued by the next start.
+let shuttingDown = false;
+for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, async () => { shuttingDown = true; log('shutting down'); setTimeout(() => process.exit(0), 50); await browser?.close().catch(() => {}); process.exit(0); });
 log('browser backend:', headless ? 'swiftshader (headless)' : 'llvmpipe (Xvfb ' + process.env.DISPLAY + ')');
 
 function build() {
@@ -228,6 +230,7 @@ function claim() {
 }
 async function worker(n) {
   for (;;) {
+    if (shuttingDown) return new Promise(() => {});
     const f = claim();
     if (!f) { await new Promise((r) => setTimeout(r, 1500)); continue; }
     const fp = path.join(RUN, f);
@@ -236,6 +239,7 @@ async function worker(n) {
     const b = await freshBuild();
     log(`[w${n}] run`, job.id, 'for', job.owner);
     const r = await runJob(job, b, n);
+    if (shuttingDown) return new Promise(() => {}); // leave it in running/; the next start re-queues it
     // Browser died mid-job (OOM etc.): re-queue once instead of failing the requester.
     if (r.error && /has been closed|Target crashed|disconnected|Browser closed/i.test(r.error) && (job._retries || 0) < 2) {
       job._retries = (job._retries || 0) + 1;
@@ -247,6 +251,8 @@ async function worker(n) {
       continue;
     }
     fs.mkdirSync(path.join(RES, job.id), { recursive: true });
+    fs.writeFileSync(path.join(RES, job.id, 'job.json'), JSON.stringify(job)); // lets anyone re-submit it
+    fs.writeFileSync(path.join(RES, job.id, 'job.json'), JSON.stringify(job)); // for easy resubmission
     fs.writeFileSync(path.join(RES, job.id, 'result.json'), JSON.stringify(r, null, 2));
     fs.unlinkSync(fp);
     log(`[w${n}] done`, job.id, r.error ? 'ERROR ' + r.error.split('\n')[0] : 'ok', `${Math.round((Date.parse(r.finishedAt) - Date.parse(r.startedAt)) / 1000)}s`);
