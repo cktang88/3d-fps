@@ -72,9 +72,11 @@ Code is original except where noted. Third-party assets:
 - **SCAR-L**: "ScarL" by AdamKokrito — CC BY 3.0 (https://poly.pizza/m/ab1V8RlPDc), adapted by Operation Steel Tide.
 - **First-person arms & reload animations**: "fps animated smg" by DJMaesen — CC BY 4.0
   (https://sketchfab.com/3d-models/fps-animated-smg-ea3dad7478624495a5a46f40127b0579), adapted by Operation Steel Tide.
-- **Soldier (bots)**: "FREE [Military Soldier] RIGGED" by BAMEN — CC BY 4.0
-  (https://sketchfab.com/3d-models/free-military-soldier-rigged-e9c56308a67d4a3db62e914fafa4d198);
-  animation clips from Quaternius Universal Animation Library — CC0.
+- **Soldier (bots)**: "Military tactical suit (LowPolyGameReady)" by 1799danly — CC BY 4.0
+  (https://sketchfab.com/3d-models/ef698ce36b1545a78ce592dd3db4c7ed); textures re-encoded (WebP), meshes merged.
+  Animation rig/clip source: "FREE [Military Soldier] RIGGED" by BAMEN — CC BY 4.0
+  (https://sketchfab.com/3d-models/free-military-soldier-rigged-e9c56308a67d4a3db62e914fafa4d198), fallback body;
+  animation clips from Quaternius Universal Animation Library — CC0, retargeted at load.
 - **Shotgun model**: by Harry_L — CC BY (https://sketchfab.com/models/53b158b0d5a54b4491b09d1fb3058e29), via Mugen87/dive.
 - **Gunshot & firearm foley**: The Free Firearm Sound Library (CC0) — https://github.com/buddingmonkey/FreeFirearmsSFXLibrary
   and edits from operation-steel-tide.
@@ -84,7 +86,7 @@ Code is original except where noted. Third-party assets:
   cardboard_box_01, old_tyre, exterior_aircon_unit, street_lamp_01, security_light, utility_box_01/02, metal_trash_can,
   water_manhole_cover, covered_car, trashbag, metal_jerrycan_green, propane_tank, portable_generator,
   hanging_industrial_lamp, mounted_fluorescent_lights, modular_airduct_circular_01, modular_industrial_pipes_01,
-  wooden_crate_02, cement_bag, rusted_wheel_rim_01, WetFloorSign_01, barrel_stove), simplified and
+  wooden_crate_02, cement_bag, rusted_wheel_rim_01, WetFloorSign_01, barrel_stove, overhead_crane), simplified and
   re-encoded (webp) with gltf-transform.
 - **HDRI**: Poly Haven "Bambanani Sunset" (Dimitrios Savva, Jarod Guest) — CC0.
 - **Level textures added**: ambientCG Ground110, Fence006 (chain-link), MetalWalkway013 (grating), Leaking003 (wall

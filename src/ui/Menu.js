@@ -329,6 +329,8 @@ export class Menu {
   // ---------------------------------------------------------------- end of match
   showEnd(result) {
     const g = this.game, p = g.player, ms = g.matchStats, c = this.s.career;
+    g.hud.scoreboard(false);
+    g.hud.show(false);
     const before = levelInfo(c.xp);
     const winBonus = result === 'VICTORY' ? 500 : result === 'DRAW' ? 250 : 100;
     const xpGain = Math.round(p.stats.score + winBonus);

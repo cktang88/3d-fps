@@ -11,7 +11,7 @@ import { FOG, syncFog } from './glsl.js';
 export class AmbParticles {
   constructor(scene, {
     max = 400, texture, atlas = 1, additive = false, stretch = 0, lit = false, fogScale = 1, nearFade = 0.6,
-    sort = false, renderOrder,
+    sort = false, renderOrder, flipbook = false,
   }) {
     this.max = max;
     this.count = 0;
@@ -82,6 +82,11 @@ export class AmbParticles {
             rgb += vCol.rgb * sunCol * pow(max(dot(vDir, sunDir), 0.0), 6.0) * thin * 1.6;
             rgb += vEmi * (0.6 + 0.6 * t.a);
             rgb = mix(rgb, fogColor, f);
+          #elif defined(FLIPBOOK)
+            // Pre-rendered fire/smoke flipbook: boost the hot (bright, warm) texels into HDR for bloom.
+            float hot = smoothstep(0.35, 0.95, t.r) * smoothstep(0.0, 0.25, t.r - t.b);
+            vec3 rgb = t.rgb * vCol.rgb * (1.0 + hot * 5.0) + vEmi * t.a;
+            rgb = mix(rgb, fogColor, f * (1.0 - hot));
           #else
             vec3 rgb = t.rgb * vCol.rgb + vEmi;
             a *= 1.0 - f;
@@ -89,7 +94,7 @@ export class AmbParticles {
           if (a < 0.002) discard;
           gl_FragColor = vec4(rgb, a);
         }`,
-      defines: lit ? { LIT: 1 } : {},
+      defines: lit ? { LIT: 1 } : flipbook ? { FLIPBOOK: 1 } : {},
       transparent: true,
       depthWrite: false,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
@@ -98,6 +103,15 @@ export class AmbParticles {
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = renderOrder ?? (additive ? 12 : 10);
     scene.add(this.mesh);
+  }
+
+  /** Swap in a (loaded) atlas texture, e.g. a pre-rendered flipbook. */
+  setAtlas(texture, atlas, lifeFrames = false) {
+    if (!texture) return;
+    this.atlas = atlas;
+    this.lifeFrames = lifeFrames;
+    this.mat.uniforms.map.value = texture;
+    this.mat.uniforms.atlas.value = atlas;
   }
 
   spawn(o) {
@@ -121,7 +135,7 @@ export class AmbParticles {
     this.a0[i] = o.alpha ?? 1; this.fadeIn[i] = o.fadeIn ?? 0;
     this.grav[i] = o.gravity ?? 0; this.drag[i] = o.drag ?? 0; this.windK[i] = o.wind ?? 0; this.turb[i] = o.turb ?? 0;
     this.frame[i] = o.frame ?? ((Math.random() * this.atlas * this.atlas) | 0);
-    this.frameRate[i] = o.frameRate ?? 0;
+    this.frameRate[i] = o.frameRate ?? (this.lifeFrames ? -1 : 0);
   }
 
   _copy(from, to) {
@@ -175,7 +189,8 @@ export class AmbParticles {
       E[j * 3] = this.e0[i3] * ek; E[j * 3 + 1] = this.e0[i3 + 1] * ek; E[j * 3 + 2] = this.e0[i3 + 2] * ek;
       M[j * 3] = this.s0[i] + (this.s1[i] - this.s0[i]) * Math.sqrt(t);
       M[j * 3 + 1] = this.rot[i];
-      M[j * 3 + 2] = this.frameRate[i] > 0 ? Math.floor(this.frame[i] + this.life[i] * this.frameRate[i]) % atl2 : this.frame[i];
+      const fr = this.frameRate[i];
+      M[j * 3 + 2] = fr > 0 ? Math.floor(this.frame[i] + this.life[i] * fr) % atl2 : fr < 0 ? Math.min(atl2 - 1, Math.floor(t * atl2)) : this.frame[i];
     }
     this.geo.instanceCount = n;
     this.aPos.needsUpdate = this.aVel.needsUpdate = this.aCol.needsUpdate = this.aEmi.needsUpdate = this.aMisc.needsUpdate = true;

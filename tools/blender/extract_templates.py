@@ -17,7 +17,7 @@ PACKS = {
     'shotgun': ('rem/model.glb', 'SG_FPS_Idle', 'Body', 'Slide'),
     'bolt': ('cc_sniper/model.glb', 'SRifle_Idle', 'Body', 'Bolt'),
 }
-REF_UPARM = 0.2377  # UpArm bone length of the reference (shotgun pack) rig, metres
+HAND_INDEX = 0.18  # metres, hand bone -> extended index fingertip
 
 
 def main():
@@ -35,7 +35,8 @@ def main():
         bpy.context.scene.frame_set(0)
         pb = {canon(b.name): b for b in arm.pose.bones}
         W = lambda n: arm.matrix_world @ pb[n].matrix
-        s = REF_UPARM / ((W('Forearm_L').translation - W('UpArm_L').translation).length)
+        # Normalise by hand size: right index fingertip 0.18 m from the hand bone (real gloved hand).
+        s = HAND_INDEX / (W('Bone_R.007_end').translation - W('Hand_R').translation).length
         meshes = [o for o in objs if o.type == 'MESH']
         # Gun meshes: skinned to the body/part bones (not to the arm/hand bones).
         armbones = {n for n in pb if re.match(r'(Arm|UpArm|Forearm|BoneTwist|Hand|Bone_|IK_|Root|Head_Cam|_rootJoint)', n)}

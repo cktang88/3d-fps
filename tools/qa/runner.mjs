@@ -43,21 +43,54 @@ function build() {
   return { ok: r.status === 0, ms: Date.now() - t, out: (r.stdout + r.stderr).slice(-4000), stamp };
 }
 
-async function runJob(job, buildInfo) {
+// Warm page pool: one loaded game per worker, reused across jobs on the same build snapshot.
+const warm = new Map(); // worker -> { page, stamp, W, H, sink }
+async function getPage(worker, job, buildInfo, result) {
+  const W = job.w || 960, H = job.h || 540;
+  let w = warm.get(worker);
+  const reusable = w && !job.fresh && w.stamp === buildInfo.stamp && w.W === W && w.H === H && !w.page.isClosed();
+  if (reusable) {
+    w.sink.result = result;
+    const ok = await w.page.evaluate(() => {
+      try {
+        const g = window.__game;
+        if (!g?.menu) return false;
+        g.started = false; g.paused = true; if (g.match) g.match.state = 'idle';
+        if (window.__qaSettings0) { const s0 = structuredClone(window.__qaSettings0); for (const k of Object.keys(g.settings)) delete g.settings[k]; Object.assign(g.settings, s0); }
+        g.renderer.applySettings?.(); g.applyLoadoutChange?.();
+        for (const gr of g.grenadeObjs || []) g.renderer.scene.remove(gr.mesh);
+        if (g.grenadeObjs) g.grenadeObjs.length = 0;
+        g.input.down.clear(); g.input.pressed.clear(); g.input.released.clear();
+        g.hud?.show(false); g.hud?.scoreboard?.(false);
+        return true;
+      } catch (e) { return false; }
+    }).catch(() => false);
+    if (ok) { result.warm = true; return w.page; }
+  }
+  if (w) { await w.page.close().catch(() => {}); warm.delete(worker); }
+  const page = await browser.newPage({ viewport: { width: W, height: H } });
+  page.setDefaultTimeout(300000);
+  const sink = { result };
+  page.on('console', (m) => { const r = sink.result; if (r && (m.type() === 'error' || m.type() === 'warning' || r._verbose)) r.logs.push(`[${m.type()}] ${m.text()}`.slice(0, 600)); });
+  page.on('pageerror', (e) => sink.result?.logs.push('[pageerror] ' + e.message + ' ' + (e.stack || '').split('\n').slice(0, 3).join(' | ')));
+  const t0 = Date.now();
+  await page.goto(`http://localhost:${PORT}/${buildInfo.stamp}/`, { waitUntil: 'load' });
+  await page.waitForFunction(() => window.__game?.menu, null, { timeout: 240000 });
+  await page.evaluate(() => { window.__qaSettings0 = structuredClone(window.__game.settings); });
+  result.loadMs = Date.now() - t0;
+  warm.set(worker, { page, stamp: buildInfo.stamp, W, H, sink });
+  return page;
+}
+
+async function runJob(job, buildInfo, worker = 0) {
   const dir = path.join(RES, job.id);
   fs.mkdirSync(dir, { recursive: true });
   const result = { id: job.id, owner: job.owner, startedAt: new Date().toISOString(), build: { ms: buildInfo.ms }, shots: [], logs: [], data: {} };
   if (!buildInfo.ok) { result.error = 'BUILD FAILED'; result.build.out = buildInfo.out; return result; }
-  const W = job.w || 960, H = job.h || 540;
-  const page = await browser.newPage({ viewport: { width: W, height: H } });
-  page.setDefaultTimeout(300000);
-  page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning' || job.verbose) result.logs.push(`[${m.type()}] ${m.text()}`.slice(0, 600)); });
-  page.on('pageerror', (e) => result.logs.push('[pageerror] ' + e.message + ' ' + (e.stack || '').split('\n').slice(0, 3).join(' | ')));
+  result._verbose = !!job.verbose;
+  let page;
   try {
-    const t0 = Date.now();
-    await page.goto(`http://localhost:${PORT}/${buildInfo.stamp}/`, { waitUntil: 'load' });
-    await page.waitForFunction(() => window.__game?.menu, null, { timeout: 240000 });
-    result.loadMs = Date.now() - t0;
+    page = await getPage(worker, job, buildInfo, result);
     const frames = (n) => page.evaluate((n) => new Promise((r) => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }), n);
     if (job.setup) await page.evaluate(job.setup);
     if (job.match !== false) {
@@ -101,7 +134,9 @@ async function runJob(job, buildInfo) {
   } catch (e) {
     result.error = e.message.slice(0, 1000);
   }
-  await page.close();
+  // Keep the page warm for the next job unless something went wrong.
+  if (result.error || job.fresh) { await page?.close().catch(() => {}); warm.delete(worker); }
+  delete result._verbose;
   result.finishedAt = new Date().toISOString();
   return result;
 }
@@ -112,9 +147,22 @@ fs.mkdirSync(RUN, { recursive: true });
 for (const f of fs.readdirSync(RUN)) fs.renameSync(path.join(RUN, f), path.join(REQ, f));
 const WORKERS = +(process.env.QA_WORKERS || 2);
 let buildInfo = null, buildAt = 0, building = null;
+// Rebuild only when game sources/assets changed since the last snapshot (keeps warm pages valid).
+function sourcesChangedSince(t) {
+  const roots = ['src', 'index.html', 'public/assets'].map((r) => path.join(ROOT, r));
+  const stack = [...roots];
+  while (stack.length) {
+    const p = stack.pop();
+    let st;
+    try { st = fs.statSync(p); } catch { continue; }
+    if (st.mtimeMs > t) return true;
+    if (st.isDirectory()) for (const c of fs.readdirSync(p)) stack.push(path.join(p, c));
+  }
+  return false;
+}
 async function freshBuild() {
   // One build serves every job claimed within the next 20 s.
-  if (buildInfo && Date.now() - buildAt < 20000) return buildInfo;
+  if (buildInfo && (Date.now() - buildAt < 20000 || !sourcesChangedSince(buildAt))) return buildInfo;
   if (!building) building = (async () => {
     log('building snapshot…');
     const b = build();
@@ -140,7 +188,7 @@ async function worker(n) {
     try { job = JSON.parse(fs.readFileSync(fp, 'utf8')); } catch { fs.renameSync(fp, fp + '.bad'); continue; }
     const b = await freshBuild();
     log(`[w${n}] run`, job.id, 'for', job.owner);
-    const r = await runJob(job, b);
+    const r = await runJob(job, b, n);
     fs.mkdirSync(path.join(RES, job.id), { recursive: true });
     fs.writeFileSync(path.join(RES, job.id, 'result.json'), JSON.stringify(r, null, 2));
     fs.unlinkSync(fp);

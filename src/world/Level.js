@@ -53,6 +53,7 @@ const PROPS = {
   wheelRim: ['rusted_wheel_rim_01/rusted_wheel_rim_01.glb'],
   wetSign: ['WetFloorSign_01/WetFloorSign_01.glb'],
   stove: ['barrel_stove/barrel_stove.glb'],
+  crane: ['overhead_crane/overhead_crane.glb', { recenter: true }],
 };
 
 /**
@@ -752,6 +753,9 @@ export class Level {
     }
     // Longitudinal purlins.
     for (const zz of [-44, -38, -32]) this.box('steel', 0, H - 0.1, zz, 36, 0.12, 0.1, { nav: false, map: false, collide: false });
+    // Overhead gantry crane parked over the centre aisle (hero piece), on runway beams.
+    this.prop('crane', -1.5, -35.2, 0, { y: H - 1.75 - 5.1, mount: true });
+    for (const zz of [-37.2, -33.2]) this.box('steel', 0, H - 1.85, zz, 35.4, 0.2, 0.25, { nav: false, map: false, collide: false });
     // Ceiling ducting.
     for (const x of [-12.5, -8.3, -4.1, 0.1, 4.3]) this.prop('duct', x, -45.5, 0, { y: H - 2.3, mount: true });
     // Catwalk along north wall at 4 m: perforated grating deck on a steel frame.

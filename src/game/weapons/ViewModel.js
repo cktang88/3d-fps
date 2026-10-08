@@ -680,7 +680,7 @@ export class ViewModel {
 
     // Near plane pushes out while aiming so the stock / receiver right under the cheek never
     // fills the bottom of the sight picture (it is physically there, but reads as clutter).
-    const near = 0.01 + 0.05 * adsE;
+    const near = 0.01 + ((rig.aim.type === 'irons' && rig.tune.adsNear) || 0.06) * adsE - 0.01 * adsE;
     if (Math.abs(this.viewCam.near - near) > 1e-4) { this.viewCam.near = near; this.viewCam.updateProjectionMatrix(); }
 
     // ---- Root pose ----

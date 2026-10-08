@@ -1,0 +1,20 @@
+{
+  "tag": "g_hud_ui",
+  "setupFiles": ["tools/qa/suites/lib.js"],
+  "match": false, "w": 1280, "h": 720,
+  "views": [
+    {"name": "g01_menu_home", "frames": 2, "read": "({page: __game.menu.page})"},
+    {"name": "g02_menu_settings", "frames": 1, "eval": "__game.menu.action('settings')", "read": "({page: __game.menu.page})"},
+    {"name": "g03_menu_gunsmith", "frames": 1, "eval": "__game.menu.action('gunsmith')", "read": "({page: __game.menu.page})"},
+    {"name": "g04_menu_controls", "frames": 1, "eval": "__game.menu.action('controls')"},
+    {"name": "g05_menu_credits", "frames": 1, "eval": "__game.menu.action('credits')"},
+    {"name": "g06_hud_live", "frames": 2, "eval": "const g=__game; g.menu.close(); g.startMatch('tdm'); g.paused=false; __qa.god(); __qa.place([0,0.1,12],0.2,0.02); __qa.sim(4);", "read": "({overlaps: __qa.hudOverlaps(), perf: __qa.perf()})"},
+    {"name": "g07_kills_medals", "frames": 1, "eval": "const g=__game; __qa.god(); const en=g.bots.filter(b=>b.alive&&b.team!==g.player.team).slice(0,3); en.forEach((b,i)=>{ b.takeDamage(500, g.player, {weapon:'m4', headshot: i===0, distance: 20}); __qa.sim(0.25); });", "read": "({killed: __game.player.stats, overlaps: __qa.hudOverlaps(), feed: document.querySelector('#killfeed')?.innerText})"},
+    {"name": "g08_lowammo", "frames": 1, "eval": "__qa.sim(2.5); __game.currentWeapon.ammo=3; __qa.sim(0.3);", "read": "({warn: document.querySelector('#ammoWarn')?.innerText, overlaps: __qa.hudOverlaps()})"},
+    {"name": "g09_cook", "frames": 1, "eval": "__qa.down('KeyG'); __qa.tap('KeyG'); __qa.sim(1.0);", "read": "({prompt: document.querySelector('#prompt')?.innerText, cook: __game.cook})"},
+    {"name": "g10_deathcard", "frames": 1, "eval": "const g=__game; g.settings.godMode=false; g.player.spawnProtect=0; const k=g.bots.find(b=>b.alive&&b.team!==g.player.team); g.player.takeDamage(500, k, {weapon:'ak', headshot:true, distance: 18}); __qa.sim(0.6);", "read": "({alive: __game.player.alive, grenadesLeft: __game.grenades, live: __game.grenadeObjs.length, cook: __game.cook, overlaps: __qa.hudOverlaps()})", "release": ["KeyG"]},
+    {"name": "g11_respawn", "shot": false, "frames": 1, "eval": "__qa.releaseAll(); __qa.sim(1.2); window.__r1=__game.player.alive; __qa.sim(3.6); window.__r2=__game.player.alive;", "read": "({aliveAt1_8s: window.__r1, aliveAt5_4s: window.__r2})"},
+    {"name": "g12_damage_arc", "frames": 1, "eval": "const g=__game; g.settings.godMode=false; g.player.spawnProtect=0; __qa.sim(0.5); const k=g.bots.find(b=>b.alive&&b.team!==g.player.team); g.player.takeDamage(30, k, {weapon:'ak', origin: g.player.position.clone().add({x:5,y:1,z:0})}); g.player.takeDamage(40, k, {weapon:'ak'}); __qa.sim(0.15); g.settings.godMode=true;", "read": "({hp: __game.player.health, overlaps: __qa.hudOverlaps()})"},
+    {"name": "g13_end", "frames": 2, "eval": "__game.match.end(); __qa.sim(0.5);", "read": "({overlaps: __qa.hudOverlaps(), career: __game.settings.career})"}
+  ]
+}

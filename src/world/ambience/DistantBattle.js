@@ -31,6 +31,9 @@ export class DistantBattle {
     this.flashes = new AmbParticles(this.scene, { max: 64, texture: glow, additive: true, fogScale: 0.11, nearFade: 0, renderOrder: 4 });
     this.tracers = new AmbParticles(this.scene, { max: 700, texture: glow, additive: true, stretch: 0.055, fogScale: 0.1, nearFade: 0, renderOrder: 5 });
     this.fireballs = new AmbParticles(this.scene, { max: 120, texture: smoke, atlas: 4, additive: true, fogScale: 0.13, nearFade: 0, renderOrder: 5 });
+    // Pre-rendered explosion flipbook (texture swapped in by Ambience.init once loaded).
+    this.blasts = new AmbParticles(this.scene, { max: 48, texture: smoke, atlas: 4, flipbook: true, fogScale: 0.12, nearFade: 0, renderOrder: 4 });
+    this.hasBlast = false;
     this.smoke = new AmbParticles(this.scene, { max: 900, texture: smoke, atlas: 4, lit: true, sort: true, fogScale: 0.14, nearFade: 0, renderOrder: 3 });
 
     // Smoke columns from burning buildings on the skyline.
@@ -137,6 +140,7 @@ export class DistantBattle {
         const p = this._at(az, d, rand(1, 6));
         const big = Math.random() < 0.25;
         this.flashes.spawn({ x: p.x, y: p.y + 4, z: p.z, life: rand(0.18, 0.35), size0: big ? 90 : 55, size1: big ? 120 : 75, color: [12, 6, 2.6], alpha: 1 });
+        if (this.hasBlast) this.blasts.spawn({ x: p.x, y: p.y + (big ? 14 : 9), z: p.z, life: rand(3.5, 5), size0: big ? 34 : 22, size1: big ? 60 : 40, alpha: 1, color: [1, 1, 1], rot: rand(-0.3, 0.3), frameRate: -1 });
         this.pulse(az, { intensity: (big ? 3.2 : 1.8) * (300 / d), width: rand(0.05, 0.09), decay: rand(5, 9), color: [1, 0.55, 0.26], height: rand(0.05, 0.1) });
         // A little burst of dust/smoke that rises behind the wall.
         for (let k = 0; k < (big ? 6 : 3); k++) this.smoke.spawn({
@@ -153,7 +157,8 @@ export class DistantBattle {
     const p = this._at(az, d, 4);
     this.flashes.spawn({ x: p.x, y: p.y + 10, z: p.z, life: 0.45, size0: 100, size1: 135, color: [10, 4.6, 1.7], alpha: 1 });
     this.pulse(az, { intensity: 6 * (260 / d), width: 0.2, decay: 2.2, color: [1, 0.55, 0.25], height: 0.14 });
-    for (let k = 0; k < 26; k++) {
+    if (this.hasBlast) for (let k = 0; k < 3; k++) this.blasts.spawn({ x: p.x + rand(-10, 10), y: p.y + 30 + k * 8, z: p.z + rand(-10, 10), life: rand(5, 7), size0: 80 - k * 12, size1: 130 - k * 15, alpha: 1, color: [1, 1, 1], rot: rand(-0.4, 0.4), frameRate: -1, vy: 4 });
+    for (let k = 0; k < (this.hasBlast ? 8 : 26); k++) {
       const a = rand(0, TAU), s = rand(4, 18);
       this.fireballs.spawn({
         x: p.x + rand(-5, 5), y: p.y + rand(0, 10), z: p.z + rand(-5, 5), vx: Math.cos(a) * s * 0.6, vy: rand(10, 30), vz: Math.sin(a) * s * 0.6,
@@ -320,6 +325,7 @@ export class DistantBattle {
     this.flashes.update(dt, null, null, this.scene, null);
     this.tracers.update(dt, null, null, this.scene, null);
     this.fireballs.update(dt, ctx.wind, null, this.scene, null);
+    this.blasts.update(dt, ctx.wind, null, this.scene, null);
     this.smoke.update(dt, ctx.wind, ctx.camera, this.scene, light);
   }
 }

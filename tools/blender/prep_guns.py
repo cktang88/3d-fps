@@ -134,7 +134,23 @@ def prep(gid, spec, sfdir, work):
         T = Matrix.Scale(f, 4) @ Matrix.Translation((-c.x, -c.y, -c.z))
         for o in meshes:
             o.data.transform(T)
+        # Level the bore (degrees, measured on the gridded side view; + raises the muzzle).
+        if spec.get('level'):
+            Rx = Matrix.Rotation(math.radians(spec['level']), 4, 'X')
+            for o in meshes:
+                o.data.transform(Rx)
+        # Centre the bore on x = 0: mean x of the front-most 8% (barrel / muzzle device).
+        y1 = max(v.co.y for o in meshes for v in o.data.vertices)
+        fr = [v.co.x for o in meshes for v in o.data.vertices if v.co.y > y1 - 0.08 * 2 * y1]
+        if fr:
+            bx = (min(fr) + max(fr)) / 2
+            for o in meshes:
+                o.data.transform(Matrix.Translation((-bx, 0, 0)))
         print('PREP', gid, 'scale', round(f, 5), 'src len', round(mx.y - mn.y, 4))
+        if os.environ.get('FP_DEBUG'):
+            for o in meshes:
+                b0, b1 = bbox([v.co for v in o.data.vertices])
+                print('  OBJ', o.name, [m.name for m in o.data.materials if m], len(o.data.vertices), [round(x, 3) for x in b0], [round(x, 3) for x in b1])
         # Group by role.
         roles = {}
         for o in meshes:

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { damp, clamp, DEG } from '../../core/MathUtil.js';
 import { POSES } from '../weapons/GunModels.js';
 import { G } from '../../core/Physics.js';
@@ -37,11 +38,70 @@ const BONES = {
   lUp: 'mixamorigLeftUpLeg', lLeg: 'mixamorigLeftLeg', lFoot: 'mixamorigLeftFoot', lToe: 'mixamorigLeftToeBase',
   rUp: 'mixamorigRightUpLeg', rLeg: 'mixamorigRightLeg', rFoot: 'mixamorigRightFoot', rToe: 'mixamorigRightToeBase',
 };
+/** Rig-independent bone key: 'mixamorig:LeftArm', 'mixamorigLeftArm', 'mixamorigLeftArm_033' → 'LeftArm'. */
+const boneKey = (n) => n.replace(/^mixamorig:?/, '').replace(/_\d+$/, '');
 function findBones(root) {
   const out = {};
-  const byName = new Map(Object.entries(BONES).map(([k, n]) => [n, k]));
-  root.traverse((o) => { if (o.isBone) { const k = byName.get(o.name) ?? byName.get(o.name.replace(/[^A-Za-z0-9]/g, '')); if (k) out[k] = o; } });
+  const byKey = new Map(Object.entries(BONES).map(([k, n]) => [boneKey(n), k]));
+  root.traverse((o) => { if (o.isBone) { const k = byKey.get(boneKey(o.name)); if (k && !out[k]) out[k] = o; } });
   return out;
+}
+
+/**
+ * Retarget clips between two Mixamo-convention rigs (identical bone-local axes, different proportions
+ * and rest poses): local rotations transfer as-is; the hips rotation/translation are re-expressed
+ * through each rig's armature transform and the translation scaled by leg length. Bone translation /
+ * scale tracks are dropped so the target keeps its own proportions.
+ */
+function retargetClips(clips, srcScene, dstScene) {
+  srcScene.updateMatrixWorld(true); dstScene.updateMatrixWorld(true);
+  const S = new Map(), D = new Map();
+  srcScene.traverse((o) => { if (o.isBone && !S.has(boneKey(o.name))) S.set(boneKey(o.name), o); });
+  dstScene.traverse((o) => { if (o.isBone && !D.has(boneKey(o.name))) D.set(boneKey(o.name), o); });
+  const sh = S.get('Hips'), dh = D.get('Hips');
+  const wp = (o) => o.getWorldPosition(new THREE.Vector3());
+  const legS = wp(sh).y - wp(S.get('LeftFoot')).y, legD = wp(dh).y - wp(D.get('LeftFoot')).y;
+  const k = legD / legS;
+  const PsQ = sh.parent.getWorldQuaternion(new THREE.Quaternion()), PdQ = dh.parent.getWorldQuaternion(new THREE.Quaternion());
+  const convQ = PdQ.clone().invert().multiply(PsQ);
+  const Ps = sh.parent.matrixWorld.clone(), PdInv = dh.parent.matrixWorld.clone().invert();
+  const q = new THREE.Quaternion(), v = new THREE.Vector3();
+  return clips.map((clip) => {
+    const tracks = [];
+    for (const t of clip.tracks) {
+      const dot = t.name.lastIndexOf('.');
+      const node = t.name.slice(0, dot), prop = t.name.slice(dot + 1);
+      const key = boneKey(node), d = D.get(key);
+      if (!d) continue;
+      if (prop === 'quaternion') {
+        const vals = t.values.slice();
+        if (key === 'Hips') for (let i = 0; i < vals.length; i += 4) { q.fromArray(vals, i).premultiply(convQ).toArray(vals, i); }
+        tracks.push(new THREE.QuaternionKeyframeTrack(d.name + '.quaternion', t.times.slice(), vals));
+      } else if (prop === 'position' && key === 'Hips') {
+        const vals = t.values.slice();
+        for (let i = 0; i < vals.length; i += 3) { v.fromArray(vals, i).applyMatrix4(Ps).multiplyScalar(k).applyMatrix4(PdInv).toArray(vals, i); }
+        tracks.push(new THREE.VectorKeyframeTrack(d.name + '.position', t.times.slice(), vals));
+      }
+    }
+    return new THREE.AnimationClip(clip.name, clip.duration, tracks);
+  });
+}
+
+/** Merge skinned meshes that share skeleton + material into one draw call each. */
+function mergeSkinnedByMaterial(scene) {
+  const groups = new Map();
+  scene.traverse((o) => { if (o.isSkinnedMesh && !Array.isArray(o.material)) { const key = o.material.uuid + '|' + o.skeleton.bones[0].uuid + o.skeleton.bones.length + '|' + o.parent.uuid; (groups.get(key) || groups.set(key, []).get(key)).push(o); } });
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    const base = list[0];
+    if (!list.every((m) => m.bindMatrix.equals(base.bindMatrix) && m.matrix.equals(base.matrix))) continue;
+    const names = Object.keys(base.geometry.attributes).sort().join();
+    if (!list.every((m) => Object.keys(m.geometry.attributes).sort().join() === names && !!m.geometry.index === !!base.geometry.index)) continue;
+    const merged = mergeGeometries(list.map((m) => m.geometry), false);
+    if (!merged) continue;
+    base.geometry = merged;
+    for (const m of list.slice(1)) m.parent.remove(m);
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -179,23 +239,36 @@ function soldierMaterial(src, look, camo = null) {
 }
 
 export class CharacterTemplate {
-  constructor(gltf, gunModels) {
+  /**
+   * @param gltf      clip source (Mixamo-named rig with the full clip set)
+   * @param meshGltf  optional different Mixamo-convention body; clips are retargeted onto it
+   */
+  constructor(gltf, gunModels, meshGltf = null) {
     this.gltf = gltf;
     this.gunModels = gunModels;
-    this.clips = new Map(gltf.animations.map((c) => [c.name, c]));
-    const g = gltf.scene;
+    const g = (meshGltf || gltf).scene;
+    this.scene = g;
+    this.textured = false;
+    g.traverse((o) => { if (o.isMesh && o.material?.map) this.textured = true; });
+    let clips = gltf.animations;
+    if (meshGltf && meshGltf !== gltf) clips = retargetClips(clips, gltf.scene, g);
+    this.clips = new Map(clips.map((c) => [c.name, c]));
+    if (meshGltf) mergeSkinnedByMaterial(g);
     g.updateMatrixWorld(true);
     // Measure standing height from the skeleton (head top) rather than the mesh bounds, which include
     // T-pose sockets / straps.
     const bb = new THREE.Box3().setFromObject(g);
-    const headTop = g.getObjectByName('mixamorigHeadTop_End');
+    let headTop = null;
+    g.traverse((o) => { if (!headTop && o.isBone && boneKey(o.name) === 'HeadTop_End') headTop = o; });
     const topY = headTop ? headTop.getWorldPosition(new THREE.Vector3()).y : bb.max.y;
     this.height = topY - bb.min.y;
     this.scale = 1.8 / this.height;
     this.yOffset = -bb.min.y * this.scale;
-    this._bakeRestAttribute(g);
+    this.armRadius = this._measureArmRadius(g);
     this.materials = {};
-    for (const team of ['friendly', 'enemy']) {
+    if (this.textured) this._teamTexturedMaterials(g);
+    else this._bakeRestAttribute(g);
+    for (const team of this.textured ? [] : ['friendly', 'enemy']) {
       const set = {};
       g.traverse((o) => {
         if (!o.isMesh) return;
@@ -238,6 +311,56 @@ export class CharacterTemplate {
     const G = { walk: [1.2, 0.02], run: [4.8, 0.03], sprint: [6.2, 0.05], crouchWalk: [0.8, 0] };
     this.gait = {};
     for (const [k, [speed, offset]] of Object.entries(G)) { const dur = full[k].duration; this.gait[k] = { speed, dur, stride: speed * dur, offset }; }
+  }
+
+  /**
+   * Authored PBR kit: keep the textures, one material set per side. Friendly keep the green / tan
+   * scheme; the enemy kit is re-dyed darker and cooler so silhouettes read apart at range. Both get a
+   * team armband (see Character._addArmbands).
+   */
+  _teamTexturedMaterials(g) {
+    const srcMats = new Map();
+    g.traverse((o) => { if (o.isMesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) srcMats.set(m.name || m.uuid, m); });
+    for (const team of ['friendly', 'enemy']) {
+      const set = {};
+      for (const [name, m] of srcMats) {
+        const c = m.clone();
+        c.userData.character = true;
+        c.envMapIntensity = 0.85;
+        c.side = THREE.FrontSide;
+        if (c.roughness !== undefined && !c.roughnessMap) c.roughness = Math.max(0.55, c.roughness);
+        if (team === 'enemy' && !/Eye|Head$|Skin|Flesh/i.test(name)) c.color.setRGB(0.5, 0.52, 0.56, THREE.LinearSRGBColorSpace);
+        set[name] = c;
+      }
+      const tc = TEAM_COLORS[team];
+      set.__band = new THREE.MeshStandardMaterial({ color: tc.clone().multiplyScalar(0.55), emissive: tc, emissiveIntensity: 0.18, roughness: 0.7 });
+      set.__band.userData.noUnify = true;
+      this.materials[team] = set;
+    }
+  }
+
+  /** Upper-arm sleeve radius (metres, 90th percentile) so armbands sit on the cloth for any body. */
+  _measureArmRadius(g) {
+    const bones = findBones(g);
+    if (!bones.lArm || !bones.lFore) return 0.06;
+    g.updateMatrixWorld(true);
+    const a = bones.lArm.getWorldPosition(new THREE.Vector3()), f = bones.lFore.getWorldPosition(new THREE.Vector3());
+    const seg = new THREE.Line3(a, f), v = new THREE.Vector3(), cp = new THREE.Vector3(), ds = [];
+    g.traverse((o) => {
+      if (!o.isSkinnedMesh) return;
+      o.skeleton.update();
+      const si = o.geometry.attributes.skinIndex, sw = o.geometry.attributes.skinWeight, n = o.geometry.attributes.position.count;
+      for (let i = 0; i < n; i++) {
+        if (o.skeleton.bones[si.getX(i)] !== bones.lArm || sw.getX(i) < 0.6) continue;
+        o.getVertexPosition(i, v).applyMatrix4(o.matrixWorld);
+        const t = seg.closestPointToPointParameter(v, true);
+        if (t < 0.2 || t > 0.45) continue;
+        ds.push(seg.closestPointToPoint(v, true, cp).distanceTo(v));
+      }
+    });
+    if (ds.length < 8) return 0.06;
+    ds.sort((x, y) => x - y);
+    return ds[(ds.length * 0.9) | 0] * this.scale + 0.004;
   }
 
   /** Rest-pose (bind) object-space positions in metres, feet at y=0, for triplanar detail. */
@@ -287,7 +410,7 @@ export class Character {
     // Pivot at the feet: used for whole-body topples on death.
     this.pivot = new THREE.Group();
     this.root.add(this.pivot);
-    const model = SkeletonUtils.clone(tpl.gltf.scene);
+    const model = SkeletonUtils.clone(tpl.scene);
     model.scale.setScalar(tpl.scale);
     model.position.y = tpl.yOffset;
     model.rotation.y = Math.PI; // glTF faces +Z; game yaw 0 looks toward -Z
@@ -297,7 +420,7 @@ export class Character {
     const mats = tpl.materials[side];
     model.traverse((o) => {
       if (!o.isMesh) return;
-      o.material = Array.isArray(o.material) ? o.material.map((m) => mats[m.name] || m) : (mats[o.material.name] || o.material);
+      o.material = Array.isArray(o.material) ? o.material.map((m) => mats[m.name || m.uuid] || m) : (mats[o.material.name || o.material.uuid] || o.material);
       o.castShadow = true;
       o.receiveShadow = true;
       if (o.isSkinnedMesh) {
@@ -390,7 +513,8 @@ export class Character {
       const band = this[arm + 'Band'];
       if (!band) continue;
       const ws = this.bones[arm].getWorldScale(_v1).x;
-      band.scale.set(0.058 / ws, 0.06 / ws, 0.058 / ws);
+      const r = this.tpl.armRadius;
+      band.scale.set(r / ws, 0.06 / ws, r / ws);
     }
   }
 
@@ -938,7 +1062,7 @@ export class Character {
     if (!this._hb) {
       const mk = (part, r, mult) => ({ part, a: new THREE.Vector3(), b: new THREE.Vector3(), r, mult });
       this._hb = [
-        mk('head', 0.115, 1.5), mk('torso', 0.2, 1), mk('torso', 0.17, 1),
+        mk('head', 0.13, 1.5), mk('torso', 0.21, 1), mk('torso', 0.19, 1),
         mk('legs', 0.095, 0.85), mk('legs', 0.075, 0.85), mk('legs', 0.095, 0.85), mk('legs', 0.075, 0.85),
         mk('arms', 0.06, 0.85), mk('arms', 0.05, 0.85), mk('arms', 0.06, 0.85), mk('arms', 0.05, 0.85),
         mk('legs', 0.06, 0.85), mk('legs', 0.06, 0.85),
@@ -949,14 +1073,16 @@ export class Character {
     const head = P(b.head, _v1), neck = P(b.neck, _v2), sp2 = P(b.spine2, _v3), hips = P(b.hips, _v4);
     // Head: skull base → just under the crown (capsule radius reaches the top of the helmet).
     if (b.headTop) P(b.headTop, _v5); else _v5.copy(head).y += 0.22;
-    hb[0].a.copy(head).lerp(_v5, 0.1);
-    hb[0].b.copy(head).lerp(_v5, 0.5);
+    hb[0].a.copy(head).lerp(_v5, 0.15);
+    hb[0].b.copy(head).lerp(_v5, 0.72);
     // Torso: pelvis → chest, chest → base of neck.
     hb[1].a.copy(hips).y += 0.02; hb[1].b.copy(sp2);
     hb[2].a.copy(sp2); hb[2].b.copy(neck).lerp(sp2, 0.25);
     const limb = (i, x, y) => { P(b[x], hb[i].a); P(b[y], hb[i].b); };
     limb(3, 'lUp', 'lLeg'); limb(4, 'lLeg', 'lFoot'); limb(5, 'rUp', 'rLeg'); limb(6, 'rLeg', 'rFoot');
     limb(7, 'lArm', 'lFore'); limb(8, 'lFore', 'lHand'); limb(9, 'rArm', 'rFore'); limb(10, 'rFore', 'rHand');
+    // Forearm capsules run on through the palm.
+    if (b.lMid) P(b.lMid, hb[8].b); if (b.rMid) P(b.rMid, hb[10].b);
     if (b.lToe && b.rToe) { limb(11, 'lFoot', 'lToe'); limb(12, 'rFoot', 'rToe'); hb.length = 13; } else hb.length = 11;
     return hb;
   }

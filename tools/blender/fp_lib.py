@@ -177,10 +177,13 @@ def grid_overlay(png, meta):
     im.save(png)
 
 
-def side_render(objs, png, step=0.02, pad=1.08, w=1600, h=900, view='right'):
-    """Orthographic gridded view of objects in canonical frame (right side: +Y to the right of image)."""
+def side_render(objs, png, step=0.02, pad=1.08, w=1600, h=900, view='right', region=None):
+    """Orthographic gridded view of objects in canonical frame (right side: +Y to the right of image).
+    region=(y0, y1, z0, z1) zooms to that window."""
     pts = evaluated_verts([o for o in objs if not o.hide_render])
     mn, mx = bbox(pts); c = (mn + mx) / 2
+    if region:
+        mn = Vector((mn.x, region[0], region[2])); mx = Vector((mx.x, region[1], region[3])); c = (mn + mx) / 2; pad = 1.0
     W = max(mx.y - mn.y, (mx.z - mn.z) * w / h) * pad
     if view == 'right':
         M = Matrix.Translation((mx.x + 2, c.y, c.z)) @ Euler((math.radians(90), 0, math.radians(90))).to_matrix().to_4x4()

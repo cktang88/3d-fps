@@ -37,7 +37,16 @@ export class Ambience {
   }
 
   async init() {
-    await Promise.all([this.fires.load(), this.flyover.load(this.game.assets).catch((e) => console.warn('heli model', e))]);
+    const A = this.game.assets;
+    const [wisp, expl] = await Promise.all([
+      A.texture('ambience/vfx/wispysmoke02_8x8.webp', true, false),
+      A.texture('ambience/vfx/explosion01_5x5.webp', true, false),
+      this.fires.load(),
+      this.flyover.load(A).catch((e) => console.warn('heli model', e)),
+    ]);
+    // Photoreal pre-rendered flipbooks (Unity Labs, CC0) replace the procedural puffs when available.
+    if (wisp) { this.fires.smoke.setAtlas(wisp, 8, true); this.battle.smoke.setAtlas(wisp, 8, true); }
+    if (expl) { this.battle.blasts.setAtlas(expl, 5, true); this.battle.hasBlast = true; }
     // Pre-roll fire smoke so plumes are already established on first sight.
     const ctx = this._ctx(0.25);
     for (let i = 0; i < 50; i++) this.fires.update(0.25, ctx);

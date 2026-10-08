@@ -65,6 +65,7 @@ export class Game {
       this.level.loadProps(this.assets),
       this.gunModels.load(),
       this.assets.model('soldier', 'models/characters/soldier.glb'),
+      this.assets.model('soldierTac', 'models/characters/soldier_tac.glb'),
       this.loadSounds(),
     ]);
     onProgress?.(0.92, 'Building level');
@@ -88,7 +89,7 @@ export class Game {
     this.player.stats = { kills: 0, deaths: 0, assists: 0, score: 0 };
     this.fpcam = new FPCamera(this.renderer.camera, this.renderer.viewCamera, s);
     this.viewmodel = new ViewModel(this, this.gunModels);
-    this.charTemplate = new CharacterTemplate(this.assets.models.soldier, this.gunModels);
+    this.charTemplate = new CharacterTemplate(this.assets.models.soldier, this.gunModels, this.assets.models.soldierTac);
     this.hud = new HUD(this);
     this.hud.show(false);
     this.match = new Match(this);
