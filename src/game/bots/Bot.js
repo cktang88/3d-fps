@@ -404,6 +404,8 @@ export class Bot {
       }
     }
 
+    // Weapon carry: shouldered when a threat is (or was just) in view, otherwise low ready.
+    this.aimUp = visible || this.goal === 'engage' || this.goal === 'cover' || !!(rec && g.time - rec.lastTime < 2.5);
     // ---- Aim ----
     if (visible) {
       this.trackTime += dt;

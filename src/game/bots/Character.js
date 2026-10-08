@@ -921,7 +921,14 @@ export class Character {
     const rw = this.reloadW;
     const osw = this.oneShotW; // throw
     // --- orientation: aim (+ fire climb), canted & dipped toward the shooter while reloading ---
-    _e1.set(pitch + this.rc.pitch.x - rw * 0.32, aimYaw + this.rc.yaw.x + rw * 0.22, rw * 0.5, 'YXZ');
+    // Carry state: shouldered (contact), low ready (stock stays in the shoulder, muzzle ~35° down) or
+    // sprint carry (muzzle down-left across the body). Transitions ~0.25 s, pivoting about the pocket.
+    const alert = bot.aimUp !== false;
+    this.readyW = damp(this.readyW || 0, alert ? 0 : 1, alert ? 14 : 6, dt);
+    this.carryW = damp(this.carryW || 0, !alert && this.speedS > 4.7 ? 1 : 0, 6, dt);
+    const low = this.readyW * (1 - this.carryW) * (1 - rw), carry = this.carryW * (1 - rw);
+    _e1.set(pitch * (1 - low * 0.5 - carry) + this.rc.pitch.x - rw * 0.32 - low * 0.6 - carry * 0.7,
+      aimYaw + this.rc.yaw.x + rw * 0.22 + carry * 0.6, rw * 0.5 + carry * 0.3, 'YXZ');
     _q1.setFromEuler(_e1);
     // --- position: butt in the shoulder pocket (between the shoulder joint and the sternum) ---
     _v5.set(-Math.sin(aimYaw), 0, -Math.cos(aimYaw)); // aim forward (flat)
@@ -930,7 +937,8 @@ export class Character {
     _v1.lerp(_v2, 0.42);
     _v1.y = _v1.y * 0.6 + (wpos(b.rArm, _v3).y - 0.04) * 0.4 + Character.POCKET_Y;
     _v1.addScaledVector(_v5, 0.03 - rw * 0.05);
-    _v1.y -= rw * 0.07;
+    _v1.y -= rw * 0.07 + low * 0.02 + carry * 0.14;
+    if (carry > 0) _v1.lerp(wpos(b.spine1, _v3), carry * 0.35);
     _v3.copy(this.buttLocal).applyQuaternion(_q1);
     _v1.sub(_v3);
     // recoil: the whole gun drives back into the shoulder and recovers
