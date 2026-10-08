@@ -28,10 +28,10 @@ export class DistantBattle {
 
     this._buildGlow();
     const glow = glowTex(), smoke = smokeAtlas();
-    this.flashes = new AmbParticles(this.scene, { max: 64, texture: glow, additive: true, fogScale: 0.17, nearFade: 0, renderOrder: 4 });
-    this.tracers = new AmbParticles(this.scene, { max: 700, texture: glow, additive: true, stretch: 0.055, fogScale: 0.16, nearFade: 0, renderOrder: 5 });
-    this.fireballs = new AmbParticles(this.scene, { max: 120, texture: smoke, atlas: 4, additive: true, fogScale: 0.2, nearFade: 0, renderOrder: 5 });
-    this.smoke = new AmbParticles(this.scene, { max: 900, texture: smoke, atlas: 4, lit: true, sort: true, fogScale: 0.25, nearFade: 0, renderOrder: 3 });
+    this.flashes = new AmbParticles(this.scene, { max: 64, texture: glow, additive: true, fogScale: 0.11, nearFade: 0, renderOrder: 4 });
+    this.tracers = new AmbParticles(this.scene, { max: 700, texture: glow, additive: true, stretch: 0.055, fogScale: 0.1, nearFade: 0, renderOrder: 5 });
+    this.fireballs = new AmbParticles(this.scene, { max: 120, texture: smoke, atlas: 4, additive: true, fogScale: 0.13, nearFade: 0, renderOrder: 5 });
+    this.smoke = new AmbParticles(this.scene, { max: 900, texture: smoke, atlas: 4, lit: true, sort: true, fogScale: 0.14, nearFade: 0, renderOrder: 3 });
 
     // Smoke columns from burning buildings on the skyline.
     this.columns = [];
@@ -130,14 +130,13 @@ export class DistantBattle {
   _schedule(delay, fn) { this.queue.push({ t: this.time + delay, fn }); }
 
   // ------------------------------------------------------------------ events
-  artillery(salvo = 1) {
-    const az0 = this._frontAz(), d0 = rand(180, 440);
+  artillery(salvo = 1, az0 = this._frontAz(), d0 = rand(180, 440)) {
     for (let s = 0; s < salvo; s++) {
       this._schedule(s * rand(0.15, 0.6), () => {
         const az = az0 + rand(-0.05, 0.05), d = d0 + rand(-25, 25);
         const p = this._at(az, d, rand(1, 6));
         const big = Math.random() < 0.25;
-        this.flashes.spawn({ x: p.x, y: p.y + 4, z: p.z, life: rand(0.18, 0.35), size0: big ? 70 : 40, size1: big ? 95 : 55, color: [7, 3.6, 1.6], alpha: 1 });
+        this.flashes.spawn({ x: p.x, y: p.y + 4, z: p.z, life: rand(0.18, 0.35), size0: big ? 90 : 55, size1: big ? 120 : 75, color: [12, 6, 2.6], alpha: 1 });
         this.pulse(az, { intensity: (big ? 3.2 : 1.8) * (300 / d), width: rand(0.05, 0.09), decay: rand(5, 9), color: [1, 0.55, 0.26], height: rand(0.05, 0.1) });
         // A little burst of dust/smoke that rises behind the wall.
         for (let k = 0; k < (big ? 6 : 3); k++) this.smoke.spawn({
@@ -150,10 +149,9 @@ export class DistantBattle {
     }
   }
 
-  bigExplosion() {
-    const az = this._frontAz(0.8), d = rand(200, 320);
+  bigExplosion(az = this._frontAz(0.8), d = rand(200, 320)) {
     const p = this._at(az, d, 4);
-    this.flashes.spawn({ x: p.x, y: p.y + 10, z: p.z, life: 0.6, size0: 150, size1: 200, color: [8, 4.5, 2], alpha: 1 });
+    this.flashes.spawn({ x: p.x, y: p.y + 10, z: p.z, life: 0.7, size0: 190, size1: 260, color: [14, 7.5, 3.2], alpha: 1 });
     this.pulse(az, { intensity: 6 * (260 / d), width: 0.2, decay: 2.2, color: [1, 0.55, 0.25], height: 0.14 });
     for (let k = 0; k < 26; k++) {
       const a = rand(0, TAU), s = rand(4, 18);
@@ -177,28 +175,26 @@ export class DistantBattle {
     this._schedule(dist / 343, () => this.game.fpcam?.addTrauma?.(0.12));
   }
 
-  tracerBurst() {
-    const az = this._frontAz(1.1), d = rand(170, 380);
+  tracerBurst(az = this._frontAz(1.1), d = rand(170, 380)) {
     const origin = this._at(az, d, rand(0, 3));
     const aa = Math.random() < 0.7; // AA arcs vs low ground fire
     const el = aa ? rand(0.5, 1.15) : rand(0.08, 0.22);
     const towards = aa ? az + Math.PI + rand(-1.4, 1.4) : az + Math.PI / 2 * (Math.random() < 0.5 ? -1 : 1) + rand(-0.4, 0.4);
     const count = (aa ? rand(18, 45) : rand(10, 24)) | 0, rate = rand(9, 15), speed = aa ? rand(240, 320) : rand(200, 260);
     const sweep = rand(-0.25, 0.25), green = Math.random() < 0.15;
-    const col = green ? [1.4, 6, 1.6] : [7, 1.6, 0.5];
+    const col = green ? [2.2, 10, 2.6] : [12, 2.8, 0.8];
     for (let i = 0; i < count; i++) {
       if (i % 4 !== 0 && !aa) continue; // only every 4th round is a tracer in ground fire
       this._schedule(i / rate, () => {
         const h = towards + sweep * (i / count) + rand(-0.02, 0.02), e = el + rand(-0.03, 0.03);
         const v = new THREE.Vector3(Math.cos(h) * Math.cos(e), Math.sin(e), Math.sin(h) * Math.cos(e)).multiplyScalar(speed);
-        this.tracers.spawn({ x: origin.x, y: origin.y, z: origin.z, vx: v.x, vy: v.y, vz: v.z, life: rand(2.2, 3.4), size0: 0.9, alpha: 1, color: col, gravity: 9.8 });
+        this.tracers.spawn({ x: origin.x, y: origin.y, z: origin.z, vx: v.x, vy: v.y, vz: v.z, life: rand(2.2, 3.4), size0: 1.5, alpha: 1, color: col, gravity: 9.8 });
       });
     }
     if (Math.random() < 0.6) this.amb.audio.crackle(origin, Math.min(30, count), rate);
   }
 
-  launchFlare() {
-    const az = this._frontAz(0.9), d = rand(110, 230);
+  launchFlare(az = this._frontAz(0.9), d = rand(110, 230)) {
     const ground = this._at(az, d, 0);
     const top = rand(140, 210);
     const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.flashes.mat.uniforms.map.value, color: new THREE.Color(9, 8, 6.5), blending: THREE.AdditiveBlending, depthWrite: false, fog: false, transparent: true }));
@@ -227,8 +223,8 @@ export class DistantBattle {
         const s = c.scale;
         this.smoke.spawn({
           x: c.pos.x + rand(-7, 7) * s, y: rand(6, 14), z: c.pos.z + rand(-7, 7) * s, vx: rand(-0.8, 0.8), vy: rand(5, 7.5) * s, vz: rand(-0.8, 0.8),
-          life: rand(55, 75), size0: 14 * s, size1: rand(60, 85) * s, alpha: rand(0.6, 0.8), fadeIn: 0.03,
-          color: [0.075, 0.07, 0.065], color1: [0.24, 0.23, 0.22], colorSpan: 0.8, emissive: [3.2, 1.2, 0.35], emissiveSpan: 0.07,
+          life: rand(55, 75), size0: 18 * s, size1: rand(75, 105) * s, alpha: rand(0.75, 0.9), fadeIn: 0.03,
+          color: [0.05, 0.045, 0.04], color1: [0.18, 0.17, 0.16], colorSpan: 0.8, emissive: [3.2, 1.2, 0.35], emissiveSpan: 0.07,
           drag: 0.028, wind: 0.75, rotV: rand(-0.06, 0.06), turb: 0.05,
         });
       }
@@ -290,10 +286,10 @@ export class DistantBattle {
         const sw = Math.sin(f.t * 1.1 + f.sway) * 0.18;
         f.core.position.set(Math.sin(sw) * 6, -Math.cos(sw) * 6 + 6, 0);
         f.chute.rotation.z = sw * 0.5;
-        f.core.scale.setScalar(2.4 + b * 1.4);
+        f.core.scale.setScalar(4 + b * 2);
         f.core.material.color.setRGB(9 * b, 8.2 * b, 6.8 * b);
         f.halo.scale.setScalar(55 + 10 * b);
-        f.halo.material.opacity = 0.32 * b;
+        f.halo.material.opacity = 0.45 * b;
         f.halo.position.copy(f.core.position);
         f.trailAcc += dt * 7 * ctx.particleScale;
         while (f.trailAcc >= 1 && b > 0.05) {

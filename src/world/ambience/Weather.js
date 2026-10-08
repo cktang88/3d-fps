@@ -65,7 +65,7 @@ export class Weather {
       uniforms: {
         camPos: { value: new THREE.Vector3() }, boxSize: { value: new THREE.Vector3(40, 26, 40) }, time: { value: 0 },
         ...boxUniforms(this.game.level),
-        vel: { value: new THREE.Vector3(1.5, -9, 0.6) }, amount: { value: 0.6 }, len: { value: 0.75 }, width: { value: 0.012 },
+        vel: { value: new THREE.Vector3(1.5, -9, 0.6) }, amount: { value: 0.6 }, len: { value: 0.9 }, width: { value: 0.018 },
         lightCol: { value: new THREE.Color(0.6, 0.6, 0.6) }, sunCol: { value: new THREE.Color(1, 0.8, 0.5) }, sunDir: { value: new THREE.Vector3(0, 1, 0) },
         flash: { value: 0 },
         fogColor: { value: new THREE.Color() }, fogDensity: { value: 0 }, fogScale: { value: 1 },
@@ -100,7 +100,7 @@ export class Weather {
         void main() {
           float across = 1.0 - abs(vUv.x * 2.0 - 1.0);
           float along = smoothstep(0.0, 0.25, vUv.y) * (1.0 - smoothstep(0.6, 1.0, vUv.y));
-          float a = across * along * vA * 0.32;
+          float a = across * along * vA * 0.42;
           float glint = pow(max(dot(vDir, sunDir), 0.0), 5.0);
           vec3 col = lightCol * 0.8 + sunCol * glint * 2.4 + vec3(0.8, 0.85, 1.0) * flash * 2.0;
           a *= 0.55 + glint * 1.6 + flash;

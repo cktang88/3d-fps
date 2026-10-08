@@ -331,9 +331,9 @@ export class Fires {
     }
     this._scorch(root, 2.2);
     site.flames.push(
-      { p: local(0, top - 0.2, 0), w: 0.95, h: 1.35, k: 1.0 },
-      { p: local(0.1, top - 0.15, -0.08), w: 0.7, h: 1.0, k: 0.9 },
-      { p: local(-0.1, top - 0.15, 0.08), w: 0.65, h: 0.9, k: 0.85 },
+      { p: local(0, top - 0.2, 0), w: 0.7, h: 0.85, k: 0.8 },
+      { p: local(0.1, top - 0.15, -0.08), w: 0.55, h: 0.7, k: 0.75 },
+      { p: local(-0.1, top - 0.15, 0.08), w: 0.5, h: 0.6, k: 0.7 },
     );
     site.smokeAt = [local(0, top + 0.9, 0)];
     site.lightPos = local(0, top + 0.6, 0);
@@ -395,7 +395,7 @@ export class Fires {
       if (n >= 32) break;
       f.seed ??= Math.random() * 10;
       this.fBase.setXYZ(n, f.p.x, f.p.y, f.p.z);
-      this.fSize.setXYZW(n, f.w * 1.6, f.h * 1.35, f.k * 1.2, f.seed);
+      this.fSize.setXYZW(n, f.w * 1.6, f.h * 1.35, f.k, f.seed);
       n++;
     }
     this.fBase.needsUpdate = this.fSize.needsUpdate = true;
