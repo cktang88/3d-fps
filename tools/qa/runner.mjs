@@ -46,6 +46,7 @@ async function runJob(job, buildInfo) {
   if (!buildInfo.ok) { result.error = 'BUILD FAILED'; result.build.out = buildInfo.out; return result; }
   const W = job.w || 960, H = job.h || 540;
   const page = await browser.newPage({ viewport: { width: W, height: H } });
+  page.setDefaultTimeout(300000);
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning' || job.verbose) result.logs.push(`[${m.type()}] ${m.text()}`.slice(0, 600)); });
   page.on('pageerror', (e) => result.logs.push('[pageerror] ' + e.message + ' ' + (e.stack || '').split('\n').slice(0, 3).join(' | ')));
   try {
@@ -78,7 +79,7 @@ async function runJob(job, buildInfo) {
       if (v.read) result.data[v.name] = await page.evaluate(v.read); // expression returning JSON-serialisable data
       if (v.shot !== false) {
         const f = `${v.name}.png`;
-        await page.screenshot({ path: path.join(dir, f) });
+        await page.screenshot({ path: path.join(dir, f), timeout: 180000 });
         result.shots.push(path.join('tools/qa/results', job.id, f));
       }
       if (v.release) await page.evaluate((keys) => { const g = window.__game; for (const k of keys) g.input.down.delete(k); }, v.release);

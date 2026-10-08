@@ -758,6 +758,10 @@ export class ViewModel {
       rig.charging.position.z = rig.chargingHome.z + k * travel;
     }
 
+    // Fixed-scope rifles: the bolt knob sits right beside the eyepiece and reads as a huge blob in
+    // the sight picture; tuck it while fully aimed (it is back for the bolt cycle).
+    if (rig.tune.integratedScope && rig.charging) rig.charging.visible = !(w.adsT > 0.8 && w.state !== 'bolt');
+
     // ---- Reload arms ----
     this._updateReload(rig, w, dt);
 
