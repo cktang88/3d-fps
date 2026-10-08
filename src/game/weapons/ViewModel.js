@@ -454,8 +454,9 @@ export class ViewModel {
       return { point: rp, front: fp, type: 'irons' };
     }
     const optics = this.models.src.optics;
-    const nodeName = opticId === 'reddot' ? 'MicroOptic' : opticId === 'holo' ? 'HoloOptic' : 'ScopeOptic';
-    const prefix = opticId === 'reddot' ? 'Micro' : opticId === 'holo' ? 'Holo' : 'Scope';
+    const realSniper = opticId === 'sniper' && !!find(optics, 'SniperOptic'); // dedicated riflescope model
+    const nodeName = opticId === 'reddot' ? 'MicroOptic' : opticId === 'holo' ? 'HoloOptic' : realSniper ? 'SniperOptic' : 'ScopeOptic';
+    const prefix = opticId === 'reddot' ? 'Micro' : opticId === 'holo' ? 'Holo' : realSniper ? 'Sniper' : 'Scope';
     const srcNode = find(optics, nodeName);
     const optic = srcNode.clone(true);
     optic.position.set(0, 0, 0); optic.rotation.set(0, 0, 0);
@@ -473,7 +474,7 @@ export class ViewModel {
     const contact = { reddot: 0.07, holo: 0.092, acog: 0.084, sniper: 0.084 }[opticId];
     const osc = rig.sidearm ? 0.6 : rig.tune.opticScale;
     optic.position.copy(mount).add(new THREE.Vector3(0, contact * osc, 0));
-    if (opticId === 'sniper') optic.scale.set(1.3, 1.3, 1.5);
+    if (opticId === 'sniper' && !realSniper) optic.scale.set(1.3, 1.3, 1.5);
     optic.scale.multiplyScalar(osc);
     gun.add(optic);
     gun.updateMatrixWorld(true);
@@ -507,7 +508,7 @@ export class ViewModel {
       frontAp.parent.add(lens);
     } else if (opticId === 'acog') {
       // Picture-in-picture lens at the rear aperture.
-      const r = 0.034 * osc; // fills the eyepiece bore (measured inner radius ≈ 0.035)
+      const r = (srcNode.userData.lensRadius ?? 0.034) * osc; // fills the eyepiece bore
       const lens = new THREE.Mesh(new THREE.CircleGeometry(r, 48), this.scopeLensMat);
       lens.position.copy(rearAp.position).add(new THREE.Vector3(0, 0, -0.006));
       rearAp.parent.add(lens);

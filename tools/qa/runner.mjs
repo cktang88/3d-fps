@@ -41,11 +41,25 @@ if (process.env.QA_BACKEND !== 'swiftshader' && fs.existsSync('/usr/bin/Xvfb')) 
   headless = false;
   glArgs = ['--use-gl=angle', '--use-angle=gl'];
 }
-const browser = await chromium.launch({
+const launchOpts = {
   executablePath: '/opt/pw-browsers/chromium', headless,
   args: [...glArgs, '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required', '--disable-gpu-vsync', '--disable-frame-rate-limit'],
-});
-for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, async () => { log('shutting down'); await browser.close().catch(() => {}); process.exit(0); });
+};
+let browser = null, launching = null;
+// Self-healing browser: relaunch if Chromium dies (e.g. renderer OOM-killed by the container memory cap).
+async function ensureBrowser() {
+  if (browser?.isConnected()) return browser;
+  if (!launching) launching = (async () => {
+    warm.clear();
+    browser = await chromium.launch(launchOpts);
+    browser.on('disconnected', () => { log('browser disconnected'); });
+    launching = null;
+    return browser;
+  })();
+  return launching;
+}
+
+for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, async () => { log('shutting down'); await browser?.close().catch(() => {}); process.exit(0); });
 log('browser backend:', headless ? 'swiftshader (headless)' : 'llvmpipe (Xvfb ' + process.env.DISPLAY + ')');
 
 function build() {
@@ -81,10 +95,10 @@ async function getPage(worker, job, buildInfo, result) {
         return true;
       } catch (e) { return false; }
     }).catch(() => false);
-    if (ok) { result.warm = true; return w.page; }
+    if (ok) { w.uses = (w.uses || 0) + 1; if (w.uses < 6) { result.warm = true; return w.page; } }
   }
   if (w) { await w.page.close().catch(() => {}); warm.delete(worker); }
-  const page = await browser.newPage({ viewport: { width: W, height: H } });
+  const page = await (await ensureBrowser()).newPage({ viewport: { width: W, height: H } });
   page.setDefaultTimeout(300000);
   const sink = { result };
   page.on('console', (m) => { const r = sink.result; if (r && (m.type() === 'error' || m.type() === 'warning' || r._verbose)) r.logs.push(`[${m.type()}] ${m.text()}`.slice(0, 600)); });
@@ -222,6 +236,16 @@ async function worker(n) {
     const b = await freshBuild();
     log(`[w${n}] run`, job.id, 'for', job.owner);
     const r = await runJob(job, b, n);
+    // Browser died mid-job (OOM etc.): re-queue once instead of failing the requester.
+    if (r.error && /has been closed|Target crashed|disconnected|Browser closed/i.test(r.error) && (job._retries || 0) < 2) {
+      job._retries = (job._retries || 0) + 1;
+      warm.delete(n);
+      fs.writeFileSync(path.join(REQ, f), JSON.stringify(job));
+      fs.unlinkSync(fp);
+      log(`[w${n}] browser lost during`, job.id, '- re-queued (retry', job._retries + ')');
+      await new Promise((res) => setTimeout(res, 3000));
+      continue;
+    }
     fs.mkdirSync(path.join(RES, job.id), { recursive: true });
     fs.writeFileSync(path.join(RES, job.id, 'result.json'), JSON.stringify(r, null, 2));
     fs.unlinkSync(fp);
