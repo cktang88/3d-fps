@@ -247,7 +247,18 @@ async function worker(n) {
     try { job = JSON.parse(fs.readFileSync(fp, 'utf8')); } catch { fs.renameSync(fp, fp + '.bad'); continue; }
     const b = await freshBuild();
     log(`[w${n}] run`, job.id, 'for', job.owner, 'snapshot', b.stamp);
-    const r = await runJob(job, b, n);
+    // Watchdog: a job that hangs (e.g. an infinite loop inside page.evaluate) must not block a worker forever.
+    const limit = (job.timeoutS || 900) * 1000;
+    let timer;
+    const r = await Promise.race([
+      runJob(job, b, n),
+      new Promise((res) => { timer = setTimeout(async () => {
+        log(`[w${n}] TIMEOUT`, job.id, `after ${limit / 1000}s - closing its page`);
+        const w = warm.get(n); warm.delete(n); const partial = w?.sink?.result; await w?.page?.close().catch(() => {});
+        res({ ...(partial || {}), id: job.id, owner: job.owner, startedAt: partial?.startedAt || new Date(Date.now() - limit).toISOString(), finishedAt: new Date().toISOString(), shots: partial?.shots || [], logs: partial?.logs || [], data: partial?.data || {}, error: `TIMEOUT after ${limit / 1000}s (page hung - possible infinite loop in game code or job script)` });
+      }, limit); }),
+    ]);
+    clearTimeout(timer);
     if (shuttingDown) return new Promise(() => {}); // leave it in running/; the next start re-queues it
     // Browser died mid-job (OOM etc.): re-queue once instead of failing the requester.
     if (r.error && /has been closed|Target crashed|disconnected|Browser closed/i.test(r.error) && (job._retries || 0) < 2) {

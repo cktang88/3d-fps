@@ -520,7 +520,7 @@ export class Character {
       }
     });
     // Perf: the body's ~11 skinned parts cast one merged, simplified shadow (1 shadow draw instead of 11).
-    addMergedShadowProxy(model, 3500);
+    addMergedShadowProxy(model, 2000);
     // Perf: ~30% body mesh once a bot is small on screen (distance x tan(fov/2) > 24, i.e. ~20 m at hip FOV).
     this._geoLod = new DistanceLod(model, 0.3, 0.01);
     this.bones = findBones(model);
@@ -639,7 +639,7 @@ export class Character {
     const gun = rigidLodTemplate(src, 3000, 0.006, /^(SpareMagazine|Magazine)$/).clone(true);
     gun.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = !o.isSkinnedMesh; } });
     const spare = gun.getObjectByName('SpareMagazine'); if (spare) spare.visible = false;
-    addMergedShadowProxy(gun, 1000);
+    addMergedShadowProxy(gun, 600);
     // Steel-tide rifles are authored ~1.75 units long; 0.47 gives real-world length.
     const s = 0.47;
     const wrap = new THREE.Group();

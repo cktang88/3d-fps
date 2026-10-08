@@ -221,6 +221,8 @@ export function addMergedShadowProxy(root, maxTris, error = 0.02) {
   proxy.receiveShadow = false;
   if (root.userData.perfOwner) proxy.userData.perfOwner = root.userData.perfOwner;
   for (const m of parts) m.castShadow = false;
+  // Tiny rigid bits riding on a skinned body (eyes, buttons) add a shadow draw each but no visible shadow.
+  if (sk) for (const m of rigid) { const r = m.geometry.boundingSphere ?? (m.geometry.computeBoundingSphere(), m.geometry.boundingSphere); if (r.radius * m.matrixWorld.getMaxScaleOnAxis() < 0.12) m.castShadow = false; }
   root.userData.mergedShadowProxy = proxy;
   return proxy;
 }

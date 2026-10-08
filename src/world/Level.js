@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { simplifiedGeometry, triCount } from '../render/Lod.js';
 import { GroundedSkybox } from 'three/addons/objects/GroundedSkybox.js';
 import { worldBox, worldUV } from './Geo.js';
 import { DEG } from '../core/MathUtil.js';
@@ -522,19 +523,50 @@ export class Level {
   }
 
   finalizeProps() {
+    // Perf (docs/PERF.md): one BatchedMesh per prop part instead of an InstancedMesh. Same single draw call
+    // (multi-draw), but instances are frustum-culled one by one (main, scope and shadow cameras) and swap to
+    // a ~30% meshopt LOD once they are small on screen. Visual LOD switch distance: distance*tan(fov/2) > 28
+    // (≈ 24 m at hip FOV, much further through a scope).
+    const cam = this.game.renderer.camera;
+    this.propBatches = [];
     for (const [k, list] of Object.entries(this.propInst)) {
       const p = this.props[k];
       if (!p || !list.length) continue;
       const big = p.size.y * p.size.x > 0.08;
       for (const part of p.parts) {
-        const im = new THREE.InstancedMesh(part.geo, part.mat, list.length);
-        list.forEach((m, i) => im.setMatrixAt(i, m));
-        im.instanceMatrix.needsUpdate = true;
-        im.castShadow = big && !part.mat.userData.noUnify;
-        im.receiveShadow = true;
-        im.computeBoundingSphere();
-        im.name = 'prop_' + k;
-        this.group.add(im);
+        if (!part.geo.index) part.geo = mergeVertices(part.geo);
+        const full = part.geo;
+        const lod = simplifiedGeometry(full, Math.max(60, Math.round(triCount(full) * 0.3)), 0.01);
+        const geos = lod === full ? [full] : [full, lod];
+        const vtx = geos.reduce((n, g) => n + g.attributes.position.count, 0);
+        const idx = geos.reduce((n, g) => n + g.index.count, 0);
+        const bm = new THREE.BatchedMesh(list.length, vtx, idx, part.mat);
+        const ids = geos.map((g) => bm.addGeometry(g));
+        const pos = [];
+        for (const m of list) {
+          const id = bm.addInstance(ids[0]);
+          bm.setMatrixAt(id, m);
+          pos.push(new THREE.Vector3().setFromMatrixPosition(m));
+        }
+        bm.castShadow = big && !part.mat.userData.noUnify;
+        bm.receiveShadow = true;
+        bm.name = 'prop_' + k;
+        if (ids.length > 1) {
+          const low = new Uint8Array(list.length);
+          const fovK = { fov: -1, t: 1 };
+          bm.onBeforeRender = (r, sc, camera) => {
+            if (camera !== cam) return;
+            if (fovK.fov !== cam.fov) { fovK.fov = cam.fov; fovK.t = Math.tan(cam.fov * Math.PI / 360); }
+            const cp = cam.position;
+            for (let i = 0; i < pos.length; i++) {
+              const kk = pos[i].distanceTo(cp) * fovK.t;
+              const want = low[i] ? kk > 24 : kk > 28;
+              if (want !== !!low[i]) { low[i] = want ? 1 : 0; bm.setGeometryIdAt(i, ids[want ? 1 : 0]); }
+            }
+          };
+        }
+        this.group.add(bm);
+        this.propBatches.push(bm);
         this.mats.applyUnify(part.mat, 'prop');
       }
     }
@@ -1338,7 +1370,7 @@ export class Level {
     g.renderer.setSun?.(info.dir, new THREE.Color(1.0, 0.7, 0.42));
     // Fake volumetric shafts through the warehouse's south windows + the main door, with dust motes.
     this.shaftOpenings.push({ center: V(-9, 2.4, -27), w: 5.6, h: 4.6, normal: V(0, 0, 1), length: 14 });
-    const shafts = buildLightShafts(this.shaftOpenings, sunDir, new THREE.Color(1.0, 0.72, 0.45), { length: 24, intensity: 0.14 });
+    const shafts = buildLightShafts(this.shaftOpenings, sunDir, new THREE.Color(1.0, 0.72, 0.45), { length: 24, intensity: 0.22 });
     this.group.add(shafts);
     const dust = buildDust([new THREE.Box3(V(-17, 0.5, -44), V(17, 7.5, -28))], 700, new THREE.Color(1.0, 0.8, 0.6).multiplyScalar(0.55), sunDir);
     this.group.add(dust);

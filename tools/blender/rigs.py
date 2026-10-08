@@ -36,14 +36,17 @@ RIGS = {
 # "bore point above the web marker" of each gun; rot = (pitch, yaw, roll) degrees
 # (pitch + = muzzle up, yaw + = muzzle toward screen centre, roll + = top of the gun cants left).
 FRAMING = {
-    # Solved from the reference screenshots (docs/FP_FRAMING.md): rifle rear sight ~(64%, 60%), front sight
-    # ~(57-60%, 52%) of the screen at viewmodel vFOV 52 -> web of the grip ~0.20 m ahead of the eye.
-    'rifle': dict(pos=(0.110, 0.200, -0.055), rot=(0.5, -2.0, 3.0)),
-    'smg': dict(pos=(0.105, 0.195, -0.055), rot=(0.5, -2.0, 3.0)),
-    'sniper': dict(pos=(0.115, 0.210, -0.068), rot=(0.5, -1.5, 2.0)),
-    'shotgun': dict(pos=(0.110, 0.200, -0.058), rot=(0.5, -2.0, 3.0)),
+    # Matched to the Free FPS Template idle pose (measured: tools/blender/extract_template_anims.py, see
+    # docs/FP_FRAMING.md): the bore above the grip sits 5.8 cm right, 14.4 cm ahead, 6.6 cm below the eye with the
+    # gun parallel to the view axis and ~5 deg cant. Raised 1.4 cm / 1 cm right after the side-by-side.
+    'rifle': dict(pos=(0.068, 0.144, -0.052), rot=(0.0, 0.0, 5.0)),
+    'smg': dict(pos=(0.066, 0.140, -0.050), rot=(0.0, 0.0, 5.0)),
+    'sniper': dict(pos=(0.070, 0.150, -0.058), rot=(0.0, 0.0, 4.0)),
+    'shotgun': dict(pos=(0.068, 0.144, -0.054), rot=(0.0, 0.0, 5.0)),
     'pistol': dict(pos=(0.050, 0.220, -0.035), rot=(1.0, 1.0, 2.0)),
 }
-# Shoulders (UpArm heads) in view-camera space, REAL metres; elbow pole targets likewise.
-SHOULDER = {'R': (0.19, -0.04, -0.21), 'L': (-0.17, 0.28, -0.27)}
-POLE = {'R': (0.45, 0.05, -0.75), 'L': (-0.45, 0.35, -0.55)}
+# Shoulders (UpArm heads) and elbow pole targets in view-camera space, REAL metres. Left side from the template
+# (upperarm_l (-0.29,-0.15,-0.12), elbow (-0.15,0.08,-0.17)): the support forearm enters diagonally from the
+# lower left like the template / AAA references.
+SHOULDER = {'R': (0.19, -0.04, -0.21), 'L': (-0.29, -0.15, -0.12)}
+POLE = {'R': (0.45, 0.05, -0.75), 'L': (-0.32, 0.12, -0.32)}
