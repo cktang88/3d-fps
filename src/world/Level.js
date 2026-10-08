@@ -592,7 +592,12 @@ export class Level {
     const B = this.bounds, ph = 3.4;
     const pw = 'concreteWall';
     const sides = [[-B, -B, B, -B], [B, B, -B, B], [-B, B, -B, -B], [B, -B, B, B]];
-    for (const [x1, z1, x2, z2] of sides) this.wall(pw, x1, z1, x2, z2, 0, ph, 0.5);
+    for (const [x1, z1, x2, z2] of sides) {
+      this.wall(pw, x1, z1, x2, z2, 0, ph, 0.5);
+      // Coping cap + a darker plinth course: breaks the long plane into readable architecture.
+      this.wall('concrete', x1, z1, x2, z2, ph, 0.12, 0.66, [], { collide: false, nav: false, map: false, uv: 1.5 });
+      this.wall('concreteDirty', x1, z1, x2, z2, 0, 0.45, 0.56, [], { collide: false, nav: false, map: false, uv: 2 });
+    }
     for (const [x1, z1, x2, z2] of sides) {
       const len = Math.hypot(x2 - x1, z2 - z1);
       const dir = V((x2 - x1) / len, 0, (z2 - z1) / len);
@@ -943,6 +948,23 @@ export class Level {
       }
     };
     cab(-13.4, 42); cab(-13.4, 41.2); cab(-4.6, 33); cab(9.4, 43.2, F); cab(-13.4, 33, F);
+    // Office chairs (steel frame, worn wood seat/back), one knocked over.
+    const chair = (x, z, y = 0, r = 0, fallen = false) => {
+      const c = Math.cos(r), sn = Math.sin(r);
+      const L = (lx, ly, lz) => V(x + lx * c + lz * sn, y + ly, z - lx * sn + lz * c);
+      if (fallen) {
+        // Lying on its back: seat vertical, legs pointing sideways.
+        this.beam('woodDark', V(x, y + 0.24, z).addScaledVector(V(c, 0, -sn), -0.22), V(x, y + 0.24, z).addScaledVector(V(c, 0, -sn), 0.22), 0.42, 0.04, { uv: 0.6 });
+        for (const s2 of [-0.18, 0.18]) this.cyl('steel', V(x, y + 0.03, z).addScaledVector(V(c, 0, -sn), s2), V(x, y + 0.03, z).addScaledVector(V(c, 0, -sn), s2).addScaledVector(V(sn, 0, c), 0.45), 0.012, 5);
+        return;
+      }
+      this.box('woodDark', ...L(0, 0.45, 0).toArray(), 0.44, 0.03, 0.42, { rot: r, map: false, collide: false, nav: false, uv: 0.6 });
+      this.box('woodDark', ...L(0, 0.75, -0.2).toArray(), 0.42, 0.26, 0.025, { rot: r, map: false, collide: false, nav: false, uv: 0.6 });
+      for (const lx of [-0.19, 0.19]) for (const lz of [-0.18, 0.18]) this.cyl('steel', L(lx, 0, lz), L(lx, lz < 0 ? 0.88 : 0.44, lz), 0.011, 5);
+      this.blob(x, z, 0.7, 0.7, r, y + 0.012, 0.5);
+    };
+    chair(-10, 35.75, 0, Math.PI); chair(1.2, 36.3, 0, Math.PI + 0.3); chair(-7.3, 40.3, 0, 0.2); chair(-9, 35.8, F, Math.PI - 0.2);
+    chair(2.1, 34.9, F, 0.5, true); chair(-6, 41.2, F, 0.1);
     // Clutter.
     this.prop('cardboard', -11, 42, 0.3, { nav: false }); this.prop('cardboard', 3, 42.6, 1.2, { nav: false });
     this.prop('cardboard', -9.4, 36, 2.1, { nav: false, y: 0.78, mount: true }); this.prop('cardboard', -12, 34.5, 0.2, { nav: false });
@@ -1113,6 +1135,21 @@ export class Level {
     const bld = (x, z, w, h, d, mat = 'concreteWall', rot = 0) => {
       this.box(mat, x, h / 2, z, w, h, d, { ...o, rot, uv: 4 });
       this.box('metalDark', x, h + 0.25, z, w + 0.3, 0.5, d + 0.3, { ...o, rot, uv: 4 });
+      // Window bands on the face toward the depot (dark openings; some lit later by fires).
+      const c = Math.cos(rot), sn = Math.sin(rot);
+      const toC = V(-x, 0, -z).normalize();
+      const faces = [[V(c, 0, -sn), w, d], [V(sn, 0, c), d, w]];
+      for (const [ax, along, depth] of faces) {
+        const n = V(ax.z, 0, -ax.x); // face normal candidate
+        const sgn = Math.sign(n.dot(toC)) || 1;
+        const fc = V(x, 0, z).addScaledVector(n, sgn * (depth / 2 + 0.06));
+        const nx = Math.floor((along - 4) / 4), ny = Math.floor((h - 3) / 4);
+        for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
+          if (rnd() < 0.15) continue;
+          const p = fc.clone().addScaledVector(ax, -along / 2 + 3 + i * 4);
+          this.box('black', p.x, 2.5 + j * 4, p.z, 1.8, 1.5, 0.12, { ...o, rot: Math.atan2(-ax.z, ax.x) });
+        }
+      }
     };
     // North: factory block with saw-tooth roofs & chimneys.
     bld(-30, -95, 40, 14, 22, 'brick'); bld(15, -105, 30, 20, 26, 'concreteWall'); bld(48, -92, 20, 10, 18, 'corrugated');
@@ -1128,7 +1165,6 @@ export class Level {
     this.beam('rackBeam', V(cx - 12, 33, cz), V(cx + 30, 31, cz), 0.3, 0.3, { uv: 2 });
     // South: apartment blocks (shelled) + water tower.
     bld(-20, 100, 26, 22, 14, 'concreteWall', -0.05); bld(18, 108, 22, 30, 16, 'concrete', 0.08); bld(-60, 92, 18, 12, 14, 'brick');
-    for (let k = 0; k < 4; k++) for (let j = 0; j < 6; j++) this.box('black', -29 + j * 3.6, 3 + k * 4.8, 92.9, 1.4, 1.6, 0.2, o);
     const wt = V(55, 0, 95);
     for (const [dx, dz] of [[-3, -3], [3, -3], [-3, 3], [3, 3]]) this.beam('steel', wt.clone().add(V(dx * 1.3, 0, dz * 1.3)), wt.clone().add(V(dx, 18, dz)), 0.4, 0.4);
     this.cyl('steel', wt.clone().add(V(0, 18, 0)), wt.clone().add(V(0, 25, 0)), 5.5, 20, { uv: 3 });
