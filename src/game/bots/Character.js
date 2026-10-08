@@ -402,6 +402,11 @@ const V3 = () => new THREE.Vector3(), Q = () => new THREE.Quaternion();
 const _ik = { a: V3(), b: V3(), c: V3(), t: V3(), ac: V3(), ab: V3(), acN: V3(), abN: V3(), bcN: V3(), atN: V3(), ax0: V3(), ax1: V3(), tmp: V3(), qa: Q(), qb: Q(), r0: Q(), r1: Q(), r2: Q() };
 const UP = new THREE.Vector3(0, 1, 0), UP_NEG = new THREE.Vector3(0, -1, 0);
 const smooth = (t) => t * t * (3 - 2 * t);
+/** Exact critically-damped spring (D. Holden, "Spring-It-On", MIT idea): s = {x, v}. Stable for large dt. */
+function springDamperExact(s, goal, halflife, dt) {
+  const y = (4 * Math.LN2) / (halflife + 1e-5) / 2, j0 = s.x - goal, j1 = s.v + j0 * y, e = Math.exp(-y * dt);
+  s.x = e * (j0 + j1 * dt) + goal; s.v = e * (s.v - j1 * y * dt);
+}
 // Hot-path world transforms read straight from matrixWorld (callers keep matrices current).
 const _wv = new THREE.Vector3(), _ws = new THREE.Vector3();
 const wpos = (o, out) => out.setFromMatrixPosition(o.matrixWorld);
@@ -498,6 +503,10 @@ export class Character {
     this.buttLocal = new THREE.Vector3(0, 0.05, 0.25);
     this.boreY = 0.06;
     this.reloadW = 0; // procedural reload blend
+    this.stanceYaw = Character.STANCE_YAW; // hips vs aim when standing (negative = toward the firing side)
+    this.twistTrim = Character.TWIST_TRIM; // leave the shoulders slightly bladed
+    this.rc = { pitch: { x: 0, v: 0 }, yaw: { x: 0, v: 0 }, back: { x: 0, v: 0 } }; // recoil springs
+    this.handOff = null; // grip-relative hand rotations, captured from the settled hold
     this.magsDropped = [];
     this.handRelPos = new THREE.Vector3(); this.handRelQ = new THREE.Quaternion(); // gun relative to palm
     this._lodAcc = 0;
@@ -539,6 +548,7 @@ export class Character {
     if (this.weaponObj) this.weaponObj.parent?.remove(this.weaponObj);
     this.weaponObj = null; this.muzzleObj = null;
     this.weaponId = id;
+    this.handOff = null; this._settle = 0;
     const src = this.tpl.gunModels.src[bot.weapon.stats.model];
     if (!src || !this.bones.rHand) return;
     // Perf: third-person LOD (meshopt, ≤3k tris; the source FP guns run up to ~100k) + normal frustum culling
@@ -613,7 +623,7 @@ export class Character {
     this.hitAction.stop(); this.hitAction.setEffectiveWeight(0);
     this.oneShot = null; this.oneShotW = 0;
     this.hitJerk = 0; this.fireKick = 0;
-    this.bodyYaw = bot ? bot.yaw : 0;
+    this.bodyYaw = bot ? bot.yaw + this.stanceYaw : 0;
     this.twist = 0; this.lean = 0; this.fwdLean = 0; this.yawRate = 0;
     this.speedS = 0;
     this.root.visible = true;
@@ -625,9 +635,16 @@ export class Character {
     this._resetWeaponParent();
   }
 
-  onFire() {
+  onFire(bot) {
     this.fireKick = 1;
     this.kickRoll = (Math.random() * 2 - 1);
+    // Recoil impulses on the weapon root (critically damped springs; the IK'd arms ride along).
+    const st = bot?.weapon?.stats;
+    const heavy = st ? (st.pellets > 1 ? 2.2 : st.cls === 'Sniper Rifle' || st.cls === 'Marksman Rifle' ? 1.8 : st.cls === 'SMG' ? 0.7 : 1) : 1;
+    const r = this.rc;
+    r.pitch.v += 2.6 * heavy * (0.8 + 0.4 * Math.random());
+    r.yaw.v += (Math.random() * 2 - 1) * 0.9 * heavy;
+    r.back.v += 1.1 * heavy;
   }
 
   onHit(bot, info) {
@@ -676,12 +693,15 @@ export class Character {
       if (this.backward ? costF + 0.5 < costB : costB + 0.5 < costF) this.backward = !this.backward;
     }
     if (this.backward) moveYaw += Math.PI;
-    const targetBody = sp > 0.25 ? moveYaw : this._idleBodyYaw(aimYaw);
+    // Bladed stance: standing, the hips sit ~30° to the firing side of the aim line (TC 3-22.9);
+    // moving, the legs follow the travel direction.
+    const stance = this.stanceYaw * (1 - clamp(sp / 1.5, 0, 1));
+    const targetBody = sp > 0.25 ? moveYaw + stance : this._idleBodyYaw(aimYaw + stance);
     const dy = wrapPi(targetBody - this.bodyYaw);
     const turn = dy * Math.min(1, dt * (sp > 0.25 ? 9 : 6));
     this.bodyYaw = wrapPi(this.bodyYaw + turn);
     this.yawRate = damp(this.yawRate, turn / Math.max(dt, 1e-4), 8, dt);
-    this.twist = damp(this.twist, clamp(wrapPi(aimYaw - this.bodyYaw), -100 * DEG, 100 * DEG), 16, dt);
+    this.twist = damp(this.twist, clamp(wrapPi(aimYaw - this.bodyYaw) + this.twistTrim, -100 * DEG, 100 * DEG), 16, dt);
     // Lean into turns and with acceleration (small, speed-scaled).
     const accel = (sp - this.prevSpeed) / Math.max(dt, 1e-4);
     this.prevSpeed = sp;
@@ -795,6 +815,7 @@ export class Character {
     root.updateMatrixWorld(true);
     const pitch = clamp(bot.pitch, -70 * DEG, 70 * DEG);
     const aimYaw = bot.yaw;
+    this.leanIn = damp(this.leanIn || 0, Character.LEAN_IN * (1 - clamp(this.speedS / 2, 0, 1)) * (1 - bot.crouch), 6, this._animDt || 0.016);
     // Procedural rotations: each bone's own matrixWorld is refreshed in place as we go down the chain
     // (no subtree updates); the whole skeleton is refreshed once at the end.
     _v5.set(Math.cos(aimYaw), 0, -Math.sin(aimYaw)); // aim right axis (world) for pitching the chest
@@ -804,7 +825,8 @@ export class Character {
       const bone = chain[i];
       // World-space rotation for this bone's share: twist about up, pitch about aim-right, plus recoil
       // (pitch back) and a directional flinch on the upper chest.
-      let p = pitch * share[i];
+      // Part of the aim pitch (the arms carry the rest), plus an aggressive forward lean when planted.
+      let p = (pitch * 0.45 - this.leanIn) * share[i];
       if (i === 2) p += this.fireKick * 0.05;
       _q3.setFromAxisAngle(UP, this.twist * share[i]);
       _q4.setFromAxisAngle(_v5, p);
@@ -818,6 +840,10 @@ export class Character {
       const tp = pitch - 0.22;
       _v2.set(-Math.sin(aimYaw) * Math.cos(tp), Math.sin(tp), -Math.cos(aimYaw) * Math.cos(tp));
       const k = 1 - this.oneShotW * 2;
+      // Cheek weld: roll the head toward the stock so the eye sits over the sights.
+      _v3.set(-Math.sin(aimYaw), 0, -Math.cos(aimYaw));
+      _q4.setFromAxisAngle(_v3, -0.14 * k);
+      this._rotateW(b.neck, _q4);
       for (const [bone, share] of [[b.neck, 0.4], [b.head, 0.75]]) {
         this._refreshW(b.neck); this._refreshW(b.head);
         b.head.matrixWorld.decompose(_v1, _q1, _v3);
@@ -865,25 +891,26 @@ export class Character {
     const root = this.root, w = bot.weapon;
     const dt = Math.min(0.1, Math.max(1e-3, this._animDt || 1 / 60));
     // --- reload / action blends ---
+    for (const k in this.rc) springDamperExact(this.rc[k], 0, k === 'back' ? 0.06 : 0.08, dt);
     const reloading = w.state === 'reload';
     this.reloadW = damp(this.reloadW, reloading ? 1 : 0, reloading ? 9 : 7, dt);
     const rw = this.reloadW;
     const osw = this.oneShotW; // throw
     // --- orientation: aim (+ fire climb), canted & dipped toward the shooter while reloading ---
-    _e1.set(pitch + this.fireKick * 0.06 - rw * 0.32, aimYaw + this.kickRoll * this.fireKick * 0.015 + rw * 0.22, rw * 0.5, 'YXZ');
+    _e1.set(pitch + this.rc.pitch.x - rw * 0.32, aimYaw + this.rc.yaw.x + rw * 0.22, rw * 0.5, 'YXZ');
     _q1.setFromEuler(_e1);
     // --- position: butt in the shoulder pocket (between the shoulder joint and the sternum) ---
     _v5.set(-Math.sin(aimYaw), 0, -Math.cos(aimYaw)); // aim forward (flat)
     wpos(b.rArm, _v1);
     wpos(b.spine2, _v2);
-    _v1.lerp(_v2, 0.32);
-    _v1.y = _v1.y * 0.6 + (wpos(b.rArm, _v3).y - 0.04) * 0.4;
+    _v1.lerp(_v2, 0.42);
+    _v1.y = _v1.y * 0.6 + (wpos(b.rArm, _v3).y - 0.04) * 0.4 - 0.045;
     _v1.addScaledVector(_v5, 0.03 - rw * 0.05);
     _v1.y -= rw * 0.07;
     _v3.copy(this.buttLocal).applyQuaternion(_q1);
     _v1.sub(_v3);
     // recoil: the whole gun drives back into the shoulder and recovers
-    _v1.addScaledVector(_v3.set(0, 0, 1).applyQuaternion(_q1), this.fireKick * 0.035);
+    _v1.addScaledVector(_v3.set(0, 0, 1).applyQuaternion(_q1), clamp(this.rc.back.x, -0.02, 0.06));
     if (osw > 0.001) {
       // Throw: the gun rides the right hand with the offset captured while aiming.
       wquat(b.rHand, _q2);
@@ -911,6 +938,7 @@ export class Character {
     this._clavicleReach(b.rSh, b.rArm, _v4, ikW);
     this._twoBoneIK(b.rArm, b.rFore, b.rHand, _v4, ikW);
     this._pole(b.rArm, b.rFore, b.rHand, _v6.copy(_v5).multiplyScalar(0.55).add(UP_NEG), 0.75 * ikW);
+    if (this.handOff) this._lockHand(b.rHand, this.handOff.r, _q1, ikW * (w.state === 'bolt' ? 0.3 : 1));
     // Keep the hand's grip orientation glued to the gun (captured relative to the weapon while settled).
     // --- left hand: handguard / pump / magazine path ---
     if (b.lArm && b.lFore && b.lHand) {
@@ -932,7 +960,14 @@ export class Character {
       this._clavicleReach(b.lSh, b.lArm, _v4, ikW);
       this._twoBoneIK(b.lArm, b.lFore, b.lHand, _v4, ikW);
       this._pole(b.lArm, b.lFore, b.lHand, _v6.copy(_v5).multiplyScalar(-0.35).add(UP_NEG), 0.6 * ikW);
+      if (this.handOff) this._lockHand(b.lHand, this.handOff.l, _q1, ikW * (1 - rw));
     }
+    // Capture the hands' grip orientation relative to the gun once, from a settled hold.
+    if (!this.handOff && osw < 0.001 && rw < 0.01 && this._settle > 0.4) {
+      _q2.copy(_q1).invert();
+      this.handOff = { r: _q2.clone().multiply(wquat(b.rHand, _q3)), l: _q2.clone().multiply(wquat(b.lHand, _q3)) };
+    }
+    this._settle = (this._settle || 0) + dt;
     // Remember gun-in-hand offset for the throw one-shot.
     if (osw < 0.001) {
       wquat(b.rHand, _q2); wpos(b.rHand, _v2);
@@ -942,6 +977,16 @@ export class Character {
     }
     this._updateMag(bot, rw);
     this._updateDroppedMags(dt);
+  }
+
+  /** Set a hand's world rotation to gun·offset (blended), keeping the fingers' authored grip. */
+  _lockHand(hand, off, gunQ, weight) {
+    if (weight <= 0.01) return;
+    _rq1.copy(gunQ).multiply(off); // desired world
+    wquat(hand.parent, _rq2).invert();
+    _rq2.multiply(_rq1); // desired local
+    hand.quaternion.slerp(_rq2, weight);
+    hand.updateMatrixWorld(true);
   }
 
   /** Shrug / protract the clavicle (≤ ~25°) when the wrist target is beyond the arm's reach. */
@@ -1380,3 +1425,6 @@ export class Character {
 }
 
 Character.CORPSE_TIME = 7;
+Character.STANCE_YAW = -30 * DEG; // hips 30° to the firing side (TC 3-22.9)
+Character.TWIST_TRIM = -12 * DEG; // shoulders stay ~12° bladed
+Character.LEAN_IN = 0.16; // rad of extra forward lean when planted and aiming

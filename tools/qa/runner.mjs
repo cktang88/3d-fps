@@ -216,13 +216,18 @@ async function freshBuild() {
   try { changed = sourcesChangedSince(buildAt); } catch { changed = true; }
   // Reuse within 20 s, or while sources are unchanged — but never serve a snapshot older than 5 min.
   if (buildInfo && (age < 20000 || (!changed && age < 300000))) return buildInfo;
-  if (!building) building = (async () => {
-    log('building snapshot…');
-    const b = build();
-    log(b.ok ? `build ok ${b.ms}ms` : 'BUILD FAILED');
-    buildInfo = b; buildAt = Date.now(); building = null;
-    return b;
-  })();
+  if (!building) {
+    // NB: build() is synchronous, so clear `building` only after the promise is stored and settled —
+    // clearing it inside the async body (as before) left a resolved promise cached forever (stale snapshots).
+    building = (async () => {
+      await null;
+      log('building snapshot…');
+      const b = build();
+      log(b.ok ? `build ok ${b.ms}ms` : 'BUILD FAILED');
+      buildInfo = b; buildAt = Date.now();
+      return b;
+    })().finally(() => { building = null; });
+  }
   return building;
 }
 function claim() {
@@ -256,7 +261,6 @@ async function worker(n) {
     }
     fs.mkdirSync(path.join(RES, job.id), { recursive: true });
     fs.writeFileSync(path.join(RES, job.id, 'job.json'), JSON.stringify(job)); // lets anyone re-submit it
-    fs.writeFileSync(path.join(RES, job.id, 'job.json'), JSON.stringify(job)); // for easy resubmission
     fs.writeFileSync(path.join(RES, job.id, 'result.json'), JSON.stringify(r, null, 2));
     fs.unlinkSync(fp);
     log(`[w${n}] done`, job.id, r.error ? 'ERROR ' + r.error.split('\n')[0] : 'ok', `${Math.round((Date.parse(r.finishedAt) - Date.parse(r.startedAt)) / 1000)}s`);

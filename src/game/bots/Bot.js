@@ -356,17 +356,24 @@ export class Bot {
         wantAim = dist > 12 || this.weapon.stats.cls === 'Sniper Rifle';
         // Close distance with short-range weapons, back off with long-range ones.
         const ideal = this.weapon.stats.range[0] * 0.8;
+        // Strafe like a person: commit to a direction for ~0.7–1.8 s, sometimes plant and shoot, and
+        // brake (plant the outside foot) for a beat before reversing.
         this.strafeTimer -= dt;
         if (this.strafeTimer <= 0) {
-          this.strafeTimer = rand(0.3, 0.9);
-          this.strafeDir = Math.random() < 0.5 ? -this.strafeDir : this.strafeDir;
+          const hold = Math.random() < 0.25;
+          this.strafeHold = hold;
+          this.strafeTimer = hold ? rand(0.4, 1.0) : rand(0.7, 1.8);
+          const flip = !hold && Math.random() < 0.6;
+          if (flip) { this.strafeDir = -this.strafeDir; this.brakeTimer = 0.14; }
           this.crouchPeek = Math.random() < 0.3 && this.diffKey !== 'recruit';
-          if (Math.random() < this.diff.jump && this.jumpY === 0) this.jumpV = 5.5;
+          if (Math.random() < this.diff.jump && this.jumpY === 0 && !hold) this.jumpV = 5.5;
         }
+        if (this.brakeTimer > 0) this.brakeTimer -= dt;
         const toT = _v.subVectors(this.target.position, this.position).setY(0).normalize();
         const side = new THREE.Vector3(-toT.z, 0, toT.x).multiplyScalar(this.strafeDir);
         const approach = dist > ideal * 1.4 ? 0.7 : dist < ideal * 0.5 ? -0.5 : 0;
-        desiredVel = side.multiplyScalar(wantAim ? 1.8 : 3.2).addScaledVector(toT, approach * runSpeed);
+        const lateral = this.strafeHold || this.brakeTimer > 0 ? 0 : wantAim ? 1.8 : 3.0;
+        desiredVel = side.multiplyScalar(lateral).addScaledVector(toT, approach * runSpeed * (this.brakeTimer > 0 ? 0.3 : 1));
         if (this.crouchPeek && wantAim) { desiredVel.multiplyScalar(0.3); crouchT = 1; }
         break;
       }
@@ -499,9 +506,13 @@ export class Bot {
         this._velMode = true;
       }
       const p = this.agent.position();
-      const prev = this.position.clone();
       this.position.set(p.x, p.y, p.z);
-      this.velocity.subVectors(this.position, prev).divideScalar(Math.max(dt, 1e-4));
+      // Animation follows the agent's own (smoothed) velocity — position deltas are noisy under avoidance.
+      const av = this.agent.velocity();
+      const k = 1 - Math.exp(-12 * dt);
+      this.velocity.x += (av.x - this.velocity.x) * k;
+      this.velocity.y = 0;
+      this.velocity.z += (av.z - this.velocity.z) * k;
       // Stuck detection for patrol.
       if (this.goal === 'patrol' && this.moveTarget) {
         if (this.position.distanceTo(this.lastPos) < 0.05) { this.stuckTimer += dt; if (this.stuckTimer > 2) { this.moveTarget = null; this.stuckTimer = 0; } }

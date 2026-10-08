@@ -45,7 +45,7 @@ export class Navigation {
 
   addAgent(pos) {
     return this.crowd.addAgent(pos, {
-      radius: 0.4, height: 1.8, maxAcceleration: 18, maxSpeed: 4.4,
+      radius: 0.4, height: 1.8, maxAcceleration: 9, maxSpeed: 4.4, // human-like starts/stops/reversals
       collisionQueryRange: 2.5, pathOptimizationRange: 12, separationWeight: 1.5,
       updateFlags: 0x1 | 0x2 | 0x4 | 0x8 | 0x10, // anticipate turns, obstacle avoidance, separation, optimize vis, optimize topo
       obstacleAvoidanceType: 3,
