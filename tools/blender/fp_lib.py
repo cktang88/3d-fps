@@ -86,8 +86,32 @@ def bvh_of(objs, matrix=Matrix()):
         me2 = bpy.data.meshes.new('_tmp'); tmp.to_mesh(me2); tmp.free()
         bm.from_mesh(me2); bpy.data.meshes.remove(me2)
         e.to_mesh_clear()
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     bm.verts.ensure_lookup_table(); bm.faces.ensure_lookup_table()
     return BVHTree.FromBMesh(bm), bm
+
+
+_DIRS = [Vector(d) for d in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1),
+                              (0.577, 0.577, 0.577), (-0.577, -0.577, 0.577))]
+
+
+def inside_depth(bvh, p, maxd):
+    """Penetration depth of p (>0 inside, <0 = distance outside). 'Inside' needs both the nearest-face
+    normal test and a ray vote (>= 6 of 8 rays leave through a back face), so single-sided planes,
+    decals and open edges of game meshes do not produce false penetrations."""
+    hit = bvh.find_nearest(p, maxd)
+    if hit[0] is None:
+        return -maxd
+    loc, nrm, _, d = hit
+    if (p - loc).dot(nrm) >= 0:
+        return -d
+    votes = 0
+    for dv in _DIRS:
+        h = bvh.ray_cast(p + dv * 1e-5, dv, 1.0)
+        if h[0] is not None and h[1].dot(dv) > 0:
+            votes += 1
+    return d if votes >= 6 else -d
 
 
 def signed_depth(bvh, p, maxd=0.05):

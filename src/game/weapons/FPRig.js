@@ -1,0 +1,157 @@
+import * as THREE from 'three';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+
+/**
+ * Per-weapon first-person rigs authored offline (tools/blender/build_rig.py, docs/FP_FRAMING.md):
+ * public/assets/models/fp/<id>.glb = gun (Gun_<id>, canonical contract nodes) + gloved arms skinned to
+ * one armature (FPRig) whose rest pose is the authored hold, posed per gun with an automatic
+ * intersection solver. Everything is in the gun's frame at FP_K x real scale (muzzle -Z, +Y up).
+ *
+ * At runtime the right hand rides the gun rigidly; the left arm is re-solved with a two-bone IK when the
+ * support hand has to leave its grip (pump, magazine swaps, shell loading).
+ */
+export const FP_K = 2;
+export const FP_IDS = ['m4a1', 'ak47', 'scarl', 'mp5a5', 'vss', 'm24', 'awm', 'shotgun', 'p226', 'm1911'];
+
+/**
+ * Presentation tuning for FP rigs (replaces the steel-tide VM_TUNE entries for these models, whose
+ * numbers were tied to the old meshes). Coordinates are WeaponRoot-local (gun frame, K-space).
+ * ironRear / ironFront: iron sight line (rear notch / aperture centre, front post tip).
+ */
+export const FP_TUNE = {
+  default: { opticScale: 0.82, reloadPos: [-0.05, 0.05, -0.02], reloadRot: [-0.06, 0.14, -0.3] },
+};
+
+const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
+const _m = new THREE.Matrix4();
+
+/** Split a loaded FP glTF into its gun subtree, metadata and markers. */
+export function parseFP(gltf, id) {
+  const scene = gltf.scene;
+  const root = scene.getObjectByName('FP_' + id) || scene;
+  let meta = {};
+  try { meta = JSON.parse(root.userData.fp || '{}'); } catch { /* keep defaults */ }
+  const gun = root.getObjectByName('Gun_' + id);
+  scene.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const marker = (n) => { const o = root.getObjectByName(n); return o ? o.getWorldPosition(new THREE.Vector3()).applyMatrix4(inv) : null; };
+  return { gltf, scene, root, gun, meta, gripR: marker('GripR'), gripL: marker('GripL') };
+}
+
+/** Analytic two-bone arm IK on the FPRig skeleton (shoulder fixed, elbow keeps its authored bend plane). */
+class ArmIK {
+  constructor(armRoot, side) {
+    const g = (n) => armRoot.getObjectByName(n);
+    this.up = g(`UpArm_${side}`);
+    this.fo = g(`Forearm_${side}`);
+    this.end = g(`BoneTwist_01${side}_end`) || g(`BoneTwist_01.${side}_end`);
+    this.ctrl = g(`IK_Hand_Cntrl_${side}`);
+    this.hand = g(`Hand_${side}`);
+    this.ok = !!(this.up && this.fo && this.end && this.ctrl && this.hand);
+    if (!this.ok) return;
+    this.rest = [this.up, this.fo, this.ctrl].map((b) => ({ b, p: b.position.clone(), q: b.quaternion.clone() }));
+  }
+
+  reset() { if (this.ok) for (const r of this.rest) { r.b.position.copy(r.p); r.b.quaternion.copy(r.q); } }
+
+  _setWorldQuat(bone, qWorld) {
+    bone.parent.getWorldQuaternion(_q2).invert();
+    bone.quaternion.copy(_q2.multiply(qWorld));
+    bone.updateMatrixWorld(true);
+  }
+
+  /**
+   * Place the hand control at a world transform and re-solve upper arm + forearm so the wrist meets it.
+   * pos/quat: world space. Call reset() first each frame (solve() does).
+   */
+  solve(pos, quat) {
+    if (!this.ok) return;
+    this.reset();
+    const top = this.up.parent;
+    top.updateMatrixWorld(true);
+    const S = this.up.getWorldPosition(new THREE.Vector3());
+    const E0 = this.fo.getWorldPosition(new THREE.Vector3());
+    const W0 = this.end.getWorldPosition(new THREE.Vector3());
+    // Hand control to the target.
+    _m.copy(this.ctrl.parent.matrixWorld).invert();
+    const lp = pos.clone().applyMatrix4(_m);
+    this.ctrl.position.copy(lp);
+    this.ctrl.parent.getWorldQuaternion(_q).invert();
+    this.ctrl.quaternion.copy(_q.multiply(quat));
+    this.ctrl.updateMatrixWorld(true);
+    // Wrist target = where the hand's root now is (hand bone head coincides with the wrist at rest).
+    const W = this.hand.getWorldPosition(new THREE.Vector3());
+    const a = E0.distanceTo(S), b = W0.distanceTo(E0);
+    const SW = W.clone().sub(S);
+    const d = THREE.MathUtils.clamp(SW.length(), Math.abs(a - b) + 1e-4, a + b - 1e-4);
+    const x = SW.normalize();
+    // Bend direction: authored elbow offset from the shoulder->wrist line, carried to the new line.
+    const u0 = E0.clone().sub(S); const x0 = W0.clone().sub(S).normalize();
+    u0.addScaledVector(x0, -u0.dot(x0));
+    const rot = new THREE.Quaternion().setFromUnitVectors(x0, x);
+    const u = u0.applyQuaternion(rot); u.addScaledVector(x, -u.dot(x)).normalize();
+    const cosA = (a * a + d * d - b * b) / (2 * a * d);
+    const sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
+    const E = S.clone().addScaledVector(x, a * cosA).addScaledVector(u, a * sinA);
+    // Upper arm: swing authored elbow direction onto the solved one.
+    const dq1 = new THREE.Quaternion().setFromUnitVectors(E0.clone().sub(S).normalize(), E.clone().sub(S).normalize());
+    this._setWorldQuat(this.up, dq1.multiply(this.up.getWorldQuaternion(new THREE.Quaternion())));
+    // Forearm: swing current wrist onto the target.
+    const E1 = this.fo.getWorldPosition(new THREE.Vector3());
+    const W1 = this.end.getWorldPosition(new THREE.Vector3());
+    const dq2 = new THREE.Quaternion().setFromUnitVectors(W1.sub(E1).normalize(), W.clone().sub(E1).normalize());
+    this._setWorldQuat(this.fo, dq2.multiply(this.fo.getWorldQuaternion(new THREE.Quaternion())));
+  }
+}
+
+/** One instance of an FP rig's arms (cloned per weapon rig). */
+export class FPArms {
+  constructor(fp) {
+    const clone = SkeletonUtils.clone(fp.scene);
+    const root = clone.getObjectByName(fp.root.name) || clone;
+    const gun = root.getObjectByName(fp.gun?.name || '__none__');
+    if (gun) gun.parent.remove(gun); // the rig builds its own gun from GunModels.src
+    this.object = root;
+    root.position.set(0, 0, 0); root.quaternion.identity(); root.scale.setScalar(1);
+    root.traverse((o) => {
+      if (o.isMesh) { o.frustumCulled = false; o.castShadow = false; o.receiveShadow = false; }
+    });
+    this.mesh = null;
+    root.traverse((o) => { if (o.isSkinnedMesh) this.mesh = o; });
+    this.ik = { L: new ArmIK(root, 'L'), R: new ArmIK(root, 'R') };
+    this.homeL = null;
+  }
+
+  /** Cache the left hand control's authored transform in WeaponRoot space. */
+  captureHome(weaponRoot) {
+    const ik = this.ik.L; if (!ik.ok) return;
+    ik.reset();
+    weaponRoot.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(weaponRoot.matrixWorld).invert();
+    const m = new THREE.Matrix4().multiplyMatrices(inv, ik.ctrl.matrixWorld);
+    this.homeL = { p: new THREE.Vector3(), q: new THREE.Quaternion(), s: new THREE.Vector3() };
+    m.decompose(this.homeL.p, this.homeL.q, this.homeL.s);
+  }
+
+  /** Left hand at home + offset (WeaponRoot space) with optional extra rotation; null = authored pose. */
+  setLeft(weaponRoot, offset, rotQ = null) {
+    const ik = this.ik.L; if (!ik.ok) return;
+    if (!offset && !rotQ) { ik.reset(); return; }
+    if (!this.homeL) this.captureHome(weaponRoot);
+    weaponRoot.updateMatrixWorld(true);
+    const p = this.homeL.p.clone(); if (offset) p.add(offset);
+    const q = this.homeL.q.clone(); if (rotQ) q.premultiply(rotQ);
+    p.applyMatrix4(weaponRoot.matrixWorld);
+    q.premultiply(weaponRoot.getWorldQuaternion(_q));
+    ik.solve(p, q);
+  }
+
+  /** Left hand control to an absolute WeaponRoot-space transform. */
+  setLeftAbs(weaponRoot, p, q) {
+    const ik = this.ik.L; if (!ik.ok) return;
+    weaponRoot.updateMatrixWorld(true);
+    ik.solve(p.clone().applyMatrix4(weaponRoot.matrixWorld), q.clone().premultiply(weaponRoot.getWorldQuaternion(_q)));
+  }
+
+  get leftHand() { return this.ik.L.hand; }
+}

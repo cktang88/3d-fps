@@ -91,7 +91,13 @@ async function runJob(job, buildInfo, worker = 0) {
   let page;
   try {
     page = await getPage(worker, job, buildInfo, result);
-    const frames = (n) => page.evaluate((n) => new Promise((r) => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }), n);
+    // Simulate n frames on a fixed 50 ms step; only the last `render` frames hit the GPU (SwiftShader is the bottleneck).
+    const frames = (n, render = 1) => page.evaluate(([n, render]) => new Promise((r) => {
+      window.__qaFixedDt = 0.05;
+      let i = 0;
+      const f = () => { i++; window.__qaSkipRender = i <= n - render; if (i >= n) { window.__qaSkipRender = false; r(); } else requestAnimationFrame(f); };
+      requestAnimationFrame(f);
+    }), [n, render]);
     if (job.setup) await page.evaluate(job.setup);
     if (job.match !== false) {
       await page.evaluate((mode) => { const g = window.__game; g.menu.close(); g.startMatch(mode); g.paused = false; }, job.match || 'tdm');
@@ -116,7 +122,7 @@ async function runJob(job, buildInfo, worker = 0) {
       // Optional: fast-forward `sim` seconds of game time without rendering (cheap on SwiftShader).
       if (v.sim) await page.evaluate((sec) => { const g = window.__game, r = g.renderer.render, wp = g.paused; g.renderer.render = () => {}; g.paused = false;
         try { for (let i = 0, n = Math.round(sec * 30); i < n; i++) g.update(1 / 30); } finally { g.renderer.render = r; g.paused = wp; } }, v.sim);
-      await frames(v.frames || 8);
+      await frames(v.frames || 8, v.shot === false ? 0 : 1);
       if (v.read) result.data[v.name] = await page.evaluate(v.read); // expression returning JSON-serialisable data
       if (v.shot !== false) {
         const f = `${v.name}.png`;
@@ -126,7 +132,12 @@ async function runJob(job, buildInfo, worker = 0) {
       (result.viewMs ||= {})[v.name] = Date.now() - tv;
       if (v.release) await page.evaluate((keys) => { const g = window.__game; for (const k of keys) g.input.down.delete(k); }, v.release);
     }
-    if (job.script) result.data.script = await page.evaluate(job.script); // async expression string
+    if (job.script) {
+      // Scripts are usually logic: skip GPU work by default (a script can set window.__qaSkipRender=false itself).
+      await page.evaluate((render) => { window.__qaFixedDt = 0.05; window.__qaSkipRender = !render; }, !!job.renderScript);
+      result.data.script = await page.evaluate(job.script); // async expression string
+      await page.evaluate(() => { window.__qaSkipRender = false; });
+    }
     result.stats = await page.evaluate(() => {
       const g = window.__game, i = g.renderer.renderer.info;
       return { calls: i.render.calls, tris: i.render.triangles, geos: i.memory.geometries, tex: i.memory.textures };

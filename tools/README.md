@@ -16,3 +16,7 @@ snapshot of the shared tree):
 
 `submit` blocks until done and prints `result.json`: screenshot paths (tools/qa/results/<id>/*.png),
 console errors, `read`/`script` data, draw stats, build errors. Default 960x540.
+
+QA runner timing model: frames advance on a fixed 50 ms step (`window.__qaFixedDt`); GPU rendering is skipped
+(`window.__qaSkipRender`) except the final frame before each screenshot. `shot:false` views and `script`s don't render
+unless the job sets `renderScript:true`. Use `fresh:true` to force a clean page load.

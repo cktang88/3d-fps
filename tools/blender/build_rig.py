@@ -23,7 +23,17 @@ A = args()
 GID, SFDIR, WORK = A[0], A[1], A[2]
 OUT = A[3] if len(A) > 3 else '-'
 FAST = '--fast' in A
-SPEC = RIGS[GID]
+SELFTEST = GID.startswith('tpl_')
+if SELFTEST:  # rig a template's own gun with identity markers: measures inherent template penetration
+    _t = GID[4:]
+    SPEC = dict(tpl=_t, cls='rifle' if _t != 'pistol' else 'pistol', web=tuple(x * GUN_K for x in TPL[_t]['web']), rake=TPL[_t]['rake'],
+                trig=tuple(x * GUN_K for x in TPL[_t]['trig']))
+    if _t != 'pistol':
+        _B = {n: Matrix(m) for n, m in load_json(os.path.join(A[2], 'templates.json'))[LEFT_TPL[_t]]['bones'].items()}
+        _h = _B['Hand_L'].translation; _kn = [_B[f'Bone_L.{i}'].translation for i in ('005', '009', '013', '017')]
+        SPEC['sup'] = ((_h + sum(_kn, Vector()) / 4) / 2).y * GUN_K
+else:
+    SPEC = RIGS[GID]
 TPLS = load_json(os.path.join(WORK, 'templates.json'))
 HIDDEN = re.compile(r'Spare|Suppressor|Foregrip|OpticMount|OpticRail|Glass')
 SIDES = 'RL'
@@ -39,8 +49,17 @@ def log(*a):
 
 # ------------------------------------------------------------------ 1. gun
 reset()
-gobjs = import_glb(os.path.join(WORK, f'gun_{GID}.glb'))
-gun_root = [o for o in gobjs if o.name.startswith('Gun_')][0]
+if SELFTEST:
+    gobjs = import_glb(os.path.join(WORK, f'tpl_{GID[4:]}_gun.glb'))
+    gun_root = bpy.data.objects.new('Gun_' + GID, None); bpy.context.scene.collection.objects.link(gun_root)
+    for o in gobjs:
+        if o.parent is None: o.parent = gun_root
+    gun_root.scale = (K, K, K)
+    gobjs.append(gun_root)
+    bpy.context.view_layer.update()
+else:
+    gobjs = import_glb(os.path.join(WORK, f'gun_{GID}.glb'))
+    gun_root = [o for o in gobjs if o.name.startswith('Gun_')][0]
 
 
 def hidden_obj(o):
@@ -366,43 +385,50 @@ def eval_co(idx):
 
 def depths(idx, maxd=0.03 * K):
     """Penetration depth (>0 inside) per vertex, plus distance to surface when outside (negative)."""
-    out = []
-    for p in eval_co(idx):
-        hit = gun_bvh.find_nearest(p, maxd)
-        if hit[0] is None:
-            out.append(-maxd); continue
-        loc, nrm, _, d = hit
-        out.append(d if (p - loc).dot(nrm) < 0 else -d)
-    return out
+    return [inside_depth(gun_bvh, p, maxd) for p in eval_co(idx)]
 
 
 TOL = 0.0006 * K       # 0.6 mm real
 CONTACT = 0.0035 * K   # fingertips closer than 3.5 mm count as touching
 
 
-def push_hand_out(side, iters=16, max_move=0.012):
-    """Rigidly translate the hand (IK control) out of the gun using every hand/finger vertex."""
+def push_hand_out(side, iters=30, max_move=0.022, max_rot=20.0):
+    """Rigid 6-DOF least-squares fit of the hand (IK control) out of the gun: small rotation w and
+    translation t so that t + w x (p - c) ~= depth * normal at every penetrating hand/finger vertex."""
+    import numpy as np
     hb = verts_of([f'Hand_{side}'] + [f'Bone_{side}.{i}' for c in FINGERS for i in c])
     ctrl = pb[f'IK_Hand_Cntrl_{side}']
-    moved = Vector()
+    moved = Vector(); rot = 0.0
     for _ in range(iters):
         co = eval_co(hb)
-        push = Vector(); wsum = 0.0
+        rows, rhs, cen = [], [], Vector()
+        pen = []
         for p in co:
-            hit = gun_bvh.find_nearest(p, 0.03 * K)
-            if hit[0] is None: continue
-            loc, nrm, _, d = hit
-            if (p - loc).dot(nrm) < 0 and d > TOL:
-                push += nrm * d * d; wsum += d
-        if wsum == 0:
+            d = inside_depth(gun_bvh, p, 0.03 * K)
+            if d > TOL:
+                n = gun_bvh.find_nearest(p, 0.03 * K)[1]
+                pen.append((p, n, d + 0.2 * TOL))
+        if not pen:
             break
-        step = push / wsum
-        if step.length > 0.002 * K: step = step.normalized() * 0.002 * K
-        if (moved + step).length > max_move * K:
+        cen = sum(co, Vector()) / len(co)
+        for p, n, d in pen:
+            r = p - cen
+            # n . (t + w x r) = d   ->  n.t + (r x n).w = d
+            rxn = r.cross(n)
+            rows.append([n.x, n.y, n.z, rxn.x, rxn.y, rxn.z]); rhs.append(d)
+        A = np.array(rows); bb = np.array(rhs)
+        lam = np.diag([1e-6] * 3 + [0.02 * K * K] * 3)  # rotations are damped
+        x = np.linalg.solve(A.T @ A + lam, A.T @ bb)
+        t = Vector(x[:3]); w = Vector(x[3:])
+        if t.length > 0.002 * K: t = t.normalized() * 0.002 * K
+        ang = w.length
+        if ang > math.radians(2): w = w.normalized() * math.radians(2); ang = math.radians(2)
+        if (moved + t).length > max_move * K or rot + math.degrees(ang) > max_rot:
             break
-        m = ctrl.matrix.copy(); m.translation += step; ctrl.matrix = m
-        moved += step
-    log('hand push', side, 'mm', round(moved.length / K * 1000, 1), [round(x / K * 1000, 1) for x in moved])
+        R = Matrix.Rotation(ang, 4, w.normalized()) if ang > 1e-6 else Matrix()
+        ctrl.matrix = Matrix.Translation(cen + t) @ R @ Matrix.Translation(-cen) @ ctrl.matrix
+        moved += t; rot += math.degrees(ang)
+    log('hand fit', side, 'move mm', round(moved.length / K * 1000, 1), 'rot deg', round(rot, 1))
     return moved
 
 
@@ -418,45 +444,68 @@ def curl_sign(bone):
     return 1 if (pc - tip2).length < (pc - tip).length else -1
 
 
-def solve_finger(side, chain, wrap=True, max_iter=40):
-    segs = [pb[f'Bone_{side}.{i}'] for i in chain[1:]] if len(chain) == 4 else [pb[f'Bone_{side}.{i}'] for i in chain]
-    names = [s.name for s in segs]
-    vidx = {s.name: verts_of([s.name]) for s in segs}
-    sign = {s.name: curl_sign(s) for s in segs}
-    curl = {s.name: 0.0 for s in segs}
+def solve_finger(side, chain, wrap=True, max_iter=60, limit=35.0):
+    """De-penetrate a finger (search curl X / abduct Z per segment, distal first, limited deviation),
+    then curl wrap fingers until the tip touches the surface."""
+    segs = [pb[f'Bone_{side}.{i}'] for i in (chain[1:] if len(chain) == 4 else chain)]
+    names = [x.name for x in segs]
+    vidx = {n: verts_of([n]) for n in names}
+    below = {n: sum((vidx[m] for m in names[names.index(n):]), []) for n in names}
+    sign = {x.name: curl_sign(x) for x in segs}
+    dev = {n: Vector((0, 0)) for n in names}  # (curl, abduct) radians
     step = math.radians(3)
+    lim = math.radians(limit)
+
+    def pen_of(idx):
+        return sum(max(0.0, d - TOL) for d in depths(idx))
+
     for it in range(max_iter):
-        dep = {n: depths(vidx[n]) for n in names}
-        pen = {n: max(dep[n]) if dep[n] else -1 for n in names}
-        bad = [n for n in names if pen[n] > TOL]
-        if bad:
-            n = bad[-1] if pen[bad[-1]] > 0.6 * max(pen[b] for b in bad) else max(bad, key=lambda b: pen[b])
-            if curl[n] <= -math.radians(30):
-                cand = [m for m in names if curl[m] > -math.radians(30)]
-                if not cand:
-                    break
-                n = cand[-1]
-            pb[n].matrix_basis = pb[n].matrix_basis @ Matrix.Rotation(-sign[n] * step, 4, 'X'); curl[n] -= step
-            continue
-        if not wrap:
+        pens = {n: pen_of(vidx[n]) for n in names}
+        bad = [n for n in names if pens[n] > 0]
+        if not bad:
             break
-        tipd = -max(dep[names[-1]]) if dep[names[-1]] else 1
-        if tipd <= CONTACT:
-            break
-        # Curl the most proximal joint that still has room; distal joints follow.
-        done = False
-        for n in names:
-            if curl[n] < math.radians(35):
-                pb[n].matrix_basis = pb[n].matrix_basis @ Matrix.Rotation(sign[n] * step, 4, 'X'); curl[n] += step
-                d2 = depths(vidx[n] + sum((vidx[m] for m in names[names.index(n) + 1:]), []))
-                if max(d2) > TOL:
-                    pb[n].matrix_basis = pb[n].matrix_basis @ Matrix.Rotation(-sign[n] * step, 4, 'X'); curl[n] -= step
-                    continue
-                done = True
+        n = bad[-1]
+        base = pen_of(below[n])
+        best = None
+        for ax, sgn in (('X', -1), ('X', 1), ('Z', -1), ('Z', 1)):
+            k = 0 if ax == 'X' else 1
+            dv = dev[n].copy(); dv[k] += sgn * step * (sign[n] if ax == 'X' else 1)
+            if abs(dv[k]) > lim: continue
+            m0 = pb[n].matrix_basis.copy()
+            pb[n].matrix_basis = m0 @ Matrix.Rotation(sgn * step * (sign[n] if ax == 'X' else 1), 4, ax)
+            v = pen_of(below[n])
+            pb[n].matrix_basis = m0
+            if best is None or v < best[0]:
+                best = (v, ax, sgn, k)
+        if best is None or best[0] >= base:
+            # stuck on this segment: try the parent segment next round by marking it limit-reached
+            i = names.index(n)
+            if i == 0:
                 break
-        if not done:
-            break
-    return {n: round(math.degrees(c), 1) for n, c in curl.items()}
+            n2 = names[i - 1]
+            pb[n2].matrix_basis = pb[n2].matrix_basis @ Matrix.Rotation(-sign[n2] * step, 4, 'X'); dev[n2][0] -= step
+            continue
+        v, ax, sgn, k = best
+        ang = sgn * step * (sign[n] if ax == 'X' else 1)
+        pb[n].matrix_basis = pb[n].matrix_basis @ Matrix.Rotation(ang, 4, ax); dev[n][k] += ang
+    if wrap:
+        for it in range(30):
+            tipd = -max(depths(vidx[names[-1]]))
+            if tipd <= CONTACT:
+                break
+            moved = False
+            for n in names:
+                if dev[n][0] * sign[n] < lim:
+                    m0 = pb[n].matrix_basis.copy()
+                    pb[n].matrix_basis = m0 @ Matrix.Rotation(sign[n] * step, 4, 'X')
+                    if pen_of(below[n]) > 0:
+                        pb[n].matrix_basis = m0
+                        continue
+                    dev[n][0] += sign[n] * step; moved = True
+                    break
+            if not moved:
+                break
+    return {n[7:]: (round(math.degrees(d[0]), 0), round(math.degrees(d[1]), 0)) for n, d in dev.items()}
 
 
 for side in ([] if os.environ.get('FP_NOIK') else SIDES):

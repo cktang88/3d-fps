@@ -67,7 +67,8 @@ async function boot() {
   let last = performance.now();
   const frameErrors = new Set();
   const frame = (now) => {
-    const dt = Math.min(0.05, (now - last) / 1000);
+    // QA harness hook: fixed simulation step so headless tests are deterministic and fast.
+    const dt = window.__qaFixedDt ?? Math.min(0.05, (now - last) / 1000);
     last = now;
     requestAnimationFrame(frame);
     // Never let one bad frame kill the loop; report each distinct error once.

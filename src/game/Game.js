@@ -631,7 +631,8 @@ export class Game {
     // Muffle on low health (visual + audio).
     const lowHealth = p.alive ? clamp(1 - p.health / 40, 0, 1) : 0.6;
     this.audio.setMuffle(live || !this.started ? lowHealth * 0.55 : 0.75, dt);
-    this.renderer.render(dt, lowHealth);
+    // QA harness hook: skip GPU work on frames that are only advancing the simulation.
+    if (!window.__qaSkipRender) this.renderer.render(dt, lowHealth);
     inp.endFrame();
   }
 }
