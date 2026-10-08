@@ -347,6 +347,19 @@ export class Audio {
     }
   }
 
+  /** Low-health heartbeat (lub-dub). */
+  heartbeat(vol = 1) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime + 0.001;
+    const out = this._out(null, 0.5 * vol, { reverb: 0 });
+    for (const [off, f, a] of [[0, 62, 1], [0.16, 54, 0.7]]) {
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(f * 1.6, t + off); o.frequency.exponentialRampToValueAtTime(f, t + off + 0.05);
+      const g = ctx.createGain(); this._env(g, t + off, 0.008, a, 0.14);
+      o.connect(g).connect(out); o.start(t + off); o.stop(t + off + 0.25);
+    }
+  }
+
   explosion(pos) {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime + 0.001;

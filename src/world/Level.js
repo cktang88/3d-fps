@@ -771,9 +771,8 @@ export class Level {
     for (const x of [-8, 0, 8]) for (const z of [-38.5, -32]) this.rack(x, z);
     // Sodium high-bay lamps + their light.
     for (const x of [-12, -4, 4, 12]) for (const z of [-38, -32]) this.prop('hangLamp', x, z, 0, { y: H - 0.35 - 1.36, mount: true });
-    this.interiorLight(-8, H - 2.2, -36, 0xff9c4a, 120, 24);
-    this.interiorLight(8, H - 2.2, -36, 0xff9c4a, 120, 24);
-    this.interiorLight(0, cy + 2.5, -45, 0xffa860, 40, 14);
+    this.interiorLight(-7, H - 2.2, -37, 0xff9c4a, 130, 26);
+    this.interiorLight(8, H - 2.2, -37, 0xff9c4a, 130, 26);
     // Floor clutter.
     this.pallets(-14.5, -43.5, 0.1, 4); this.pallets(-14.4, -42.2, 0.05, 2); this.pallets(15.2, -30.2, 1.4, 5);
     this.prop('generator', 13.8, -45.6, 0.4); this.prop('jerrycan', 14.6, -45.2, 1.1, { nav: false });
@@ -922,9 +921,8 @@ export class Level {
     // Ceiling fluorescents (cool) — one flickers on each floor.
     for (const [x, z] of [[-10, 35], [-10, 41], [-1, 35], [-1, 41], [4, 41]]) this.prop('fluoro', x, z, 0, { y: F - 0.29, mount: true });
     for (const [x, z] of [[-9, 35], [-9, 41], [2, 35], [2, 41], [-5, 38]]) this.prop('fluoro', x, z, Math.PI / 2, { y: 2 * F - 0.05, mount: true });
-    this.interiorLight(-8, F - 0.5, 38, 0xdbe8ff, 22, 13, true);
-    this.interiorLight(2, F - 0.5, 38, 0xdbe8ff, 16, 12);
-    this.interiorLight(-6, 2 * F - 0.5, 38, 0xdbe8ff, 22, 14, true);
+    this.interiorLight(-6, F - 0.5, 38, 0xdbe8ff, 26, 16, true);
+    this.interiorLight(-4, 2 * F - 0.5, 38, 0xdbe8ff, 26, 16);
     // Exterior: AC units on the roof and wall, lamps over doors, downpipes, leak streaks.
     this.prop('aircon', -9, z1 - 2.5, 0.0, { y: 2 * F + 0.3 }); this.prop('aircon', -5.4, z1 - 2.5, 0.0, { y: 2 * F + 0.3 });
     this.prop('aircon2', 3.5, z1 - 2.2, Math.PI, { y: 2 * F + 0.3 });

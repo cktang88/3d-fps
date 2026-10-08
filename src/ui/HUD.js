@@ -139,6 +139,7 @@ export class HUD {
     this.ghostHp = 100;
     this.tallyT = 0; this.tallySum = 0;
     this.medalQueue = []; this.medalT = 0;
+    this.feedRows = []; this.bannerT = 0;
     this._cache = {};
     this._crossGap = -1;
     this._mmFrame = 0;
@@ -149,7 +150,7 @@ export class HUD {
 
   /** Clear transient state at match start. */
   reset() {
-    this.el.feed.innerHTML = '';
+    this.el.feed.innerHTML = ''; this.feedRows.length = 0;
     this.el.tallyLines.innerHTML = ''; this.tallyT = 0; this.tallySum = 0; this.el.tally.classList.remove('on');
     this.medalQueue.length = 0; this.el.medals.innerHTML = ''; this.medalT = 0;
     for (const [, w] of this.wedges) w.el.remove();
@@ -201,9 +202,8 @@ export class HUD {
       <span class="wpn">${icon}${esc(weapon)}</span>${headshot ? '<span class="hs" title="Headshot"></span>' : ''}
       ${nm(victim)}</div>`);
     this.el.feed.prepend(row);
+    this.feedRows.push({ el: row, t: 7 });
     while (this.el.feed.children.length > 5) this.el.feed.lastChild.remove();
-    setTimeout(() => row.classList.add('out'), 6500);
-    setTimeout(() => row.remove(), 7000);
   }
 
   /** Score tally line ("+100 ENEMY KILLED"); totals accumulate while lines keep coming. */
@@ -236,8 +236,7 @@ export class HUD {
     this.el.medals.innerHTML = '';
     this.el.medals.appendChild(el);
     this.game.audio.ui('medal');
-    setTimeout(() => el.classList.add('out'), 1100);
-    setTimeout(() => el.remove(), 1500);
+    this._medalEl = el; this._medalAge = 0;
   }
 
   streak(n) {
@@ -251,16 +250,13 @@ export class HUD {
 
   banner(big, small = '', dur = 2.5, cls = '') {
     const b = this.el.banner;
-    clearTimeout(this._bt); clearTimeout(this._bt2);
+    this.bannerT = 0;
     if (!big) { b.innerHTML = ''; b.className = ''; return; }
     b.className = '';
     b.innerHTML = `<div class="big">${esc(big)}</div>${small ? `<div class="small">${esc(small)}</div>` : ''}`;
     void b.offsetWidth;
     b.className = `on ${cls}`;
-    if (dur > 0) {
-      this._bt = setTimeout(() => b.classList.add('out'), dur * 1000);
-      this._bt2 = setTimeout(() => { b.innerHTML = ''; b.className = ''; }, dur * 1000 + 450);
-    }
+    this.bannerT = dur > 0 ? dur + 0.45 : 0;
   }
 
   prompt(html) { if (this._prompt !== html) { this.el.prompt.innerHTML = html || ''; this._prompt = html; } }
@@ -368,6 +364,23 @@ export class HUD {
       if (this.tallyT <= 0) this.el.tally.classList.remove('on');
     }
     this.medalT -= dt;
+    if (this._medalEl) {
+      this._medalAge += dt;
+      if (this._medalAge > 1.1) this._medalEl.classList.add('out');
+      if (this._medalAge > 1.5) { this._medalEl.remove(); this._medalEl = null; }
+    }
+    // Kill feed + banner lifetimes run on game time (pausing freezes them).
+    for (let i = this.feedRows.length - 1; i >= 0; i--) {
+      const r = this.feedRows[i];
+      r.t -= dt;
+      if (r.t < 0.5) r.el.classList.add('out');
+      if (r.t <= 0 || !r.el.isConnected) { r.el.remove(); this.feedRows.splice(i, 1); }
+    }
+    if (this.bannerT > 0) {
+      this.bannerT -= dt;
+      if (this.bannerT <= 0.45) this.el.banner.classList.add('out');
+      if (this.bannerT <= 0) { this.el.banner.innerHTML = ''; this.el.banner.className = ''; }
+    }
     if (this.medalT <= 0 && this.medalQueue.length) { this._showMedal(this.medalQueue.shift()); this.medalT = 1.15; }
 
     // Damage arcs (relative to current yaw).

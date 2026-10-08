@@ -507,7 +507,7 @@ export class Character {
   _idleBodyYaw(aimYaw) {
     // Standing still the feet only re-plant when the aim drifts far from them (no constant pivoting).
     const d = wrapPi(aimYaw - this.bodyYaw);
-    if (Math.abs(d) > 70 * DEG || this._turningInPlace) {
+    if (Math.abs(d) > 60 * DEG || this._turningInPlace) {
       this._turningInPlace = Math.abs(d) > 8 * DEG;
       return aimYaw;
     }
@@ -534,6 +534,9 @@ export class Character {
 
   _animate(dt, bot, sp) {
     const tpl = this.tpl, gait = tpl.gait;
+    // Turning on the spot: shuffle the feet (drive the walk cycle from the turn rate) instead of
+    // pivoting on planted soles.
+    if (sp < 0.3) sp = Math.max(sp, clamp(Math.abs(this.yawRate) * 0.32 - 0.15, 0, 1.1));
     const c = clamp(bot.crouch, 0, 1);
     const air = clamp((bot.jumpY || 0) / 0.18, 0, 1);
 
@@ -732,6 +735,7 @@ export class Character {
     };
     let mode = 'clip';
     if (explosive || Math.abs(off) > 105 * DEG || (!headshot && Math.random() < 0.3)) mode = 'topple';
+    if (this.forceDeathMode) mode = this.forceDeathMode; // debug / tests
     const d = {
       mode, t: 0, fadeW: 0, rate: headshot ? 1.3 : 0.9 + Math.random() * 0.25,
       fromYaw: this.bodyYaw, toYaw: this.bodyYaw, dir: dir.clone(), angle: 0, angVel: 0, landed: false,

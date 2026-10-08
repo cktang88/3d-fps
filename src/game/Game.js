@@ -529,6 +529,10 @@ export class Game {
         if (s.holdCrouch && inp.justReleased('crouch') && p.crouching && !p.sliding && p.canStand()) p.crouching = false;
         p.update(dt, cmd, w);
         p.regen(dt);
+        if (p.health < 35) {
+          this._hb = (this._hb ?? 0) - dt;
+          if (this._hb <= 0) { this.audio.heartbeat(1 - p.health / 50); this._hb = 0.55 + p.health / 70; }
+        }
 
         // Weapon actions.
         if (inp.justPressed('slot1')) this.switchSlot(0);
@@ -594,7 +598,7 @@ export class Game {
     this.audio.updateListener(this.renderer.camera);
     this.effects.update(dt, this.renderer.camera);
     this.ambience?.update(dt);
-    if (this.started) this.hud.update(dt);
+    if (this.started) this.hud.update(live ? dt : 0); // HUD timers freeze while paused
     // Muffle on low health (visual + audio).
     const lowHealth = p.alive ? clamp(1 - p.health / 40, 0, 1) : 0.6;
     this.audio.setMuffle(live || !this.started ? lowHealth * 0.55 : 0.75, dt);
