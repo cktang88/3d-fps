@@ -4,7 +4,11 @@
   const g = window.__game, Q = window.__qa, p = g.player, out = { fails: [] };
   const fail = (m) => out.fails.push(m);
   Q.god(); Q.freezeBots(true); Q.releaseAll(); Q.loadout('m4', 'p226');
+  out.startState = { alive: p.alive, crouching: p.crouching, mantle: !!p.mantle, weapon: g.currentWeapon.id, wstate: g.currentWeapon.state };
+  if (!p.alive) g.spawnPlayer();
   const settle = (pos, yaw) => { Q.releaseAll(); Q.place(pos, yaw, 0); Q.sim(0.6); p.spawnProtect = 0; };
+  // Walk trace (first test after a warm-page reuse showed 0.9 m/s once).
+  settle([0, 0.1, 18], 0); Q.down('KeyW'); out.walkTrace = []; Q.sim(1.6, 1 / 30, (t) => { if (Math.round(t * 30) % 8 === 0) out.walkTrace.push([Q.r(t), Q.r(Q.hspeed()), Q.r(p.position.z), p.crouching, p.grounded, !!p.mantle]); }); Q.releaseAll();
   // Speeds in the open courtyard heading -Z from z=+18.
   const speed = (keys, t = 1.6) => { settle([0, 0.1, 18], 0); for (const k of keys) Q.down(k); Q.sim(t); const v = Q.hspeed(); Q.releaseAll(); return Q.r(v); };
   out.walk = speed(['KeyW']); out.sprint = speed(['KeyW', 'ShiftLeft']); out.back = speed(['KeyS']); out.strafe = speed(['KeyD']);

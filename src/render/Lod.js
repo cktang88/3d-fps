@@ -137,6 +137,7 @@ function proxyMaterial(side) {
   return _proxyMat.get(side);
 }
 const _mergedCache = new WeakMap();
+const matNear = (a, b) => a.elements.every((v, i) => Math.abs(v - b.elements[i]) < 1e-5);
 
 /**
  * One merged, simplified shadow caster for a whole object (e.g. a bot = ~11 skinned parts, or a 10-part gun):
@@ -159,7 +160,10 @@ export function addMergedShadowProxy(root, maxTris, error = 0.02) {
   let sk = null;
   if (skinned.length) {
     const b = skinned[0];
-    sk = skinned.filter((m) => m.skeleton === b.skeleton && m.parent === b.parent && m.matrix.equals(b.matrix) && m.bindMatrix.equals(b.bindMatrix));
+    // SkeletonUtils.clone gives every part its own Skeleton object over the same bones: compare bones + inverses.
+    const sameSkel = (s) => s === b.skeleton || (s.bones.length === b.skeleton.bones.length
+      && s.bones.every((x, i) => x === b.skeleton.bones[i]) && s.boneInverses.every((x, i) => matNear(x, b.skeleton.boneInverses[i])));
+    sk = skinned.filter((m) => sameSkel(m.skeleton) && m.parent === b.parent && matNear(m.matrix, b.matrix) && matNear(m.bindMatrix, b.bindMatrix));
     if (sk.length < 2) sk = null;
   }
   const parts = sk || (rigid.length >= 2 ? rigid : null);

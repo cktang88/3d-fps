@@ -45,7 +45,9 @@ export class Perf {
       const c0 = info.calls, t0 = info.triangles, sc0 = f.shadow.calls, st0 = f.shadow.tris;
       const tm = performance.now();
       depth++;
+      self._pass = self._label(scene, camera, r.getRenderTarget());
       try { return origRender(scene, camera); } finally {
+        self._pass = null;
         depth--;
         const label = self._label(scene, camera, r.getRenderTarget());
         const p = (f.passes[label] ||= { calls: 0, tris: 0, n: 0, ms: 0 });
@@ -61,16 +63,35 @@ export class Perf {
       if (!f) return origShadow(lights, scene, camera);
       const c0 = info.calls, t0 = info.triangles;
       const willRender = sm.enabled && (sm.autoUpdate || sm.needsUpdate) && lights.length > 0;
-      origShadow(lights, scene, camera);
+      self._inShadow = true;
+      try { origShadow(lights, scene, camera); } finally { self._inShadow = false; }
       f.shadow.calls += info.calls - c0;
       f.shadow.tris += info.triangles - t0;
       if (willRender) f.shadow.n++;
+    };
+    // Per-object attribution (capture({ detail: true })): which owner/object issues each draw in each pass.
+    const origRBD = r.renderBufferDirect.bind(r);
+    r.renderBufferDirect = function (camera, scene, geometry, material, object, group) {
+      const f = self._frame;
+      if (f?.objects) {
+        const c0 = info.calls, t0 = info.triangles;
+        origRBD(camera, scene, geometry, material, object, group);
+        let ow = 'untagged';
+        for (let p = object; p; p = p.parent) { if (p.userData?.perfOwner) { ow = p.userData.perfOwner; break; } if (self._botRoots?.has(p)) { ow = 'bots'; break; } }
+        const key = (self._inShadow ? 'shadow' : self._pass || 'other') + ' | ' + ow + ' | ' + (object.name || object.type);
+        const e = (f.objects[key] ||= { calls: 0, tris: 0 });
+        e.calls += info.calls - c0; e.tris += info.triangles - t0;
+        return;
+      }
+      return origRBD(camera, scene, geometry, material, object, group);
     };
     // Hook the whole game frame (the PiP scope renders during viewmodel.update, before Renderer.render).
     const G = this.game, origFrame = G.update.bind(G);
     G.update = function (...a) {
       if (!self._waiters.length) return origFrame(...a);
-      self._frame = { passes: {}, shadow: { calls: 0, tris: 0, n: 0 } };
+      const detail = self._waiters.some((w) => w.detail);
+      self._frame = { passes: {}, shadow: { calls: 0, tris: 0, n: 0 }, objects: detail ? {} : null };
+      if (detail) self._botRoots = new Set((G.bots || []).flatMap((b) => [b.model?.root, b.spareModel?.root]).filter(Boolean));
       const tm = performance.now();
       try { return origFrame(...a); } finally {
         const f = self._frame; self._frame = null;
@@ -102,7 +123,23 @@ export class Perf {
   }
 
   /** Resolves with per-pass stats for the next frame that goes through Renderer.render. */
-  capture() { this.install(); return new Promise((res) => this._waiters.push(res)); }
+  capture(opt = {}) {
+    this.install();
+    return new Promise((res) => { res.detail = !!opt.detail; this._waiters.push(res); });
+  }
+
+  /** Collapse capture({detail:true}).objects into per pass|owner totals + the top N objects. */
+  static summarize(objects, n = 30) {
+    const byOwner = {};
+    for (const [k, v] of Object.entries(objects || {})) {
+      const [pass, ow] = k.split(' | ');
+      const e = (byOwner[pass + ' | ' + ow] ||= { calls: 0, tris: 0 });
+      e.calls += v.calls; e.tris += v.tris;
+    }
+    const top = Object.entries(objects || {}).sort((a, b) => b[1].calls - a[1].calls).slice(0, n).map(([k, v]) => `${k}: ${v.calls}c ${Math.round(v.tris / 1000)}kt`);
+    const topTris = Object.entries(objects || {}).sort((a, b) => b[1].tris - a[1].tris).slice(0, n).map(([k, v]) => `${k}: ${v.calls}c ${Math.round(v.tris / 1000)}kt`);
+    return { byOwner: Object.fromEntries(Object.entries(byOwner).sort((a, b) => b[1].calls - a[1].calls).map(([k, v]) => [k, `${v.calls}c ${Math.round(v.tris / 1000)}kt`])), top, topTris };
+  }
 
   // ------------------------------------------------------------------ census
   census() {

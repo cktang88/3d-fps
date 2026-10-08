@@ -36,10 +36,12 @@ Ginv = G.inverted()
 setup_render('', 960, 540, samples=12)
 make_camera(Ginv @ FP_CAM, vfov_deg=52.0)
 render(a[1] + '_fp.png')
+eye0 = Ginv @ Vector((0, 0, 0))
 for side in 'RL':
+    hv = [p for o in arms for p in evaluated_verts([o])]
     hb = arm.pose.bones.get(f'Hand_{side}')
-    c = arm.matrix_world @ hb.head
-    for nm, off, up in (('o', (0.20 if side == 'R' else -0.20, 0.14, -0.03), 'Z'), ('u', (0.03 if side == 'R' else -0.03, 0.08, -0.24), 'Y')):
-        eye = c + Vector(off) * K
-        make_camera(Matrix.Translation(eye) @ (c - eye).to_track_quat('-Z', up).to_matrix().to_4x4(), vfov_deg=38)
+    c = arm.matrix_world @ (hb.head + (hb.tail - hb.head) * 2.5)
+    for nm, off in (('o', Vector((0.0, 0.0, 0.0))), ('u', Ginv.to_3x3() @ Vector((0.12 if side == 'R' else -0.12, 0.05, -0.18)) * K)):
+        eye = eye0 + off
+        make_camera(Matrix.Translation(eye) @ (c - eye).to_track_quat('-Z', 'Z').to_matrix().to_4x4(), vfov_deg=22)
         render(a[1] + f'_{side}{nm}.png')

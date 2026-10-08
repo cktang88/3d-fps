@@ -23,7 +23,7 @@
     g.player.yaw = v.yaw; g.player.pitch = v.pitch;
     window.__perfLegacy = !!v.legacy;
     window.__qaSkipRender = true; await frame();
-    const cap = P.capture();
+    const cap = P.capture({ detail: !!v.detail || v.name === 'courtyard' });
     window.__qaSkipRender = false;
     const t0 = performance.now();
     const f = await cap;
@@ -36,6 +36,7 @@
     };
     window.__perfLegacy = false;
     if (v.scar) Q.down('Mouse2', false);
+    if (f.objects) out.views[v.name].detail = P.constructor.summarize(f.objects, 25);
     if (v.name === 'courtyard') out.census = P.census();
   }
   out.top = P.top(25);

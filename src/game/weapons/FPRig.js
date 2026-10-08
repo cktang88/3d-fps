@@ -20,6 +20,10 @@ export const FP_IDS = ['m4a1', 'ak47', 'scarl', 'mp5a5', 'vss', 'm24', 'awm', 's
  */
 export const FP_TUNE = {
   default: { opticScale: 0.82, reloadPos: [-0.05, 0.05, -0.02], reloadRot: [-0.06, 0.14, -0.3] },
+  // Fixed-scope precision platforms: the authored scope glass defines the optical axis.
+  vss: { integratedScope: true },
+  m24: { integratedScope: true },
+  awm: { integratedScope: true },
 };
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();

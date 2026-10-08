@@ -42,7 +42,7 @@ FRAMING = {
     'smg': dict(pos=(0.105, 0.195, -0.055), rot=(0.5, -2.0, 3.0)),
     'sniper': dict(pos=(0.115, 0.210, -0.068), rot=(0.5, -1.5, 2.0)),
     'shotgun': dict(pos=(0.110, 0.200, -0.058), rot=(0.5, -2.0, 3.0)),
-    'pistol': dict(pos=(0.070, 0.260, -0.062), rot=(1.0, 1.0, 2.0)),
+    'pistol': dict(pos=(0.050, 0.220, -0.035), rot=(1.0, 1.0, 2.0)),
 }
 # Shoulders (UpArm heads) in view-camera space, REAL metres; elbow pole targets likewise.
 SHOULDER = {'R': (0.19, -0.04, -0.21), 'L': (-0.17, 0.28, -0.27)}

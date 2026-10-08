@@ -685,17 +685,14 @@ export class Character {
     if (!cam) return 0;
     const dx = bot.position.x - cam.position.x, dy = bot.position.y - cam.position.y, dz = bot.position.z - cam.position.z;
     const d2 = dx * dx + dy * dy + dz * dz;
-    if (d2 < 30 * 30) {
-      // Behind the camera but near: still reasonably smooth (shadows / quick turns).
-      return 0;
-    }
-    cam.getWorldDirection(_v7);
+    if (d2 < 15 * 15) return 0; // close: every frame
     const d = Math.sqrt(d2);
+    cam.getWorldDirection(_v7);
     const facing = (dx * _v7.x + dy * _v7.y + dz * _v7.z) / d;
-    if (facing < 0.25) return 1 / 8; // off-screen
-    if (d > 70) return 1 / 12;
-    if (d > 40) return 1 / 20;
-    return 0;
+    if (facing < 0.3) return d < 30 ? 1 / 15 : 1 / 8; // off-screen (shadows still read fine)
+    if (d < 35) return 1 / 30;
+    if (d < 60) return 1 / 20;
+    return 1 / 12;
   }
 
   _animate(dt, bot, sp) {
