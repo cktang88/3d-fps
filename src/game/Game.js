@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Renderer } from '../render/Renderer.js';
 import { Effects } from '../render/Effects.js';
+import { Perf } from '../render/Perf.js';
 import { Physics, G } from '../core/Physics.js';
 import { Input } from '../core/Input.js';
 import { Audio } from '../core/Audio.js';
@@ -50,9 +51,12 @@ export class Game {
   async init(onProgress) {
     const s = this.settings;
     this.renderer = new Renderer(this.canvas, s);
+    this.perf = new Perf(this); window.__perf = this.perf;
+    this.perf.mark('renderer');
     this.input = new Input(this.canvas);
     this.audio = new Audio();
     this.physics = await Physics.create();
+    this.perf.mark('physics');
     this.assets = new Assets(this.renderer.renderer);
     this.assets.onProgress = onProgress;
 
@@ -68,6 +72,7 @@ export class Game {
       this.assets.model('soldierTac', 'models/characters/soldier_tac.glb'),
       this.loadSounds(),
     ]);
+    this.perf.mark('assets loaded');
     onProgress?.(0.92, 'Building level');
     await new Promise((r) => setTimeout(r, 0));
     this.level.build();
@@ -75,13 +80,16 @@ export class Game {
     this.level.setupEnvironment(hdr);
     this.renderer.viewScene.environment = this.renderer.scene.environment;
     this.renderer.viewScene.environmentIntensity = 0.9;
+    this.perf.tag(this.renderer.scene, 'level'); this.perf.mark('level built');
     // Living war-zone ambience (fires/wrecks add colliders + nav proxies, so build before the navmesh).
     this.ambience = new Ambience(this);
     await this.ambience.init();
+    this.perf.tag(this.renderer.scene, 'ambience'); this.perf.mark('ambience');
 
     onProgress?.(0.95, 'Generating navmesh');
     await new Promise((r) => setTimeout(r, 0));
     this.nav = await Navigation.create(this.level);
+    this.perf.mark('navmesh');
 
     this.effects = new Effects(this);
     this.ballistics = new Ballistics(this);
@@ -95,12 +103,14 @@ export class Game {
     this.match = new Match(this);
     this._wirePlayerEvents();
     this.buildLoadout();
+    this.perf.tag(this.renderer.scene, 'effects+viewmodel');
 
     // Patch every material for indoor IBL attenuation (after all scene content exists).
     this.level.applyInteriorOcclusion();
     // Pre-compile shaders to avoid hitches on first view.
     this.renderer.renderer.compile(this.renderer.scene, this.renderer.camera);
     this.renderer.renderer.compile(this.renderer.viewScene, this.renderer.viewCamera);
+    this.perf.mark('shaders compiled');
     onProgress?.(1, 'Ready');
   }
 

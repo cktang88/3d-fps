@@ -140,11 +140,14 @@ export class Perf {
       O.drawItems += items; O.tris += tris;
       for (const m of matsArr) { O.materials.add(m); mats.set(m, (mats.get(m) || 0) + 1); if (m.transparent) O.transparent++; }
       if (!geo.boundingSphere) geo.computeBoundingSphere();
-      const inView = !o.frustumCulled || (o.isInstancedMesh ? (o.boundingSphere || o.computeBoundingSphere?.() || o.boundingSphere) : null, true) && camFrustum.intersectsSphere(sph.copy(o.isInstancedMesh && o.boundingSphere ? o.boundingSphere : geo.boundingSphere).applyMatrix4(o.matrixWorld));
+      let bs = geo.boundingSphere;
+      if (o.isInstancedMesh || o.isBatchedMesh) { if (!o.boundingSphere) o.computeBoundingSphere(); bs = o.boundingSphere; }
+      sph.copy(bs).applyMatrix4(o.matrixWorld);
+      const inView = !o.frustumCulled || camFrustum.intersectsSphere(sph);
       if (inView) { O.inView += items; O.inViewTris += tris; }
       if (o.castShadow && o.isMesh) {
         O.casters += items; O.casterTris += tris;
-        if (shadowFrustum && (!o.frustumCulled || shadowFrustum.intersectsSphere(sph.copy(o.isInstancedMesh && o.boundingSphere ? o.boundingSphere : geo.boundingSphere).applyMatrix4(o.matrixWorld)))) O.castersInShadowFrustum += items;
+        if (shadowFrustum && (!o.frustumCulled || shadowFrustum.intersectsSphere(sph))) O.castersInShadowFrustum += items;
       }
     });
     for (const O of Object.values(owners)) { O.materials = O.materials.size; O.tris = Math.round(O.tris); O.inViewTris = Math.round(O.inViewTris); O.casterTris = Math.round(O.casterTris); }
