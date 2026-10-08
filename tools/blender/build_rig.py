@@ -252,6 +252,9 @@ ROT = Matrix.Rotation(y_, 4, 'Z') @ Matrix.Rotation(p, 4, 'X') @ Matrix.Rotation
 G = Matrix.Translation(Vector(FR['pos']) * K) @ ROT @ Matrix.Translation(-B_ref)  # gun -> camera
 Ginv = G.inverted()
 CAM_W = Ginv @ FP_CAM  # camera object world matrix (the gun stays at identity)
+for nm, pt in (('web', B_ref), ('muzzle', Vector((0, bore_front, BORE_Z)))):
+    q = G @ pt
+    log('cam-space', nm, [round(x / K, 3) for x in q], 'screen%', round(50 + 50 * q.x / q.y / (math.tan(math.radians(26)) * 16 / 9), 1), round(50 - 50 * q.z / q.y / math.tan(math.radians(26)), 1))
 REPORT['hip'] = {'pos': list(FR['pos']), 'rot': list(FR['rot']), 'boreRef': [B_ref.x / K, B_ref.y / K, B_ref.z / K]}
 
 poles = {}
