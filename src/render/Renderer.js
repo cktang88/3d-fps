@@ -37,9 +37,9 @@ class GradeEffect extends Effect {
         ['gain', new THREE.Uniform(new THREE.Vector3(1.03, 1.0, 0.95))],
         ['shadowTint', new THREE.Uniform(new THREE.Vector3(-0.012, 0.004, 0.016))],
         ['highTint', new THREE.Uniform(new THREE.Vector3(0.022, 0.008, -0.018))],
-        ['contrast', new THREE.Uniform(0.22)],
+        ['contrast', new THREE.Uniform(0.3)],
         ['saturation', new THREE.Uniform(0.92)],
-        ['exposure', new THREE.Uniform(1.0)],
+        ['exposure', new THREE.Uniform(0.9)],
       ]),
     });
   }

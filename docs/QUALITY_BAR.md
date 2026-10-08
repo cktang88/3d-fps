@@ -29,3 +29,9 @@ Curated, licence-verified catalogue: `docs/ASSET_SOURCES.md` (GitHub repos first
 ambientCG, OpenGameArt, itch.io, Kenney, Quaternius). Allowed: CC0 / CC-BY / CC-BY-SA or explicitly redistributable
 in a public open-source game. Never: NC, ND, store licences, ripped commercial-game assets, raw Mixamo files.
 Every shipped asset is credited in README.
+
+## Process
+- **Model policy:** all agents run on Claude Opus 5.5 (medium effort). Never Haiku.
+- **QA lead** (dedicated agent) owns the regression suite (`tools/qa/suites/`), runs it against the shared tree via
+  the single QA runner, reviews every screenshot against this bar, routes findings to owners, and keeps
+  `docs/QA_REPORT.md` current. Engineers send it specific test requests.

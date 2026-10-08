@@ -44,8 +44,8 @@ const PROPS = {
   jerrycan: ['metal_jerrycan_green/metal_jerrycan_green.glb'],
   propane: ['propane_tank/propane_tank.glb'],
   generator: ['portable_generator/portable_generator.glb'],
-  hangLamp: ['hanging_industrial_lamp/hanging_industrial_lamp.glb', { emissive: /glass/, emissiveColor: 0xffa858, emissiveIntensity: 10 }],
-  fluoro: ['mounted_fluorescent_lights/mounted_fluorescent_lights.glb', { emissive: /glass/, emissiveColor: 0xe6f2ff, emissiveIntensity: 6 }],
+  hangLamp: ['hanging_industrial_lamp/hanging_industrial_lamp.glb', { emissive: /glass/, emissiveColor: 0xffa858, emissiveIntensity: 6 }],
+  fluoro: ['mounted_fluorescent_lights/mounted_fluorescent_lights.glb', { emissive: /glass/, emissiveColor: 0xe6f2ff, emissiveIntensity: 2.5 }],
   duct: ['modular_airduct_circular_01/modular_airduct_circular_01.glb'],
   pipes: ['modular_industrial_pipes_01/modular_industrial_pipes_01.glb'],
   woodCrate: ['wooden_crate_02/wooden_crate_02.glb'],
@@ -773,8 +773,8 @@ export class Level {
     for (const x of [-8, 0, 8]) for (const z of [-38.5, -32]) this.rack(x, z);
     // Sodium high-bay lamps + their light.
     for (const x of [-12, -4, 4, 12]) for (const z of [-38, -32]) this.prop('hangLamp', x, z, 0, { y: H - 0.35 - 1.36, mount: true });
-    this.interiorLight(-7, H - 2.2, -37, 0xff9c4a, 130, 26);
-    this.interiorLight(8, H - 2.2, -37, 0xff9c4a, 130, 26);
+    this.interiorLight(-7, H - 2.2, -37, 0xffa65a, 38, 24);
+    this.interiorLight(8, H - 2.2, -37, 0xffa65a, 38, 24);
     // Floor clutter.
     this.pallets(-14.5, -43.5, 0.1, 4); this.pallets(-14.4, -42.2, 0.05, 2); this.pallets(15.2, -30.2, 1.4, 5);
     this.prop('generator', 13.8, -45.6, 0.4); this.prop('jerrycan', 14.6, -45.2, 1.1, { nav: false });
@@ -922,8 +922,8 @@ export class Level {
     // Ceiling fluorescents (cool) — one flickers on each floor.
     for (const [x, z] of [[-10, 35], [-10, 41], [-1, 35], [-1, 41], [4, 41]]) this.prop('fluoro', x, z, 0, { y: F - 0.29, mount: true });
     for (const [x, z] of [[-9, 35], [-9, 41], [2, 35], [2, 41], [-5, 38]]) this.prop('fluoro', x, z, Math.PI / 2, { y: 2 * F - 0.05, mount: true });
-    this.interiorLight(-6, F - 0.5, 38, 0xdbe8ff, 26, 16, true);
-    this.interiorLight(-4, 2 * F - 0.5, 38, 0xdbe8ff, 26, 16);
+    this.interiorLight(-6, F - 0.5, 38, 0xdbe8ff, 10, 14, true);
+    this.interiorLight(-4, 2 * F - 0.5, 38, 0xdbe8ff, 10, 14);
     // Exterior: AC units on the roof and wall, lamps over doors, downpipes, leak streaks.
     this.prop('aircon', -9, z1 - 2.5, 0.0, { y: 2 * F + 0.3 }); this.prop('aircon', -5.4, z1 - 2.5, 0.0, { y: 2 * F + 0.3 });
     this.prop('aircon2', 3.5, z1 - 2.2, Math.PI, { y: 2 * F + 0.3 });
@@ -1204,7 +1204,7 @@ export class Level {
     const env = pmrem.fromEquirectangular(iblSrc).texture;
     iblSrc.dispose(); pmrem.dispose();
     scene.environment = env;
-    scene.environmentIntensity = 0.75;
+    scene.environmentIntensity = 0.42;
     // Grounded skybox: HDR projected onto a dome so its field horizon reads as real ground.
     const sky = new GroundedSkybox(hdr, 14, 600, 96);
     sky.position.y = 14 - 0.05;
@@ -1220,7 +1220,7 @@ export class Level {
     this.sunDir = sunDir;
     this.sunDirVisual = info.dir.clone();
     const sunCol = new THREE.Color(1.0, 0.68, 0.42);
-    const sun = new THREE.DirectionalLight(sunCol, 4.6);
+    const sun = new THREE.DirectionalLight(sunCol, 3.8);
     sun.position.copy(sunDir).multiplyScalar(160);
     sun.target.position.set(0, 0, 0);
     sun.castShadow = true;
@@ -1243,7 +1243,7 @@ export class Level {
     const scatterCol = info.sunHorizon.clone().sub(info.horizon).multiplyScalar(0.55);
     scatterCol.r = Math.max(scatterCol.r, 0.25); scatterCol.g = Math.max(scatterCol.g, 0.14); scatterCol.b = Math.max(scatterCol.b, 0.05);
     installAtmosphere({ sunDir: info.dir, sunColor: scatterCol, heightFalloff: 0.06, heightShare: 0.7, scatter: 1.0 });
-    scene.fog = new THREE.FogExp2(fogCol, 0.0065);
+    scene.fog = new THREE.FogExp2(fogCol, 0.0042);
     g.renderer.setSun?.(info.dir, new THREE.Color(1.0, 0.7, 0.42));
     // Fake volumetric shafts through the warehouse's south windows + the main door, with dust motes.
     this.shaftOpenings.push({ center: V(-9, 2.4, -27), w: 5.6, h: 4.6, normal: V(0, 0, 1), length: 14 });
