@@ -942,6 +942,7 @@ export class Character {
         mk('head', 0.115, 1.5), mk('torso', 0.2, 1), mk('torso', 0.17, 1),
         mk('legs', 0.095, 0.85), mk('legs', 0.075, 0.85), mk('legs', 0.095, 0.85), mk('legs', 0.075, 0.85),
         mk('arms', 0.06, 0.85), mk('arms', 0.05, 0.85), mk('arms', 0.06, 0.85), mk('arms', 0.05, 0.85),
+        mk('legs', 0.06, 0.85), mk('legs', 0.06, 0.85),
       ];
     }
     const P = (bone, out) => out.setFromMatrixPosition(bone.matrixWorld);
@@ -957,6 +958,7 @@ export class Character {
     const limb = (i, x, y) => { P(b[x], hb[i].a); P(b[y], hb[i].b); };
     limb(3, 'lUp', 'lLeg'); limb(4, 'lLeg', 'lFoot'); limb(5, 'rUp', 'rLeg'); limb(6, 'rLeg', 'rFoot');
     limb(7, 'lArm', 'lFore'); limb(8, 'lFore', 'lHand'); limb(9, 'rArm', 'rFore'); limb(10, 'rFore', 'rHand');
+    if (b.lToe && b.rToe) { limb(11, 'lFoot', 'lToe'); limb(12, 'rFoot', 'rToe'); hb.length = 13; } else hb.length = 11;
     return hb;
   }
 
@@ -965,7 +967,7 @@ export class Character {
     if (!this._dbg) {
       this._dbg = new THREE.Group();
       const mat = new THREE.MeshBasicMaterial({ color: 0xff00ff, wireframe: true, depthTest: false, transparent: true, opacity: 0.6 });
-      for (let i = 0; i < 11; i++) this._dbg.add(new THREE.Mesh(new THREE.CapsuleGeometry(1, 1, 4, 8), mat));
+      for (let i = 0; i < 13; i++) this._dbg.add(new THREE.Mesh(new THREE.CapsuleGeometry(1, 1, 4, 8), mat));
       scene.add(this._dbg);
     }
     const hb = this.hitboxes(bot);
