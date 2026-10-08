@@ -150,11 +150,11 @@ export class Weather {
             float size = ${additive ? '0.022 + 0.02 * s' : '0.012 + 0.022 * s'};
             vec4 mv = viewMatrix * vec4(p, 1.0);
             float c = cos(time * (1.0 + s * 3.0) + ph), sn = sin(time * (1.0 + s * 3.0) + ph);
-            mv.xy += mat2(c, sn, -sn, c) * position.xy * vec2(size, size * ${additive ? '1.0' : '0.55'}) * (1.0 + d * 0.04);
+            mv.xy += mat2(c, sn, -sn, c) * position.xy * vec2(size, size * ${additive ? '1.0' : '0.55'}) * (1.0 + d * 0.025);
             bool hide = indoor(p) > 0.5 || p.y < 0.05;
             gl_Position = hide ? vec4(2.0, 2.0, 2.0, 1.0) : projectionMatrix * mv;
             vUv = position.xy + 0.5; vDepth = -mv.z; vDir = normalize(p - cameraPosition); vSeed = s;
-            vA = smoothstep(0.4, 1.5, d) * (1.0 - smoothstep(boxSize.x * 0.3, boxSize.x * 0.5, length((p - camPos).xz)));
+            vA = smoothstep(${additive ? '2.5, 5.0' : '1.0, 2.5'}, d) * (1.0 - smoothstep(boxSize.x * 0.3, boxSize.x * 0.5, length((p - camPos).xz)));
           }`,
         fragmentShader: /* glsl */`
           uniform vec3 lightCol; uniform vec3 sunCol; uniform vec3 sunDir; uniform float time;

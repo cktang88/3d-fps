@@ -15,7 +15,6 @@ import * as THREE from 'three';
  *   4. indoor IBL attenuation (fake large-scale occlusion inside building volumes, no wetness indoors).
  * See docs/ART_PIPELINE.md.
  */
-const DBG = new Set((globalThis.location?.search ?? '').replace('?', '').split(','));
 const DEFS = {
   asphalt: { set: 'Asphalt031', tint: 0x9d9a96, normal: 1, surface: 'concrete', grime: 0.55, wet: 1, puddle: 1, rmin: 0.35 },
   ground: { set: 'Ground110', tint: 0xb3aa9c, normal: 1.3, surface: 'dirt', grime: 0.6, wet: 1, puddle: 1, rmin: 0.4 },
@@ -311,7 +310,6 @@ export class Materials {
   applyUnify(mat, preset = 'prop') {
     if (!mat || !(mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial)) return;
     if (mat.userData.unify || mat.userData.noUnify) return;
-    if (DBG.has('nounify')) return;
     const p = typeof preset === 'string' ? Materials.PRESETS[preset] ?? Materials.PRESETS.prop : preset;
     if (mat.transparent && !p.alphaOK) return;
     mat.userData.unify = p;

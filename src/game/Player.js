@@ -240,7 +240,8 @@ export class Player {
       this._accelerate(vh, wish, wishSpeed, MOVE.airAccel * 8, dt, maxSpeed);
     }
     this.velocity.x = vh.x; this.velocity.z = vh.z;
-    this.velocity.y -= MOVE.gravity * dt;
+    // Gravity in two half-steps around the move (exact parabola => true 1.05 m jump at any frame rate).
+    this.velocity.y -= MOVE.gravity * dt * 0.5;
 
     // --- Height (crouch / slide) ---
     const targetH = this.sliding ? MOVE.slideHeight : this.crouching ? MOVE.crouchHeight : MOVE.standHeight;
@@ -261,6 +262,7 @@ export class Player {
 
     this.stepOffset = damp(this.stepOffset, 0, 16, dt);
     this._move(dt);
+    if (!this.grounded) this.velocity.y -= MOVE.gravity * dt * 0.5;
     this._footsteps(dt);
 
     // Noise radius for AI hearing.

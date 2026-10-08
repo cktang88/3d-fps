@@ -319,23 +319,23 @@ export class Audio {
     const smp = (name, volume, pitch = 1, pitchVar = 0.03, when = 0) => this.play(name, { volume, pitch, pitchVar, reverb: 0, when });
     // Hit confirms: a crisp sampled tick + a short synthetic "plink" body so it cuts through gunfire.
     if (type === 'hit') {
-      if (!smp('ui_tick', 0.9, 1.15, 0.05)) tone(2600, 0, 0.05, 0.18, 'square');
+      if (!smp('ui_tick', 0.6, 1.15, 0.05)) tone(2600, 0, 0.05, 0.18, 'square');
       tone(1750, 0, 0.035, 0.07, 'triangle');
     } else if (type === 'headshot') {
-      smp('ui_tick', 1.0, 1.35, 0.03);
+      smp('ui_tick', 0.7, 1.35, 0.03);
       tone(4100, 0, 0.16, 0.09, 'sine'); tone(6150, 0.004, 0.12, 0.04, 'sine');
     } else if (type === 'kill') {
       // Heavy confirm: sub thud + metallic double chime (CoD-style "kill" tick).
       smp('kill_thud', 0.55, 0.85, 0.05);
-      smp('ui_tick', 1.0, 0.9, 0.02);
+      smp('ui_tick', 0.7, 0.9, 0.02);
       tone(1320, 0.0, 0.11, 0.12, 'triangle'); tone(1980, 0.055, 0.22, 0.1, 'triangle');
       const o = ctx.createOscillator(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(48, t + 0.16);
       const g = ctx.createGain(); this._env(g, t, 0.002, 0.45, 0.16); o.connect(g).connect(out); o.start(t); o.stop(t + 0.25);
     } else if (type === 'headkill') {
       this.ui('kill');
       tone(4100, 0.0, 0.2, 0.08, 'sine'); tone(6150, 0.01, 0.16, 0.035, 'sine');
-    } else if (type === 'medal') { if (!smp('ui_medal', 0.45, 1, 0.01)) tone(1600, 0, 0.12, 0.12, 'triangle'); }
-    else if (type === 'streak') { if (!smp('ui_streak', 0.6, 1, 0)) tone(900, 0, 0.3, 0.15, 'triangle'); }
+    } else if (type === 'medal') { if (!smp('ui_medal', 0.28, 1, 0.01)) tone(1600, 0, 0.12, 0.12, 'triangle'); }
+    else if (type === 'streak') { if (!smp('ui_streak', 0.4, 1, 0)) tone(900, 0, 0.3, 0.15, 'triangle'); }
     else if (type === 'click') { if (!smp('ui_click', 0.5, 1, 0.04)) tone(1400, 0, 0.03, 0.1, 'square'); }
     else if (type === 'hover') { if (!smp('ui_hover', 0.18, 1, 0.06)) tone(900, 0, 0.02, 0.05); }
     else if (type === 'deploy') { smp('ui_deploy', 0.5, 1, 0); }

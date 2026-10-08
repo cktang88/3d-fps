@@ -103,12 +103,23 @@ export function applyGunLook(m, opts = {}) {
         float wearMask = smoothstep(0.62, 0.8, gB) * gunLook.x;`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         roughnessFactor = clamp(roughnessFactor * mix(1.0, 0.75 + 0.5 * gA, gunMicro) - wearMask * 0.25, gunLook.z, 1.0);`)
+      // Golden-hour IBL turns grey steel copper; keep its brightness but only a little of its hue so
+      // finishes still read black / gunmetal / FDE (the direct sun keeps the scene's warmth).
+      .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+        {
+          const vec3 LW = vec3(0.2126, 0.7152, 0.0722);
+          reflectedLight.indirectSpecular = mix(vec3(dot(reflectedLight.indirectSpecular, LW)), reflectedLight.indirectSpecular, 0.3);
+          reflectedLight.indirectDiffuse = mix(vec3(dot(reflectedLight.indirectDiffuse, LW)), reflectedLight.indirectDiffuse, 0.45);
+          reflectedLight.directSpecular = mix(vec3(dot(reflectedLight.directSpecular, LW)), reflectedLight.directSpecular, 0.6);
+        }`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
         float metalWear = wearMask * step(0.3, metalnessFactor);
-        metalnessFactor = clamp(metalnessFactor + metalWear * 0.4, 0.0, 1.0);
+        // Finished steel (parkerized / anodized / cerakote) behaves mostly like a dark dielectric
+        // coating; only worn edges are bare metal.
+        metalnessFactor = clamp(min(metalnessFactor, 0.55) + metalWear * 0.4, 0.0, 1.0);
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.42, 0.44), metalWear * 0.35);`);
   };
-  m.customProgramCacheKey = () => (prevKey ? prevKey() : '') + '|gunlook';
+  m.customProgramCacheKey = () => (prevKey ? prevKey() : '') + '|gunlook2';
   m.needsUpdate = true;
   return m;
 }

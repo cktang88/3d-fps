@@ -27,6 +27,7 @@ const SAMPLE_SETS = ['m4a1', 'ak74', 'scarl', 'mp5a5', 'vss', 'awm', 'm24', 'p22
 export class Game {
   static RESPAWN_MIN = 1.6;
   static RESPAWN_AUTO = 4.5;
+  static FUSE = 3.2;
 
   constructor(canvas, settings) {
     this.canvas = canvas;
@@ -215,6 +216,8 @@ export class Game {
     this.viewmodel.setWeapon(this.currentWeapon);
     this.currentWeapon.equip();
     this.deathInfo = null;
+    this.cook = null;
+    this.hud.prompt('');
     this.recoilAccum.set(0, 0);
     this.fpcam.dip.x = -1.2; // settle-in on deploy
     this.hud.onSpawn?.();
@@ -312,6 +315,14 @@ export class Game {
       };
       // Quick respawn: deploy allowed after RESPAWN_MIN, automatic at RESPAWN_AUTO.
       this.respawnTimer = Game.RESPAWN_MIN;
+      // Dying with a cooked frag drops it.
+      if (this.cook != null) {
+        this.grenades--;
+        this.throwGrenade(victim, victim.position.clone().setY(victim.position.y + 1), null, Math.max(0.05, Game.FUSE - this.cook));
+        this.grenadeObjs[this.grenadeObjs.length - 1].vel.set(0, 1, 0);
+        this.cook = null;
+        this.hud.prompt('');
+      }
       this.deathTime = this.time;
       this.player.velocity.set(0, 0, 0);
       this.audio.ui('hurt');
@@ -319,7 +330,7 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ grenades
-  throwGrenade(owner, from, to) {
+  throwGrenade(owner, from, to, fuse = 3.2) {
     const dir = to ? to.clone().sub(from) : null;
     let vel;
     if (owner === this.player) {
@@ -338,7 +349,7 @@ export class Game {
     mesh.castShadow = true;
     mesh.position.copy(from);
     this.renderer.scene.add(mesh);
-    this.grenadeObjs.push({ mesh, vel, owner, fuse: 3.2, bounces: 0 });
+    this.grenadeObjs.push({ mesh, vel, owner, fuse, bounces: 0 });
     this.audio.click('cloth', owner === this.player ? null : from, 0.8);
     owner.model?.playUpper?.('throw');
   }
@@ -470,13 +481,17 @@ export class Game {
   }
 
   switchSlot(i) {
-    if (i === this.slot || !this.inventory[i] || !this.player.alive) return;
+    if (i === this.slot || !this.inventory[i] || !this.player.alive || this.viewmodel.holstering) return;
     this.currentWeapon.cancelReload();
     if (this.currentWeapon.state === 'reload') this.currentWeapon._setState('idle');
-    this.slot = i;
-    this.currentWeapon = this.inventory[i];
-    this.viewmodel.setWeapon(this.currentWeapon);
-    this.currentWeapon.equip();
+    // Holster (lower-out) first, then swap; the new weapon's equip plays the draw.
+    this.currentWeapon._setState('equip', 1); // no firing / ADS while lowering
+    this.viewmodel.holster(() => {
+      this.slot = i;
+      this.currentWeapon = this.inventory[i];
+      this.viewmodel.setWeapon(this.currentWeapon);
+      this.currentWeapon.equip();
+    });
   }
 
   // ------------------------------------------------------------------ main loop
@@ -542,9 +557,22 @@ export class Game {
         if (inp.justPressed('inspect')) w.inspect();
         if (inp.justPressed('laser') && w.stats.beam) { w.laserOn = !w.laserOn; this.audio.play('switch', { volume: 0.4 }); }
         if (inp.justPressed('melee') && w.melee()) setTimeout(() => this._meleeHit(), 160);
-        if (inp.justPressed('grenade') && this.grenades > 0 && w.state !== 'melee') {
-          this.grenades--;
-          this.throwGrenade(p, this.renderer.camera.position.clone().add(new THREE.Vector3(0, -0.1, 0)), null);
+        // Frag: press pulls the pin, holding cooks it, release throws (fuse keeps counting).
+        if (inp.justPressed('grenade') && this.grenades > 0 && w.state !== 'melee' && this.cook == null) {
+          this.cook = 0;
+          this.audio.play('switch', { volume: 0.45, pitch: 1.4 });
+        }
+        if (this.cook != null) {
+          this.cook += dt;
+          const left = Game.FUSE - this.cook;
+          if (!inp.is('grenade') || left <= 0.05) {
+            this.grenades--;
+            this.throwGrenade(p, this.renderer.camera.position.clone().add(new THREE.Vector3(0, -0.1, 0)), null, Math.max(0.05, left));
+            this.cook = null;
+            this.hud.prompt('');
+          } else if (this.cook > 0.18) {
+            this.hud.prompt(`<span class="cook ${left < 1.2 ? 'hot' : ''}"><i style="--p:${((left / Game.FUSE) * 100).toFixed(0)}%"></i>COOKING ${left.toFixed(1)}s</span>`);
+          }
         }
         if (inp.down.has('Mouse1') && inp.pressed.has('Mouse1') && w.stats.variable) w.toggleZoom();
         const winput = {

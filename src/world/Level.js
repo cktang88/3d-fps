@@ -516,7 +516,6 @@ export class Level {
   }
 
   finalizeProps() {
-    if (location.search.includes('noprops')) return;
     for (const [k, list] of Object.entries(this.propInst)) {
       const p = this.props[k];
       if (!p || !list.length) continue;
@@ -525,7 +524,7 @@ export class Level {
         const im = new THREE.InstancedMesh(part.geo, part.mat, list.length);
         list.forEach((m, i) => im.setMatrixAt(i, m));
         im.instanceMatrix.needsUpdate = true;
-        im.castShadow = big && !part.mat.userData.noUnify && !location.search.includes('nopropshadow');
+        im.castShadow = big && !part.mat.userData.noUnify;
         im.receiveShadow = true;
         im.computeBoundingSphere();
         im.name = 'prop_' + k;
@@ -571,9 +570,13 @@ export class Level {
     this.box('paving', -2, 0.015, 26, 30, 0.03, 6, { uv: 2.5, collide: false, map: false });
     this.box('concreteDirty', 37, 0.014, 0, 34, 0.028, 50, { uv: 4, collide: false, map: false });
 
-    for (const k of ['Perimeter', 'Warehouse', 'Office', 'ContainerYard', 'Ruins', 'Courtyard', 'Backdrop']) {
-      if (!location.search.includes('skip' + k)) this['build' + k]();
-    }
+    this.buildPerimeter();
+    this.buildWarehouse();
+    this.buildOffice();
+    this.buildContainerYard();
+    this.buildRuins();
+    this.buildCourtyard();
+    this.buildBackdrop();
     this.defineSpawns();
     this.finalize();
   }
@@ -827,8 +830,7 @@ export class Level {
   }
 
   interiorLight(x, y, z, color = 0xffe2b0, intensity = 40, dist = 26, flicker = false) {
-    const l = new THREE.PointLight(color, location.search.includes('nolights') ? 0 : intensity, dist, 1.7);
-    if (location.search.includes('nolights')) l.visible = false;
+    const l = new THREE.PointLight(color, intensity, dist, 1.7);
     l.position.set(x, y, z);
     this.group.add(l);
     this.interiorLights.push(l);
@@ -1195,20 +1197,17 @@ export class Level {
     // Re-orient the HDRI so the low sun sits in the south-south-west (rakes across the courtyard and
     // pours through the warehouse's south windows).
     const targetPhi = Math.atan2(0.89, -0.45);
-    const _t0 = performance.now();
     const info = orientHDR(hdr, targetPhi);
-    console.warn('TIMING orient', (performance.now() - _t0).toFixed(0));
     this.hdrInfo = info;
     // IBL from a sun-clamped copy (the sun is a real shadowed light; leaving it in the IBL leaks light indoors).
     const pmrem = new THREE.PMREMGenerator(r);
     const iblSrc = clampedHDR(hdr, 6);
     const env = pmrem.fromEquirectangular(iblSrc).texture;
     iblSrc.dispose(); pmrem.dispose();
-    console.warn('TIMING ibl', (performance.now() - _t0).toFixed(0), JSON.stringify({ el: info.el / DEG, phi: info.phi / DEG, hz: info.horizon.toArray(), shz: info.sunHorizon.toArray(), zen: info.zenith.toArray(), sc: info.sunColor.toArray(), peak: info.peak }));
     scene.environment = env;
     scene.environmentIntensity = 0.75;
     // Grounded skybox: HDR projected onto a dome so its field horizon reads as real ground.
-    const sky = location.search.includes('oldsky') ? new GroundedSkybox(hdr, 12, 400, 64) : new GroundedSkybox(hdr, 14, 600, 96);
+    const sky = new GroundedSkybox(hdr, 14, 600, 96);
     sky.position.y = 14 - 0.05;
     sky.material.depthWrite = false;
     sky.renderOrder = -1;
@@ -1240,18 +1239,19 @@ export class Level {
     const hemi = new THREE.HemisphereLight(0x8fa2bd, 0x4a3a2c, 0.18);
     scene.add(hemi);
     // Height fog coloured from the HDRI horizon, glowing toward the sun.
-    const fogCol = info.horizon.clone().multiplyScalar(0.85);
-    const scatterCol = info.sunHorizon.clone().sub(info.horizon).multiplyScalar(0.9);
+    // Fog: the HDRI horizon, darkened and cooled (storm haze), glowing warm toward the sun.
+    const fogCol = info.horizon.clone().multiplyScalar(0.42).lerp(new THREE.Color(0.2, 0.24, 0.3), 0.45);
+    const scatterCol = info.sunHorizon.clone().sub(info.horizon).multiplyScalar(0.55);
     scatterCol.r = Math.max(scatterCol.r, 0.25); scatterCol.g = Math.max(scatterCol.g, 0.14); scatterCol.b = Math.max(scatterCol.b, 0.05);
-    if (!location.search.includes('nofog')) installAtmosphere({ sunDir: info.dir, sunColor: scatterCol, heightFalloff: 0.06, heightShare: 0.7, scatter: 1.0 });
-    scene.fog = new THREE.FogExp2(fogCol, 0.0105);
+    installAtmosphere({ sunDir: info.dir, sunColor: scatterCol, heightFalloff: 0.06, heightShare: 0.7, scatter: 1.0 });
+    scene.fog = new THREE.FogExp2(fogCol, 0.0065);
     g.renderer.setSun?.(info.dir, new THREE.Color(1.0, 0.7, 0.42));
     // Fake volumetric shafts through the warehouse's south windows + the main door, with dust motes.
     this.shaftOpenings.push({ center: V(-9, 2.4, -27), w: 5.6, h: 4.6, normal: V(0, 0, 1), length: 14 });
     const shafts = buildLightShafts(this.shaftOpenings, sunDir, new THREE.Color(1.0, 0.72, 0.45), { length: 24, intensity: 0.14 });
-    if (!location.search.includes('noshaft')) this.group.add(shafts);
+    this.group.add(shafts);
     const dust = buildDust([new THREE.Box3(V(-17, 0.5, -44), V(17, 7.5, -28))], 700, new THREE.Color(1.0, 0.8, 0.6).multiplyScalar(0.55), sunDir);
-    if (!location.search.includes('noshaft')) this.group.add(dust);
+    this.group.add(dust);
     // Per-frame animation driven from the sky's render callback (always drawn).
     const t0 = performance.now();
     sky.onBeforeRender = () => {

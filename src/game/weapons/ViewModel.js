@@ -473,7 +473,7 @@ export class ViewModel {
       info.reticle = ret;
       info.reticleAnchor = reticleAnchor;
       // Angular size of the reticle (radians, full width of the texture quad).
-      info.reticleAngle = opticId === 'reddot' ? 0.028 : 0.06;
+      info.reticleAngle = opticId === 'reddot' ? 0.028 : 0.075;
       info.lensR = (opticId === 'reddot' ? 0.022 : 0.04) * osc;
       // Lens glass tint.
       const lens = new THREE.Mesh(new THREE.CircleGeometry(info.lensR * 0.8, 24), new THREE.MeshPhysicalMaterial({
@@ -544,7 +544,19 @@ export class ViewModel {
   }
 
   // ------------------------------------------------------------------ switching
+  /**
+   * Holster (lower-out) the current weapon, then call `onDone` (the caller swaps weapons there and
+   * the new one plays its draw via setWeapon → equip). `holstering` is true while it is pending.
+   */
+  holster(onDone, dur = 0.17) {
+    if (!this.rig) { onDone(); return; }
+    this._holster = { t: 0, dur, onDone };
+  }
+
+  get holstering() { return !!this._holster; }
+
   setWeapon(weapon) {
+    this._holster = null; this.holsterK = 0;
     const rig = this.getRig(weapon);
     if (this.rig === rig) return;
     if (this.rig) {
@@ -629,6 +641,12 @@ export class ViewModel {
     this.slideBlend = damp(this.slideBlend, p.sliding ? 1 : 0, 10, dt);
     this.mantleBlend = damp(this.mantleBlend, p.mantle ? 1 : 0, 12, dt);
     this.equipT = Math.min(1, this.equipT + dt / Math.max(0.2, s.equip));
+    if (this._holster) {
+      const hs = this._holster;
+      hs.t += dt;
+      this.holsterK = Math.min(1, hs.t / hs.dur);
+      if (hs.t >= hs.dur) { this._holster = null; hs.onDone(); this.holsterK = 0; if (this.rig !== rig) return; }
+    }
     const reloading = w.state === 'reload';
     this.reloadBlend = damp(this.reloadBlend, reloading ? 1 : 0, 9, dt);
     this.inspectT = w.state === 'inspect' ? Math.min(1, w.stateTime / w.stateDur) : 0;
@@ -711,6 +729,12 @@ export class ViewModel {
       const t = clamp(w.stateTime / w.stateDur, 0, 1);
       const k = Math.sin(t * Math.PI);
       pos.z += 0.025 * k; rot.x += 0.05 * k; rot.z += 0.04 * k;
+    }
+    // Holster: drop and roll out of frame (ease-in, so it leaves with intent).
+    if (this.holsterK > 0) {
+      const k = this.holsterK * this.holsterK;
+      pos.y -= 0.3 * k; pos.x += 0.05 * k; pos.z += 0.04 * k;
+      rot.x -= 0.75 * k; rot.z += 0.4 * k; rot.y += 0.15 * k;
     }
     // Equip: swing up from the hip with weight — fast rise, slight overshoot, then settle.
     {

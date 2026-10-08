@@ -108,25 +108,34 @@ const PALETTES = {
     Soldier_Skin: [[0.022, 0.024, 0.023], 0.78, 0, 0.7, 30, 0.6], // gloves / balaclava
   },
 };
+const CAMO = {
+  friendly: { a: [0.11, 0.085, 0.052], b: [0.028, 0.032, 0.022] }, // coyote blotches + dark olive spots
+  enemy: { a: [0.012, 0.012, 0.013], b: [0.075, 0.075, 0.072] }, // black blotches + grey spots
+};
 const TEAM_COLORS = { friendly: new THREE.Color(0.08, 0.32, 1.0), enemy: new THREE.Color(1.0, 0.11, 0.06) };
 
-function soldierMaterial(src, look) {
+function soldierMaterial(src, look, camo = null) {
   const m = new THREE.MeshStandardMaterial({ name: src.name, side: THREE.FrontSide });
   const [col, rough, metal, weave, scale, dirt] = look;
   m.color.setRGB(col[0], col[1], col[2], THREE.LinearSRGBColorSpace);
   m.roughness = rough; m.metalness = metal; m.envMapIntensity = 0.85;
   m.userData.character = true;
   const uDet = { value: new THREE.Vector4(weave, scale, dirt, metal > 0.5 ? 1 : 0) };
+  const uCamoA = { value: new THREE.Color().setRGB(...(camo?.a || col), THREE.LinearSRGBColorSpace) };
+  const uCamoB = { value: new THREE.Color().setRGB(...(camo?.b || col), THREE.LinearSRGBColorSpace) };
+  const uCamoK = { value: camo ? 1 : 0 };
   if (globalThis.__noSoldierShader) return m;
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uSoldierTex = { value: detailTex() };
     sh.uniforms.uSoldierDet = uDet;
+    sh.uniforms.uCamoA = uCamoA; sh.uniforms.uCamoB = uCamoB; sh.uniforms.uCamoK = uCamoK;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec3 aRest; attribute vec3 aRestN; varying vec3 vRest; varying vec3 vRestN;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRest = aRest; vRestN = aRestN;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform sampler2D uSoldierTex; uniform vec4 uSoldierDet; varying vec3 vRest; varying vec3 vRestN;
+        uniform vec3 uCamoA; uniform vec3 uCamoB; uniform float uCamoK;
         vec4 sTri(vec3 p, vec3 w, float s) {
           return texture2D(uSoldierTex, p.zy * s) * w.x + texture2D(uSoldierTex, p.xz * s) * w.y + texture2D(uSoldierTex, p.xy * s) * w.z;
         }
@@ -145,7 +154,14 @@ function soldierMaterial(src, look) {
         float sH = clamp(vRest.y / 1.78, 0.0, 1.0);
         float sDirt = uSoldierDet.z * smoothstep(0.42, 0.02, sH + (sMacro.g - 0.5) * 0.18) * (0.55 + 0.6 * sMacro.b);
         sDirt = clamp(sDirt, 0.0, 0.85);
-        diffuseColor.rgb *= 0.86 + 0.26 * sMacro.b + 0.1 * (sFine.g - 0.5);
+        // Disruptive camo: large blotches + smaller spots (two extra tones over the base colour).
+        float sCa = smoothstep(0.56, 0.6, sMacro.b + (sFine.g - 0.5) * 0.08);
+        float sCb = smoothstep(0.62, 0.66, sMacro.g + (sFine.g - 0.5) * 0.06) * (1.0 - sCa);
+        diffuseColor.rgb = mix(diffuseColor.rgb, uCamoA, sCa * uCamoK);
+        diffuseColor.rgb = mix(diffuseColor.rgb, uCamoB, sCb * uCamoK);
+        diffuseColor.rgb *= 0.9 + 0.18 * sMacro.b + 0.1 * (sFine.g - 0.5);
+        // Cheap cavity / underside occlusion from the rest-pose normal.
+        diffuseColor.rgb *= mix(0.6, 1.0, smoothstep(-0.9, 0.35, sN.y));
         diffuseColor.rgb *= 1.0 - 0.12 * uSoldierDet.x * (1.0 - sFine.r);
         // worn edges / scuffs on hard kit
         float sWear = sFine.a * (1.0 - uSoldierDet.x * 0.6) * 0.6;
@@ -186,11 +202,12 @@ export class CharacterTemplate {
         for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
           if (set[m.name]) continue;
           const look = PALETTES[team][m.name] || PALETTES.common[m.name] || [[0.1, 0.1, 0.1], 0.7, 0, 0.3, 25, 0.5];
-          set[m.name] = soldierMaterial(m, look);
+          const camo = /Clothes|Fabric/.test(m.name) ? CAMO[team] : null;
+          set[m.name] = soldierMaterial(m, look, camo);
         }
       });
       const tc = TEAM_COLORS[team];
-      set.__band = new THREE.MeshStandardMaterial({ color: tc.clone().multiplyScalar(0.55), emissive: tc, emissiveIntensity: 0.35, roughness: 0.6 });
+      set.__band = new THREE.MeshStandardMaterial({ color: tc.clone().multiplyScalar(0.55), emissive: tc, emissiveIntensity: 0.18, roughness: 0.7 });
       set.__band.userData.noUnify = true;
       this.materials[team] = set;
     }
@@ -213,6 +230,9 @@ export class CharacterTemplate {
     this.hitAdd = THREE.AnimationUtils.makeClipAdditive(hitUp, 0);
     this.death = pick('death');
     this.downed = pick('downed', 'aim_crouch_idle');
+    // Forward crumple: knees from the crouch, arms from mid-way through the death clip.
+    this.toppleLo = splitClip(pick('aim_crouch_idle', 'crouch_idle'), false);
+    this.toppleUp = splitClip(this.death, true);
     // Gait table: natural ground speed of each in-place clip (planted-foot travel, measured offline from
     // the clips) and the phase where the left foot is furthest forward, so blended clips stay in step.
     const G = { walk: [1.15, 0.02], run: [4.6, 0.03], sprint: [6.2, 0.83], crouchWalk: [0.85, 0] };
@@ -251,8 +271,9 @@ export class CharacterTemplate {
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();
 const _v5 = new THREE.Vector3(), _v6 = new THREE.Vector3(), _v7 = new THREE.Vector3();
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _q4 = new THREE.Quaternion();
-const _e1 = new THREE.Euler(0, 0, 0, 'YXZ');
-const _m1 = new THREE.Matrix4();
+const _e1 = new THREE.Euler(0, 0, 0, 'YXZ'), _e2 = new THREE.Euler();
+const V3 = () => new THREE.Vector3(), Q = () => new THREE.Quaternion();
+const _ik = { a: V3(), b: V3(), c: V3(), t: V3(), ac: V3(), ab: V3(), acN: V3(), abN: V3(), bcN: V3(), atN: V3(), ax0: V3(), ax1: V3(), tmp: V3(), qa: Q(), qb: Q(), r0: Q(), r1: Q(), r2: Q() };
 const UP = new THREE.Vector3(0, 1, 0);
 const wrapPi = (a) => ((a + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
 const GAIT_KEYS = ['walk', 'run', 'sprint', 'crouchWalk'];
@@ -282,8 +303,11 @@ export class Character {
       if (o.isSkinnedMesh) {
         // Generous static bounds so off-screen bots are culled (incl. their shadow pass) without
         // re-skinning the bounds every frame.
+        // (skin the bounds from the bind pose — the skeleton must be evaluated first)
+        model.updateMatrixWorld(true);
+        o.skeleton.update();
         o.computeBoundingSphere();
-        o.boundingSphere.radius *= 1.7;
+        o.boundingSphere.radius *= 2.2; // covers lying corpses / extended limbs
         o.frustumCulled = true;
       }
     });
@@ -313,6 +337,9 @@ export class Character {
     this.deathAction = this.mixer.clipAction(tpl.death);
     this.deathAction.setLoop(THREE.LoopOnce, 1); this.deathAction.clampWhenFinished = true;
     this.downedAction = this.mixer.clipAction(tpl.downed);
+    this.toppleLoAction = this.mixer.clipAction(tpl.toppleLo);
+    this.toppleUpAction = this.mixer.clipAction(tpl.toppleUp);
+    this.toppleUpAction.setLoop(THREE.LoopOnce, 1); this.toppleUpAction.clampWhenFinished = true;
 
     this.gaitPhase = Math.random();
     this.speedS = 0;
@@ -645,7 +672,7 @@ export class Character {
     b.rHand.getWorldPosition(_v1);
     if (b.rMid) { b.rMid.getWorldPosition(_v2); _v1.lerp(_v2, 0.5); }
     // Aim-driven orientation (+ a little muzzle climb on fire).
-    _e1.set(pitch + this.fireKick * 0.06, aimYaw + this.kickRoll * this.fireKick * 0.015, 0);
+    _e1.set(pitch + this.fireKick * 0.06, aimYaw + this.kickRoll * this.fireKick * 0.015, 0, 'YXZ');
     _q1.setFromEuler(_e1);
     const osw = this.oneShotW;
     if (osw > 0.001) {
@@ -683,33 +710,31 @@ export class Character {
     }
   }
 
-  /** Analytic two-bone IK (after D. Holden), blended by weight. */
+  /** Analytic two-bone IK (after D. Holden), blended by weight. Allocation-free. */
   _twoBoneIK(A, B, C, target, weight) {
-    const a = A.getWorldPosition(_v1), bb = B.getWorldPosition(_v2), c = C.getWorldPosition(_v3);
-    const t = _v6.copy(c).lerp(target, weight);
-    const lab = bb.distanceTo(a), lcb = c.distanceTo(bb);
+    const a = A.getWorldPosition(_ik.a), b = B.getWorldPosition(_ik.b), c = C.getWorldPosition(_ik.c);
+    const t = _ik.t.copy(c).lerp(target, weight);
+    const lab = b.distanceTo(a), lcb = c.distanceTo(b);
     const lat = clamp(t.distanceTo(a), 0.01, (lab + lcb) * 0.999);
-    const ac = _v5.subVectors(c, a), ab = _v7.subVectors(bb, a);
-    const acN = ac.clone().normalize(), abN = ab.clone().normalize();
-    const baN = abN.clone().negate(), bcN = new THREE.Vector3().subVectors(c, bb).normalize();
-    const atN = new THREE.Vector3().subVectors(t, a).normalize();
+    const ac = _ik.ac.subVectors(c, a), ab = _ik.ab.subVectors(b, a);
+    const acN = _ik.acN.copy(ac).normalize(), abN = _ik.abN.copy(ab).normalize();
+    const bcN = _ik.bcN.subVectors(c, b).normalize(), atN = _ik.atN.subVectors(t, a).normalize();
     const ac_ab_0 = Math.acos(clamp(acN.dot(abN), -1, 1));
-    const ba_bc_0 = Math.acos(clamp(baN.dot(bcN), -1, 1));
+    const ba_bc_0 = Math.acos(clamp(-abN.dot(bcN), -1, 1));
     const ac_at_0 = Math.acos(clamp(acN.dot(atN), -1, 1));
     const ac_ab_1 = Math.acos(clamp((lcb * lcb - lab * lab - lat * lat) / (-2 * lab * lat), -1, 1));
     const ba_bc_1 = Math.acos(clamp((lat * lat - lab * lab - lcb * lcb) / (-2 * lab * lcb), -1, 1));
-    const axis0 = new THREE.Vector3().crossVectors(ac, ab);
-    if (axis0.lengthSq() < 1e-10) return;
+    const axis0 = _ik.ax0.crossVectors(ac, ab);
+    if (axis0.lengthSq() < 1e-12) return;
     axis0.normalize();
-    const axis1 = new THREE.Vector3().crossVectors(ac, atN);
-    const aGr = A.getWorldQuaternion(new THREE.Quaternion()), bGr = B.getWorldQuaternion(new THREE.Quaternion());
-    const aInv = aGr.clone().invert(), bInv = bGr.clone().invert();
-    const r0 = new THREE.Quaternion().setFromAxisAngle(axis0.clone().applyQuaternion(aInv), ac_ab_1 - ac_ab_0);
-    const r1 = new THREE.Quaternion().setFromAxisAngle(axis0.clone().applyQuaternion(bInv), ba_bc_1 - ba_bc_0);
-    let r2 = new THREE.Quaternion();
-    if (axis1.lengthSq() > 1e-10) r2.setFromAxisAngle(axis1.normalize().applyQuaternion(aInv), ac_at_0);
-    A.quaternion.multiply(r0).multiply(r2);
-    B.quaternion.multiply(r1);
+    const axis1 = _ik.ax1.crossVectors(ac, atN);
+    const aInv = A.getWorldQuaternion(_ik.qa).invert(), bInv = B.getWorldQuaternion(_ik.qb).invert();
+    _ik.r0.setFromAxisAngle(_ik.tmp.copy(axis0).applyQuaternion(aInv), ac_ab_1 - ac_ab_0);
+    _ik.r1.setFromAxisAngle(_ik.tmp.copy(axis0).applyQuaternion(bInv), ba_bc_1 - ba_bc_0);
+    if (axis1.lengthSq() > 1e-12) _ik.r2.setFromAxisAngle(_ik.tmp.copy(axis1).normalize().applyQuaternion(aInv), ac_at_0);
+    else _ik.r2.identity();
+    A.quaternion.multiply(_ik.r0).multiply(_ik.r2);
+    B.quaternion.multiply(_ik.r1);
     A.updateMatrixWorld(true);
   }
 
@@ -757,6 +782,9 @@ export class Character {
       d.fallYaw = yaw; // world yaw of fall direction (vector (sin, 0, cos))
       d.angVel = explosive ? 2.5 : 0.6 + Math.random() * 0.4;
       d.kneel = explosive ? 0.05 : 0.22 + Math.random() * 0.15; // time spent buckling before the topple
+      // Falling back / sideways-back: slump into a sit and go over backwards. Falling forward: knees
+      // buckle into a crouch and the body pitches onto its front with the arms flung.
+      d.forward = Math.abs(wrapPi(yaw - this.bodyYaw)) > 100 * DEG;
     }
     // Knockback slide distance, clipped by walls.
     if (phys) {
@@ -773,7 +801,13 @@ export class Character {
     d.w0 = new Map();
     for (const a of [...Object.values(this.lowerActions), ...Object.values(this.upperActions)]) { d.w0.set(a, a.getEffectiveWeight()); a.timeScale = 0; }
     if (mode === 'clip') { this.deathAction.reset(); this.deathAction.timeScale = d.rate; this.deathAction.play(); this.deathAction.setEffectiveWeight(0); }
-    else { this.downedAction.reset(); this.downedAction.timeScale = 1; this.downedAction.play(); this.downedAction.setEffectiveWeight(0); }
+    else if (!d.forward) { this.downedAction.reset(); this.downedAction.timeScale = 1; this.downedAction.play(); this.downedAction.setEffectiveWeight(0); d.poses = [this.downedAction]; }
+    else {
+      const lo = this.toppleLoAction, up = this.toppleUpAction;
+      lo.reset(); lo.play(); lo.setEffectiveWeight(0);
+      up.reset(); up.play(); up.time = up.getClip().duration * 0.22; up.timeScale = 0.8; up.setEffectiveWeight(0);
+      d.poses = [lo, up];
+    }
     this.hitAction.setEffectiveWeight(0);
 
     // Weapon falls free.
@@ -823,7 +857,7 @@ export class Character {
       this.mixer.update(dt);
     } else {
       // Knees buckle into a slump, then the whole body topples about the feet along the hit.
-      this.downedAction.setEffectiveWeight(fw);
+      for (const a of d.poses) a.setEffectiveWeight(fw);
       this.mixer.update(dt);
       root.rotation.set(0, this.bodyYaw, 0);
       if (d.t > d.kneel && !d.landed) {
@@ -876,7 +910,7 @@ export class Character {
     if (!dr.rest) {
       dr.vel.y -= 9.8 * dt;
       w.position.addScaledVector(dr.vel, dt);
-      _q1.setFromEuler(_e1.set(dr.spin.x * dt, dr.spin.y * dt, dr.spin.z * dt, 'XYZ'));
+      _q1.setFromEuler(_e2.set(dr.spin.x * dt, dr.spin.y * dt, dr.spin.z * dt));
       w.quaternion.multiply(_q1);
       if (w.position.y <= dr.ground) {
         w.position.y = dr.ground;

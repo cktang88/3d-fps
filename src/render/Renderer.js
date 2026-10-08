@@ -185,7 +185,7 @@ export class Renderer {
     this.hdrPass = new EffectPass(this.camera, this.godRays, this.bloom, this.lens);
 
     // ---- display stage
-    this.toneMap = new ToneMappingEffect({ mode: ToneMappingMode.AGX });
+    this.toneMap = new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC });
     this.grade = new GradeEffect();
     this.chroma = new ChromaticAberrationEffect({ offset: new THREE.Vector2(0, 0), radialModulation: true, modulationOffset: 0.45 });
     this.vignette = new VignetteEffect({ offset: 0.38, darkness: 0.32 });
@@ -195,11 +195,9 @@ export class Renderer {
     this.smaa = new SMAAEffect({ preset: SMAAPreset.HIGH });
     this.aaPass = new EffectPass(this.camera, this.smaa);
 
-    const DBG = location.search;
-    if (!DBG.includes('nohdr')) this.composer.addPass(this.hdrPass);
+    this.composer.addPass(this.hdrPass);
     this.composer.addPass(this.gradePass);
     this.composer.addPass(this.aaPass);
-    if (DBG.includes('noao')) this.aoPass.enabled = false;
 
     this.damagePulse = 0;
     this.ads = 0;

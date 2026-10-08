@@ -109,7 +109,7 @@ export class Fires {
     this.siteDefs.forEach((d, i) => { d.hasLight = i < lightCount; });
 
     this.smoke = new AmbParticles(this.scene, { max: 900, texture: smokeAtlas(), atlas: 4, lit: true, sort: true, fogScale: 1, nearFade: 1.2 });
-    this.embers = new AmbParticles(this.scene, { max: 500, texture: glowTex(), additive: true, stretch: 0.06, fogScale: 1, nearFade: 0.2 });
+    this.embers = new AmbParticles(this.scene, { max: 500, texture: glowTex(), additive: true, stretch: 0.06, fogScale: 1, nearFade: 1.4 });
 
     this._buildFlameMesh();
   }
@@ -331,9 +331,10 @@ export class Fires {
     }
     this._scorch(root, 2.2);
     site.flames.push(
-      { p: local(0, top - 0.2, 0), w: 0.7, h: 0.85, k: 0.8 },
-      { p: local(0.1, top - 0.15, -0.08), w: 0.55, h: 0.7, k: 0.75 },
-      { p: local(-0.1, top - 0.15, 0.08), w: 0.5, h: 0.6, k: 0.7 },
+      { p: local(0, top - 0.2, 0), w: 0.8, h: 0.95, k: 0.85 },
+      { p: local(0.12, top - 0.15, -0.08), w: 0.6, h: 0.75, k: 0.8 },
+      { p: local(-0.12, top - 0.15, 0.08), w: 0.55, h: 0.65, k: 0.75 },
+      { p: local(0.0, top - 0.1, 0.12), w: 0.45, h: 0.55, k: 0.7 },
     );
     site.smokeAt = [local(0, top + 0.9, 0)];
     site.lightPos = local(0, top + 0.6, 0);

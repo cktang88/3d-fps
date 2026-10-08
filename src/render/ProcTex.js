@@ -246,12 +246,13 @@ export function reticleTex(type = 'dot', color = '#ff2a1a') {
     g.shadowBlur = 6; g.fillStyle = '#ffd0c8';
     g.beginPath(); g.arc(0, 0, 11, 0, Math.PI * 2); g.fill();
   } else if (type === 'holo') {
-    // EOTech-style 65 MOA ring + 1 MOA dot, ring ticks at the cardinal points.
-    g.shadowBlur = 6;
-    g.lineWidth = 6; g.beginPath(); g.arc(0, 0, 96, 0, Math.PI * 2); g.stroke();
-    g.beginPath(); g.arc(0, 0, 9, 0, Math.PI * 2); g.fill();
+    // EOTech-style ring + centre dot, ring ticks at the cardinal points. Thick strokes with a soft
+    // glow so the ring survives downsampling at 1080p and below.
+    g.shadowBlur = 10;
+    g.lineWidth = 11; g.beginPath(); g.arc(0, 0, 92, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.arc(0, 0, 12, 0, Math.PI * 2); g.fill();
     for (const a of [0, Math.PI / 2, Math.PI * 1.5]) {
-      g.save(); g.rotate(a); g.fillRect(-3, -112, 6, 22); g.restore();
+      g.save(); g.rotate(a); g.fillRect(-5, -118, 10, 26); g.restore();
     }
   } else if (type === 'chevron') {
     g.lineWidth = 6;
