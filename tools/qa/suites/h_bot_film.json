@@ -1,0 +1,261 @@
+{
+ "tag": "h_film",
+ "setupFiles": [
+  "tools/qa/suites/lib.js"
+ ],
+ "match": "tdm",
+ "w": 480,
+ "h": 270,
+ "views": [
+  {
+   "name": "settle",
+   "shot": false,
+   "frames": 1,
+   "eval": "__qa.god();__qa.place([-48,4.3,-40.5],0,0);__qa.sim(16);"
+  },
+  {
+   "name": "run_pick",
+   "shot": false,
+   "frames": 1,
+   "eval": "window.__fb = __qa.pickBot(b=>Math.hypot(b.velocity.x,b.velocity.z)>3);",
+   "read": "window.__fb"
+  },
+  {
+   "name": "run_00",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI/2);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "run_01",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI/2);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "run_02",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI/2);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "run_03",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI/2);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "run_04",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI/2);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "run_05",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI/2);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "run_06",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI/2);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "run_07",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI/2);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "engage_pick",
+   "shot": false,
+   "frames": 1,
+   "eval": "window.__fb = __qa.pickBot(b=>b.goal==='engage');",
+   "read": "window.__fb"
+  },
+  {
+   "name": "engage_00",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.7);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "engage_01",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.7);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "engage_02",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.7);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "engage_03",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.7);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "engage_04",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.7);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "engage_05",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.7);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "engage_06",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.7);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "engage_07",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.7);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "engage_08",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.7);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "engage_09",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.7);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "engage_10",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.7);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "engage_11",
+   "frames": 1,
+   "eval": "__qa.sim(0.1);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.7);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "reload_pick",
+   "shot": false,
+   "frames": 1,
+   "eval": "window.__fb = __qa.pickBot(b=>b.goal!=='engage');",
+   "read": "window.__fb"
+  },
+  {
+   "name": "reload_00",
+   "frames": 1,
+   "eval": "const b=__game.bots[window.__fb]; if(b){b.weapon.ammo=0; b.weapon.reload();}__qa.sim(0.25);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.6);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "reload_01",
+   "frames": 1,
+   "eval": "__qa.sim(0.25);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.6);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "reload_02",
+   "frames": 1,
+   "eval": "__qa.sim(0.25);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.6);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "reload_03",
+   "frames": 1,
+   "eval": "__qa.sim(0.25);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.6);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "reload_04",
+   "frames": 1,
+   "eval": "__qa.sim(0.25);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.6);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "reload_05",
+   "frames": 1,
+   "eval": "__qa.sim(0.25);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.6);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "reload_06",
+   "frames": 1,
+   "eval": "__qa.sim(0.25);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.6);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "reload_07",
+   "frames": 1,
+   "eval": "__qa.sim(0.25);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.6);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "death_pick",
+   "shot": false,
+   "frames": 1,
+   "eval": "window.__fb = __qa.pickBot(b=>true);",
+   "read": "window.__fb"
+  },
+  {
+   "name": "death_00",
+   "frames": 1,
+   "eval": "const b=__game.bots[window.__fb]; if(b){ b.spawnProtect=0; const V=__game.player.position.constructor; b.takeDamage(500, __game.player, {weapon:\"m4\", dir: new V(1,0,0), point: b.position.clone().setY(b.position.y+1.2)}); }__qa.sim(0.15);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.5);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "death_01",
+   "frames": 1,
+   "eval": "__qa.sim(0.15);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.5);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "death_02",
+   "frames": 1,
+   "eval": "__qa.sim(0.15);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.5);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "death_03",
+   "frames": 1,
+   "eval": "__qa.sim(0.15);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.5);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "death_04",
+   "frames": 1,
+   "eval": "__qa.sim(0.15);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.5);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "death_05",
+   "frames": 1,
+   "eval": "__qa.sim(0.15);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.5);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "death_06",
+   "frames": 1,
+   "eval": "__qa.sim(0.15);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.5);",
+   "read": "window.__fr"
+  },
+  {
+   "name": "death_07",
+   "frames": 1,
+   "eval": "__qa.sim(0.15);window.__fr=__qa.follow(window.__fb,3.6,Math.PI*0.5);",
+   "read": "window.__fr"
+  }
+ ]
+}

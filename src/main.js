@@ -60,7 +60,7 @@ async function boot() {
     if (game.started && !game.paused && !game.input.locked) game.input.lock();
   });
   addEventListener('keydown', (e) => {
-    if (e.code === 'KeyT' && game.started && !game.player.alive) { game.paused = true; game.input.unlock(); menu.page = 'gunsmith'; menu.open(true); }
+    if (e.code === 'KeyT' && game.started && !game.player.alive) { game.paused = true; game.input.unlock(); menu.open(true, 'gunsmith'); }
   });
   addEventListener('beforeunload', () => saveSettings(settings));
 

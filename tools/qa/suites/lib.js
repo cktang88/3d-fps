@@ -29,7 +29,9 @@
   Q.tap = (code) => { const i = G().input; i.pressed.add(code); }; // press without holding
   Q.releaseAll = () => { const i = G().input; i.down.clear(); i.pressed.clear(); };
   Q.place = (pos, yaw = 0, pitch = 0) => {
-    const p = G().player; p.position.set(pos[0], pos[1], pos[2]); p.velocity.set(0, 0, 0); p._syncBody(); p.yaw = yaw; p.pitch = pitch;
+    const g = G(), p = g.player; if (!p.alive) g.spawnPlayer();
+    p.crouching = p.sliding = false; p.mantle = null;
+    p.position.set(pos[0], pos[1], pos[2]); p.velocity.set(0, 0, 0); p._syncBody(); p.yaw = yaw; p.pitch = pitch;
   };
   Q.god = (on = true) => { G().settings.godMode = on; };
   // Freeze bots in place (hidden) so they don't interfere with deterministic player tests.
@@ -125,4 +127,22 @@
     p.yaw = Math.atan2(-dx, -dz); p.pitch = -0.08;
     return g.bots.indexOf(b);
   };
+})();
+(() => {
+  const Q = window.__qa, G = () => window.__game;
+  // Third-person follow cam on bot i: camera `dist` m away at angle `ang` (rad, 0 = behind, PI/2 = right side).
+  Q.follow = (i, dist = 3.6, ang = Math.PI / 2, h = 0.2) => {
+    const g = G(), b = g.bots[i], p = g.player; if (!b) return null;
+    Q.god();
+    const a = (b.model?.bodyYaw ?? b.yaw) + ang, fx = -Math.sin(a), fz = -Math.cos(a);
+    p.position.set(b.position.x - fx * dist, b.position.y + h, b.position.z - fz * dist); p.velocity.set(0, 0, 0); p._syncBody();
+    const dx = b.position.x - p.position.x, dz = b.position.z - p.position.z;
+    p.yaw = Math.atan2(-dx, -dz); p.pitch = Math.atan2(b.position.y + 1.0 - (p.position.y + 1.6), Math.hypot(dx, dz));
+    g.hud.show(false); g.viewmodel.holder.scale.setScalar(1e-4); Q._vmHidden = true;
+    return { goal: b.goal, alive: b.alive, v: +Math.hypot(b.velocity.x, b.velocity.z).toFixed(2), wstate: b.weapon?.state, firedAgo: b.lastFiredTime !== undefined ? +(g.time - b.lastFiredTime).toFixed(2) : null };
+  };
+  const prevCleanup = Q.cleanup;
+  Q.cleanup = () => { prevCleanup?.(); const g = G(); if (g && Q._vmHidden) { g.viewmodel.holder.scale.setScalar(1); g.hud.show(true); } };
+  // Pick the alive bot best matching a predicate (closest to origin as tie-break).
+  Q.pickBot = (pred) => { const g = G(); let best = -1, bd = 1e9; g.bots.forEach((b, i) => { if (b.alive && pred(b)) { const d = b.position.length(); if (d < bd) { bd = d; best = i; } } }); return best; };
 })();

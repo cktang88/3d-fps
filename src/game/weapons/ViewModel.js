@@ -41,6 +41,49 @@ function scanAt(gun, root, z, half, fn, init, fallback) {
   return Number.isFinite(acc) ? acc : fallback;
 }
 
+/**
+ * Cube render target → world-space SH (L0 + L1 only), like LightProbeGenerator.fromCubeRenderTarget
+ * but with per-texel luminance clamping so the sun disc / flash sprites don't swamp the ambient term.
+ */
+async function captureSH(renderer, rt, out, clampLum = 6) {
+  const W = rt.width, data = new Uint16Array(W * W * 4);
+  const acc = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  const coord = new THREE.Vector3(), px = 2 / W, h = THREE.DataUtils.fromHalfFloat;
+  let total = 0;
+  for (let f = 0; f < 6; f++) {
+    await renderer.readRenderTargetPixelsAsync(rt, 0, 0, W, W, data, f);
+    for (let i = 0; i < data.length; i += 4) {
+      let r = h(data[i]), g = h(data[i + 1]), b = h(data[i + 2]);
+      if (!(r >= 0 && g >= 0 && b >= 0)) continue;
+      const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      if (l > clampLum) { const k = clampLum / l; r *= k; g *= k; b *= k; }
+      const pi = i / 4, col = -(1 - ((pi % W) + 0.5) * px), row = 1 - (Math.floor(pi / W) + 0.5) * px;
+      switch (f) {
+        case 0: coord.set(1, row, -col); break;
+        case 1: coord.set(-1, row, col); break;
+        case 2: coord.set(col, 1, -row); break;
+        case 3: coord.set(col, -1, row); break;
+        case 4: coord.set(col, row, 1); break;
+        default: coord.set(-col, row, -1);
+      }
+      const l2 = coord.lengthSq(), wgt = 4 / (Math.sqrt(l2) * l2);
+      total += wgt;
+      coord.normalize();
+      // Basis (as SphericalHarmonics3.getBasisAt): 0.282095, 0.488603·y, 0.488603·z, 0.488603·x
+      const b0 = 0.282095 * wgt, b1 = 0.488603 * coord.y * wgt, b2 = 0.488603 * coord.z * wgt, b3 = 0.488603 * coord.x * wgt;
+      acc[0].x += b0 * r; acc[0].y += b0 * g; acc[0].z += b0 * b;
+      acc[1].x += b1 * r; acc[1].y += b1 * g; acc[1].z += b1 * b;
+      acc[2].x += b2 * r; acc[2].y += b2 * g; acc[2].z += b2 * b;
+      acc[3].x += b3 * r; acc[3].y += b3 * g; acc[3].z += b3 * b;
+    }
+  }
+  const sh = out || new THREE.SphericalHarmonics3();
+  const norm = (4 * Math.PI) / Math.max(1e-6, total);
+  for (let j = 0; j < 9; j++) sh.coefficients[j].set(0, 0, 0);
+  for (let j = 0; j < 4; j++) sh.coefficients[j].copy(acc[j]).multiplyScalar(norm);
+  return sh;
+}
+
 /** Matrix of `node` expressed in `root`'s local space. */
 function relMatrix(node, root, out = new THREE.Matrix4()) {
   root.updateMatrixWorld(true);
@@ -94,13 +137,58 @@ export class ViewModel {
   // ------------------------------------------------------------------ setup
   _buildLighting() {
     const s = this.viewScene;
+    const q = this.game.settings?.quality ?? 2;
+    this.lightQ = q;
+    // Key: the real sun (direction/colour from the level), with a tight shadow map covering only the
+    // viewmodel so hands shadow the gun and the gun shadows the hands (Medium+).
     this.vmSun = new THREE.DirectionalLight(0xfff0dc, 2.2);
     this.vmSun.position.set(0.4, 1, 0.3);
+    this.vmSunTarget = new THREE.Object3D();
+    this.vmSunTarget.position.set(0.15, -0.22, -0.55);
+    this.vmSun.target = this.vmSunTarget;
+    if (q >= 1) {
+      this.vmSun.castShadow = true;
+      const sh = this.vmSun.shadow;
+      sh.mapSize.setScalar(q >= 2 ? 1024 : 512);
+      Object.assign(sh.camera, { left: -0.75, right: 0.75, top: 0.75, bottom: -0.75, near: 0.05, far: 4 });
+      sh.camera.updateProjectionMatrix();
+      sh.bias = -0.0004; sh.normalBias = 0.012; sh.radius = 2.5;
+      this._shadowRT = new THREE.WebGLRenderTarget(1, 1);
+    }
+    // Ambient: hemisphere until the local light probe has data, then the probe takes over.
     this.vmHemi = new THREE.HemisphereLight(0xbcc8d6, 0x4a4036, 0.35);
+    this.vmProbe = new THREE.LightProbe(undefined, 0);
+    // Rim: grazing back-light from upper-left-front so silhouettes separate from dark backgrounds.
+    this.vmRim = new THREE.DirectionalLight(0xbcd2ff, 0);
+    this.vmRim.position.set(-0.9, 0.7, -1.1);
+    // Mirrors of the nearest bright scene lights (fires, lamps, explosions) — fixed count, no recompiles.
+    this.vmLocal = [0, 1].map(() => { const l = new THREE.PointLight(0xffffff, 0, 0, 2); s.add(l); return l; });
+    // Small emissive accents (red-dot / laser spill onto the housing).
+    this.vmAccent = new THREE.PointLight(0xff2a1a, 0, 0.25, 2);
     this.vmFill = new THREE.PointLight(0xffb070, 0, 3, 2); // muzzle flash light on the gun
-    this.viewCam.add(this.vmFill);
+    this.viewCam.add(this.vmFill, this.vmAccent);
     this.vmFill.position.set(0.2, -0.1, -0.9);
-    s.add(this.vmSun, this.vmHemi);
+    s.add(this.vmSun, this.vmSunTarget, this.vmHemi, this.vmProbe, this.vmRim);
+    // Local light probe (Medium+): a 32 px cube rendered one face per frame at the eye, read back
+    // asynchronously into L0/L1 spherical harmonics (world space; rotated into view space per frame).
+    if (q >= 1) {
+      this.probeRT = new THREE.WebGLCubeRenderTarget(32, { type: THREE.HalfFloatType, generateMipmaps: false });
+      this.probeCams = [];
+      // Same face set-up as THREE.CubeCamera (WebGL coordinate system, negative fov flip).
+      const dirs = [[1, 0, 0, 0, 1, 0], [-1, 0, 0, 0, 1, 0], [0, 1, 0, 0, 0, -1], [0, -1, 0, 0, 0, 1], [0, 0, 1, 0, 1, 0], [0, 0, -1, 0, 1, 0]];
+      for (const d of dirs) {
+        const c = new THREE.PerspectiveCamera(-90, 1, 0.1, 80);
+        c.up.set(d[3], d[4], d[5]); c.userData.dir = new THREE.Vector3(d[0], d[1], d[2]);
+        this.probeCams.push(c);
+      }
+      this.probeFace = 0;
+      this.probeInterval = q >= 2 ? 0.25 : 0.5;
+      this.probeTimer = 0;
+      this.shTarget = null; // world-space SH from the last readback
+      this.shWorld = new THREE.SphericalHarmonics3();
+      this.probeLum = 0; this.probeLumRef = 0.05;
+    }
+    this._lightCache = []; this._lightScanT = 0; this._occ = new Map();
   }
 
   _buildFlash() {
@@ -1146,23 +1234,147 @@ export class ViewModel {
     const g = this.game;
     const lvl = g.level;
     if (!lvl?.sun) return;
+    const r = g.renderer.renderer, cam = g.renderer.camera;
+    const camQ = cam.quaternion, camQi = camQ.clone().invert();
+    const eye = cam.position;
     this._lightTimer = (this._lightTimer || 0) - dt;
     if (this._lightTimer <= 0) {
       this._lightTimer = 0.1;
-      const eye = g.renderer.camera.position;
       const sunHit = g.physics.raycast(eye.clone(), lvl.sunDir.clone(), 150, 1);
-      this._sunTarget = sunHit ? 0.12 : 1;
+      this._sunTarget = sunHit ? 0.08 : 1;
       this._indoor = lvl.isIndoors(eye) ? 1 : 0;
     }
     this._sunK = damp(this._sunK ?? 1, this._sunTarget ?? 1, 6, dt);
     this._indoorK = damp(this._indoorK ?? 0, this._indoor ?? 0, 4, dt);
-    // Sun direction relative to camera so lighting on the gun matches the world.
-    const camQ = g.renderer.camera.quaternion.clone().invert();
-    this.vmSun.position.copy(lvl.sunDir).applyQuaternion(camQ).multiplyScalar(5);
-    this.vmSun.intensity = 3.0 * this._sunK;
-    this.viewScene.environmentIntensity = 0.9 * (1 - this._indoorK * 0.65);
-    this.vmHemi.intensity = 0.3 * (1 - this._indoorK * 0.5);
-    this.vmHemi.position.set(0, 1, 0).applyQuaternion(camQ);
+
+    // ---- Key (sun) in view space, tight shadow frustum around the weapon.
+    const sunV = _v.copy(lvl.sunDir).applyQuaternion(camQi).normalize();
+    this.vmSun.position.copy(this.vmSunTarget.position).addScaledVector(sunV, 2);
+    this.vmSun.color.copy(lvl.sun.color);
+    this.vmSun.intensity = Math.min(lvl.sun.intensity, 4) * 0.85 * this._sunK;
+    this.vmSun.castShadow = !!this._shadowRT && this._sunK > 0.15;
+
+    // ---- IBL: the sky env map is world-oriented; the view scene lives in camera space.
+    this.viewScene.environmentRotation.setFromQuaternion(camQi);
+
+    // ---- Local light probe (round-robin cube faces + async SH readback).
+    const skip = !!window.__qaSkipRender;
+    if (this.probeRT && !skip) {
+      const sm = r.shadowMap, au = sm.autoUpdate, nu = sm.needsUpdate;
+      sm.autoUpdate = false; sm.needsUpdate = false;
+      const prevT = r.getRenderTarget(), prevF = r.getActiveCubeFace?.() ?? 0;
+      const c = this.probeCams[this.probeFace];
+      c.position.copy(eye); c.lookAt(_v.copy(eye).add(c.userData.dir)); c.updateMatrixWorld();
+      r.setRenderTarget(this.probeRT, this.probeFace);
+      r.render(g.renderer.scene, c);
+      r.setRenderTarget(prevT, prevF);
+      sm.autoUpdate = au; sm.needsUpdate = nu;
+      this.probeFace = (this.probeFace + 1) % 6;
+      this.probeTimer -= dt;
+      if (this.probeFace === 0 && this.probeTimer <= 0 && !this._probeBusy) {
+        this.probeTimer = this.probeInterval;
+        this._probeBusy = true;
+        captureSH(r, this.probeRT, this._shBuf).then((sh) => { this.shTarget = sh; }).catch(() => {}).finally(() => { this._probeBusy = false; });
+      }
+    }
+    if (this.shTarget) {
+      // Blend toward the latest capture over ~0.3 s, then rotate L1 into view space (L2 dropped:
+      // only the low-frequency "where is the light coming from" survives a 32 px probe anyway).
+      const k = 1 - Math.exp(-dt / 0.3);
+      const cw = this.shWorld.coefficients, ct = this.shTarget.coefficients;
+      for (let i = 0; i < 4; i++) cw[i].lerp(ct[i], k);
+      const cv = this.vmProbe.sh.coefficients;
+      cv[0].copy(cw[0]);
+      for (let ch = 0; ch < 3; ch++) {
+        // three's SH order: [1]=y, [2]=z, [3]=x.
+        _v.set(cw[3].getComponent(ch), cw[1].getComponent(ch), cw[2].getComponent(ch)).applyQuaternion(camQi);
+        cv[3].setComponent(ch, _v.x); cv[1].setComponent(ch, _v.y); cv[2].setComponent(ch, _v.z);
+      }
+      for (let i = 4; i < 9; i++) cv[i].set(0, 0, 0);
+      this.probeLum = cw[0].x * 0.2126 + cw[0].y * 0.7152 + cw[0].z * 0.0722;
+      this.probeLumRef = Math.max(this.probeLumRef * (1 - dt * 0.02), this.probeLum); // slow-decaying "outdoor" reference
+      this.vmProbe.intensity = damp(this.vmProbe.intensity, 1, 3, dt);
+    }
+    const probeOn = this.vmProbe.intensity;
+    const dark = this.shTarget ? clamp(this.probeLum / Math.max(1e-4, this.probeLumRef), 0.2, 1) : 1 - this._indoorK * 0.65;
+    this.viewScene.environmentIntensity = 0.9 * dark;
+    this.vmHemi.intensity = 0.3 * (1 - this._indoorK * 0.5) * (1 - probeOn);
+    this.vmHemi.position.set(0, 1, 0).applyQuaternion(camQi);
+
+    // ---- Rim: cool sky-tinted back light, a touch stronger in the dark so silhouettes still read.
+    this.vmRim.intensity = (0.35 + 0.35 * (1 - dark)) * (this.lightQ >= 1 ? 1 : 0.6);
+
+    // ---- Mirror the 1–2 most significant scene lights (with flicker, colour, falloff, occlusion).
+    this._mirrorLocalLights(eye, dt);
+
+    // ---- Accents: red-dot / laser spill onto the housing.
+    const rig = this.rig, w = ctx.weapon;
+    let acc = 0;
+    if (rig?.aim?.reticle?.visible && rig.aim.reticleAnchor) {
+      rig.aim.reticleAnchor.getWorldPosition(this.vmAccent.position); this.viewCam.worldToLocal(this.vmAccent.position);
+      acc = 0.015 * w.adsT;
+    } else if (rig?.laser && this.beam.visible) {
+      rig.laser.getWorldPosition(this.vmAccent.position); this.viewCam.worldToLocal(this.vmAccent.position);
+      acc = 0.03;
+    }
+    this.vmAccent.intensity = acc;
+
+    // ---- Viewmodel-only shadow map: the composer renders shadows once per frame for the world
+    // scene and skips them for the view pass, so render this one light's map here.
+    if (this.vmSun.castShadow && !skip && rig) {
+      if (this._shadowRig !== rig) {
+        this._shadowRig = rig;
+        rig.root.traverse((o) => { if (o.isMesh) { const basic = o.material?.isMeshBasicMaterial || o.material?.transparent; o.castShadow = !basic; o.receiveShadow = !basic; } });
+        this.reloadArms?.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      }
+      const sm = r.shadowMap, au = sm.autoUpdate, nu = sm.needsUpdate, prevT = r.getRenderTarget();
+      sm.autoUpdate = false; sm.needsUpdate = true;
+      r.setRenderTarget(this._shadowRT);
+      r.render(this.viewScene, this.viewCam);
+      r.setRenderTarget(prevT);
+      sm.autoUpdate = au; sm.needsUpdate = nu;
+    }
+  }
+
+  _mirrorLocalLights(eye, dt) {
+    const g = this.game;
+    this._lightScanT -= dt;
+    if (this._lightScanT <= 0) {
+      this._lightScanT = 2;
+      const list = [];
+      g.renderer.scene.traverse((o) => { if ((o.isPointLight || o.isSpotLight) && !o.userData.vmIgnore) list.push(o); });
+      this._lightCache = list;
+    }
+    const cands = [];
+    for (const L of this._lightCache) {
+      if (!L.visible || L.intensity <= 0 || !L.parent) continue;
+      L.getWorldPosition(_v);
+      const d2 = Math.max(0.25, _v.distanceToSquared(eye));
+      if (L.distance > 0 && d2 > L.distance * L.distance) continue;
+      const score = L.intensity / d2 * L.color.r + L.intensity / d2 * L.color.g;
+      if (score > 0.02) cands.push({ L, score, pos: _v.clone() });
+    }
+    cands.sort((a, b) => b.score - a.score);
+    const camInv = g.renderer.camera.matrixWorldInverse;
+    for (let i = 0; i < this.vmLocal.length; i++) {
+      const vl = this.vmLocal[i], c = cands[i];
+      if (!c || (i > 0 && this.lightQ < 1)) { vl.intensity = damp(vl.intensity, 0, 12, dt); continue; }
+      // Occlusion: re-tested at most 5x/s per source, smoothed so lights fade around corners.
+      let o = this._occ.get(c.L);
+      if (!o) { o = { v: 1, t: 0 }; this._occ.set(c.L, o); }
+      o.t -= dt;
+      if (o.t <= 0) {
+        o.t = 0.2;
+        const dir = c.pos.clone().sub(eye); const dist = dir.length();
+        const hit = dist > 0.3 ? g.physics.raycast(eye.clone(), dir.normalize(), dist - 0.3, 1) : null;
+        o.target = hit ? 0.12 : 1;
+      }
+      o.v = damp(o.v, o.target ?? 1, 8, dt);
+      vl.position.copy(c.pos).applyMatrix4(camInv);
+      vl.color.copy(c.L.color);
+      vl.distance = c.L.distance; vl.decay = c.L.decay;
+      vl.intensity = c.L.intensity * o.v; // copied every frame → flickers with the source
+    }
   }
 
   /** World-space position of the ejection port / muzzle (for shells & flashes). */

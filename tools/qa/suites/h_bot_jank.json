@@ -1,0 +1,1 @@
+{"tag":"h_jank","setupFiles":["tools/qa/suites/lib.js"],"scriptFile":"tools/qa/suites/h_bot_jank.script.js","match":"tdm","lofi":true,"w":480,"h":270,"views":[{"name":"warm","shot":false,"frames":1,"eval":"__qa.sim(3)"}]}

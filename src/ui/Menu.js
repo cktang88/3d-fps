@@ -92,15 +92,15 @@ export class Menu {
     this.renderPage();
   }
 
-  open(paused = false) {
+  open(paused = false, page = 'home') {
     this.paused = paused;
+    this.page = page;
     this.el.classList.add('on');
     this.el.classList.toggle('paused', paused);
     this.el.querySelector('[data-act=resume]').style.display = paused ? '' : 'none';
     this.el.querySelector('[data-act=leave]').style.display = paused ? '' : 'none';
     this.el.querySelectorAll('.btn.play').forEach((b) => (b.style.display = paused ? 'none' : ''));
     this.el.querySelector('#menuSub').textContent = paused ? `PAUSED · ${this.game.mode.name}` : 'IRONLINE DEPOT · SELECT MODE';
-    if (this.page === 'end') this.page = 'home';
     this.renderPage();
     // Replay the entrance animation.
     this.el.classList.remove('enter'); void this.el.offsetWidth; this.el.classList.add('enter');
@@ -120,7 +120,6 @@ export class Menu {
       this.close(); g.paused = false; g.input.lock();
     } else if (act === 'leave') {
       g.started = false; g.hud.show(false); g.match.state = 'idle';
-      this.page = 'home';
       this.open(false);
     } else if (['settings', 'controls', 'gunsmith', 'credits', 'home'].includes(act)) {
       this.page = this.page === act && act !== 'home' ? 'home' : act;
