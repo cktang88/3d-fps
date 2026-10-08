@@ -19,7 +19,7 @@ export const POSES = {
   m24: { kind: 'long', primary: [-0.00537, -0.09765, 0.04146], support: [-0.02067, 0.055, -0.56] },
   vss: { kind: 'rifle', primary: [-0.0102, -0.05022, -0.12157], support: [-0.0193, 0.05102, -0.59912] },
   awm: { kind: 'long', primary: [0.0, -0.06961, -0.06117], support: [-0.00981, 0.13367, -0.65377] },
-  shotgun: { kind: 'rifle', primary: [0.0, -0.12, -0.02], support: [0.0, -0.03, -0.62] },
+  shotgun: { kind: 'rifle', primary: [0.0, -0.22, 0.05], support: [0.0, -0.33, -0.5] },
 };
 
 // Reload phase timings (fraction of clip) — same source (FirstPersonReloadProfileCatalog.cs).
@@ -29,29 +29,28 @@ export const RELOAD_PHASES = {
   sidearm: { reach: 0.18, stow: 0.43, acquire: 0.54, seat: 0.78, action: 0.985 },
 };
 
-export const HIP_POS = {
-  rifle: [0.31, -0.27, -0.62], m4a1: [0.34, -0.3, -0.68], ak74: [0.3, -0.2, -0.62],
-  long: [0.3, -0.29, -0.66], sidearm: [0.38, -0.18, -0.55], compact: [0.31, -0.27, -0.62], shotgun: [0.31, -0.25, -0.62],
-};
-
 /**
- * Per-platform first-person presentation (our own AAA-style framing on top of the ported grip math).
- * scale: WeaponRoot scale. hip: WeaponRoot position in view-camera space. hipRot: [pitch, yaw, roll]
- * (yaw > 0 converges the muzzle toward the crosshair). primary/support override the POSES grips.
- * adsZ: eye relief (distance from the eye to the sight's rear reference) when aiming.
+ * Per-platform first-person presentation (AAA-style framing on top of the ported grip math).
+ * scale: WeaponRoot scale. hipAnchor: where the bore line above the firing grip sits in view-camera space at hip
+ * (every platform is placed by that point, so framing is consistent whatever the model origin);
+ * hip overrides with an explicit WeaponRoot position. hipRot: [pitch, yaw, roll]
+ * (yaw > 0 converges the muzzle toward the crosshair, roll < 0 cants the left side toward the eye).
+ * primary/support override the POSES grips (WeaponRoot-local).
  */
 export const VM_TUNE = {
-  default: { scale: 0.68, hip: [0.31, -0.27, -0.62], hipRot: [0.018, 0.045, -0.018], adsZ: 0.5 },
-  m4a1: { hip: [0.34, -0.3, -0.68] },
-  ak74: { scale: 0.82, hip: [0.3, -0.2, -0.62] },
-  scarl: {},
-  mp5a5: {},
-  vss: {},
-  m24: { hip: [0.3, -0.29, -0.66] },
-  awm: { hip: [0.3, -0.29, -0.66] },
-  shotgun: { hip: [0.31, -0.25, -0.62] },
-  p226: { hip: [0.38, -0.18, -0.55] },
-  m1911: { hip: [0.38, -0.18, -0.55] },
+  default: { scale: 0.68, hipAnchor: [0.222, -0.143, -0.273], hipRot: [0.06, 0.09, -0.15], opticScale: 0.72 },
+  m4a1: { primary: [0.0, -0.17, 0.215], opticScale: 1 },
+  ak74: { scale: 0.82, opticScale: 0.62 },
+  scarl: { hipOffset: [0, -0.025, -0.04] },
+  mp5a5: { opticScale: 0.62, hipOffset: [-0.03, 0.025, -0.02] },
+  // Fixed-scope precision platforms: the authored scope glass defines the optical axis. Their
+  // source magazines/bolts are authored in a generic rest frame; seat them on the receivers.
+  vss: { integratedScope: true, muzzle: [0, 0.05, -1.26], magOffset: [0, 0.175, -0.03], chargingOffset: [0, 0, -0.04] },
+  m24: { integratedScope: true, muzzle: [0, 0.08, -1.42], magOffset: [0, 0.125, 0], chargingOffset: [0, 0, -0.12], primary: [-0.005, -0.08, -0.07] },
+  awm: { integratedScope: true, muzzle: [0, 0.165, -1.68], magOffset: [0, 0.19, 0], chargingOffset: [0, 0.02, -0.1], primary: [0, -0.05, -0.15] },
+  shotgun: { hipOffset: [0, -0.07, -0.1] },
+  p226: { hipAnchor: [0.07, -0.1, -0.42], hipRot: [0.04, 0.05, -0.03], muzzle: [0, 0.09, -0.08], ironRear: [0, 0.128, 0.3], ironFront: [0, 0.128, -0.05] },
+  m1911: { hipAnchor: [0.07, -0.1, -0.42], hipRot: [0.04, 0.05, -0.03], muzzle: [0, 0.09, -0.08], ironRear: [0, 0.13, 0.3], ironFront: [0, 0.13, -0.05] },
 };
 export const vmTune = (key) => ({ ...VM_TUNE.default, ...(VM_TUNE[key] || {}) });
 
@@ -144,6 +143,8 @@ export class GunModels {
     for (const [k, s] of Object.entries(this.src)) {
       s.traverse((o) => {
         if (o.isMesh) {
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          if (mats.some((m) => /glass/i.test(m.name || ''))) o.userData.glass = true;
           o.material = Array.isArray(o.material) ? o.material.map((m) => unifyMaterial(m, k)) : unifyMaterial(o.material, k);
           o.castShadow = false;
           o.receiveShadow = false;
@@ -192,9 +193,24 @@ export class GunModels {
     muzzle.name = 'MuzzleSocket';
     wrap.updateMatrixWorld(true);
     bb2 = new THREE.Box3().setFromObject(wrap);
-    muzzle.position.set(0, bb2.max.y - 0.07, bb2.min.z);
+    // Bore exit / ejection port measured on the normalised mesh.
+    muzzle.position.set(0, -0.15, bb2.min.z - 0.01);
     wrap.add(muzzle);
-    const eject = new THREE.Object3D(); eject.name = 'EjectionPort'; eject.position.set(0.05, 0.02, -0.3); wrap.add(eject);
+    const eject = new THREE.Object3D(); eject.name = 'EjectionPort'; eject.position.set(0.06, -0.13, -0.2); wrap.add(eject);
+    // The source texture is a saturated sci-fi livery; re-grade it to gunmetal so it sits with the
+    // rest of the arsenal (keeps the authored wear / panel detail in luminance).
+    scene.traverse((o) => {
+      if (!o.isMesh) return;
+      const m = o.material;
+      m.transparent = false; m.opacity = 1; m.alphaTest = 0;
+      m.metalness = 0.55; m.roughness = 0.5;
+      m.onBeforeCompile = (sh) => {
+        sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+          { float l = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+            diffuseColor.rgb = mix(vec3(l), diffuseColor.rgb, 0.12) * vec3(0.78, 0.8, 0.84); }`);
+      };
+      m.customProgramCacheKey = () => 'sgregrade';
+    });
     return wrap;
   }
 

@@ -13,6 +13,7 @@ const PORT = process.env.PORT || '5199';
 const server = spawn('npx', ['vite', '--port', PORT, '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
 await new Promise((res) => server.stdout.on('data', (d) => { if (String(d).includes('Local') || String(d).includes('ready')) res(); }));
 
+if (process.env.SERVERLOG) { server.stdout.on('data', (d) => process.stdout.write('[vite] ' + d)); server.stderr.on('data', (d) => process.stdout.write('[vite!] ' + d)); }
 const browser = await chromium.launch({
   executablePath: '/opt/pw-browsers/chromium',
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],

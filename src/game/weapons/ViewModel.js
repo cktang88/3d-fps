@@ -188,6 +188,8 @@ export class ViewModel {
     rig.spare = find(gun, 'SpareMagazine');
     if (rig.spare) rig.spare.visible = false;
     rig.charging = find(gun, 'ChargingHandle');
+    if (tune.magOffset) for (const m of [rig.magazine, rig.spare]) m?.position.add(V(tune.magOffset));
+    if (tune.chargingOffset && rig.charging) rig.charging.position.add(V(tune.chargingOffset));
     rig.magHome = rig.magazine ? { p: rig.magazine.position.clone(), q: rig.magazine.quaternion.clone() } : null;
     rig.spareHome = rig.spare ? { p: rig.spare.position.clone(), q: rig.spare.quaternion.clone() } : null;
     rig.chargingHome = rig.charging ? rig.charging.position.clone() : null;
@@ -211,6 +213,9 @@ export class ViewModel {
     if (authoredMuzzleDev) authoredMuzzleDev.visible = !att.muzzle || att.muzzle !== 'suppressor';
     if (authoredForegrip) authoredForegrip.visible = att.underbarrel === 'vgrip';
     if (authoredOptic) authoredOptic.visible = false;
+    if (tune.muzzle) muzzleTip.position.copy(V(tune.muzzle)).applyMatrix4(new THREE.Matrix4().copy(muzzleTip.parent.matrixWorld).invert().multiply(root.matrixWorld));
+    gun.updateMatrixWorld(true);
+    rig.boreY = tune.boreY ?? muzzleTip.getWorldPosition(new THREE.Vector3()).applyMatrix4(new THREE.Matrix4().copy(root.matrixWorld).invert()).y;
     let tip = muzzleTip;
     if (att.muzzle === 'suppressor') {
       if (authoredSup) tip = find(authoredSup, 'SuppressorTip') || tip;
@@ -278,33 +283,75 @@ export class ViewModel {
       this._alignStaticArms(rig);
     }
     // Hip / ADS positions (WeaponRoot in view-camera space).
-    rig.hip = V(tune.hip);
     rig.hipRot = new THREE.Euler(tune.hipRot[0], tune.hipRot[1], tune.hipRot[2]);
-    const a = rig.aim.point;
-    if (sidearm) rig.ads = new THREE.Vector3(-a.x * scale, -a.y * scale, -0.5);
-    else rig.ads = new THREE.Vector3(-a.x * scale, -a.y * scale, rig.aim.scope ? -0.36 - a.z * scale : -0.52 - a.z * scale * 0.3);
+    // Hip: place the weapon so its bore line at the firing grip lands on a shared view-space anchor
+    // (consistent framing across platforms regardless of where each model's origin is).
+    const boreAnchor = new THREE.Vector3(0, rig.boreY, pose.primary[2]).multiplyScalar(scale);
+    rig.hip = tune.hip ? V(tune.hip) : V(tune.hipAnchor).sub(boreAnchor.applyEuler(rig.hipRot)).add(V(tune.hipOffset || [0, 0, 0]));
+    // ADS: rotate so the sight axis (rear → front) runs exactly along the view axis, then put the
+    // rear sight reference on the axis at the platform's eye relief.
+    const a = rig.aim;
+    const axis = a.front.clone().sub(a.point).normalize();
+    const qAds = new THREE.Quaternion().setFromUnitVectors(axis, new THREE.Vector3(0, 0, -1));
+    rig.adsRot = new THREE.Euler().setFromQuaternion(qAds);
+    const relief = a.overlay ? 0.3 : a.lens ? (tune.scopeRelief ?? 0.17) : a.reticle ? (tune.dotRelief ?? 0.3) : (tune.ironRelief ?? 0.26);
+    rig.ads = a.point.clone().multiplyScalar(scale).applyQuaternion(qAds).negate().add(new THREE.Vector3(0, 0, -relief));
     rig.phases = RELOAD_PHASES[sidearm ? 'sidearm' : pose.kind === 'long' ? 'long' : 'rifle'];
     rig.clipStem = { m4a1: 'm4a1', ak74: 'ak74', scarl: 'scarl', mp5a5: 'mp5a5', vss: 'vss', m24: 'm24', awm: 'awm', p226: 'p226', m1911: 'm1911' }[poseKey];
     return rig;
   }
 
   _mountOptic(rig, gun, opticId, authoredOptic, rear, front) {
-    const s = rig.stats;
+    const toRoot = (o) => o.getWorldPosition(new THREE.Vector3()).applyMatrix4(_m.copy(rig.root.matrixWorld).invert());
+    const rootInv = new THREE.Matrix4().copy(rig.root.matrixWorld).invert();
+    // ---- Integrated (fixed) scopes: VSS / M24 / AWM carry their own glass; derive the optical axis from it.
+    if (rig.tune.integratedScope) {
+      const verts = [];
+      gun.traverse((o) => {
+        if (!o.isMesh || !o.userData.glass) return;
+        const pos = o.geometry.attributes.position; const mm = new THREE.Matrix4().multiplyMatrices(rootInv, o.matrixWorld);
+        for (let i = 0; i < pos.count; i++) verts.push(new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(mm));
+        o.visible = false; // replaced by our lens / overlay below
+      });
+      if (verts.length) {
+        let maxZ = -Infinity, minZ = Infinity;
+        for (const v of verts) { maxZ = Math.max(maxZ, v.z); minZ = Math.min(minZ, v.z); }
+        const ring = (zz) => { const bb = new THREE.Box3(); for (const v of verts) if (Math.abs(v.z - zz) < 0.012) bb.expandByPoint(v); return bb; };
+        const rb = ring(maxZ), fb = ring(minZ);
+        const rearC = rb.getCenter(new THREE.Vector3()), frontC = fb.getCenter(new THREE.Vector3());
+        const rearR = Math.min(rb.max.x - rb.min.x, rb.max.y - rb.min.y) / 2;
+        const info = { point: rearC.clone(), front: frontC, type: opticId, scope: opticId === 'acog', integrated: true };
+        const lensParent = new THREE.Group(); gun.add(lensParent);
+        // gun is identity inside root, so root-space == gun-space here.
+        if (opticId === 'sniper') {
+          const lens = new THREE.Mesh(new THREE.CircleGeometry(rearR, 32), M('glass'));
+          lens.position.copy(rearC); lensParent.add(lens);
+          info.overlay = true;
+        } else {
+          const lens = new THREE.Mesh(new THREE.CircleGeometry(rearR * 0.96, 40), this.scopeLensMat);
+          lens.position.copy(rearC).add(new THREE.Vector3(0, 0, -0.002)); lensParent.add(lens);
+          info.lens = lens; info.lensRadius = rearR * 0.96; info.scope = true;
+        }
+        return info;
+      }
+    }
     if (opticId && opticId !== 'irons' && rear) rear.visible = false;
     if (opticId && opticId !== 'irons' && front && rig.poseKey !== 'ak74') front.visible = false;
     if (!opticId || opticId === 'irons') {
-      // Iron sight line: top of rear sight (or receiver top near rear).
-      let y;
-      if (rear) { const bb = new THREE.Box3().setFromObject(rear); y = bb.max.y - 0.006; }
-      else if (rig.poseKey === 'ak74') y = 0.075 / 0.82 * 0.82;
-      else {
-        const bb = new THREE.Box3().setFromObject(gun);
-        y = rig.sidearm ? bb.max.y - 0.005 : bb.max.y - 0.01;
+      // Iron sight line: through the rear notch/aperture and the front post tip, so ADS can align
+      // the actual sight picture with the eye (front post sits exactly in the rear notch).
+      const t = rig.tune;
+      let rp, fp;
+      if (t.ironRear) rp = V(t.ironRear);
+      else if (rear) { const bb = new THREE.Box3().setFromObject(rear).applyMatrix4(rootInv); rp = new THREE.Vector3(bb.getCenter(_v).x, bb.max.y - (t.notch ?? 0.012), bb.getCenter(_v).z); }
+      if (t.ironFront) fp = V(t.ironFront);
+      else if (front) { const bb = new THREE.Box3().setFromObject(front).applyMatrix4(rootInv); fp = new THREE.Vector3(bb.getCenter(_v).x, bb.max.y - 0.004, bb.getCenter(_v).z); }
+      if (!rp) {
+        const bb = new THREE.Box3().setFromObject(gun).applyMatrix4(rootInv);
+        rp = new THREE.Vector3(0, bb.max.y - 0.01, rig.sidearm ? 0.3 : 0);
       }
-      if (rig.poseKey === 'ak74') y = 0.075;
-      if (rig.poseKey === 'm4a1' && !rear) y = 0.205;
-      const z = rear ? new THREE.Box3().setFromObject(rear).getCenter(new THREE.Vector3()).z : 0;
-      return { point: new THREE.Vector3(0, y, z), type: 'irons' };
+      if (!fp) fp = rp.clone().add(new THREE.Vector3(0, 0, -0.3));
+      return { point: rp, front: fp, type: 'irons' };
     }
     const optics = this.models.src.optics;
     const nodeName = opticId === 'reddot' ? 'MicroOptic' : opticId === 'holo' ? 'HoloOptic' : 'ScopeOptic';
@@ -312,28 +359,29 @@ export class ViewModel {
     const srcNode = find(optics, nodeName);
     const optic = srcNode.clone(true);
     optic.position.set(0, 0, 0); optic.rotation.set(0, 0, 0);
-    // Rail position: authored socket or receiver top.
+    // Rail position: authored socket, tuned rail, or receiver top.
     const railSock = findAny(gun, ['OpticRailSocket', 'OpticRailContact']);
     let mount;
-    if (railSock) mount = railSock.getWorldPosition(new THREE.Vector3()).applyMatrix4(_m.copy(rig.root.matrixWorld).invert());
+    if (rig.tune.rail) mount = V(rig.tune.rail);
+    else if (railSock) mount = toRoot(railSock);
     else if (rig.poseKey === 'm4a1') mount = new THREE.Vector3(0, 0.167 - 0.07, -0.25);
     else {
-      const bb = new THREE.Box3().setFromObject(gun);
+      const bb = new THREE.Box3().setFromObject(gun).applyMatrix4(rootInv);
       mount = new THREE.Vector3(0, bb.max.y - 0.01, rig.sidearm ? 0.2 : -0.25);
     }
     // Rail contact offsets (steel-tide constants): micro 0.070, holo 0.092, scope 0.084.
     const contact = { reddot: 0.07, holo: 0.092, acog: 0.084, sniper: 0.084 }[opticId];
-    optic.position.copy(mount).add(new THREE.Vector3(0, contact, 0));
+    const osc = rig.sidearm ? 0.6 : rig.tune.opticScale;
+    optic.position.copy(mount).add(new THREE.Vector3(0, contact * osc, 0));
     if (opticId === 'sniper') optic.scale.set(1.3, 1.3, 1.5);
-    if (rig.sidearm) optic.scale.multiplyScalar(0.75);
+    optic.scale.multiplyScalar(osc);
     gun.add(optic);
-    optic.updateMatrixWorld(true);
+    gun.updateMatrixWorld(true);
     const reticleAnchor = find(optic, prefix + 'ReticleAnchor');
     const frontAp = find(optic, prefix + 'FrontApertureAnchor');
     const rearAp = find(optic, prefix + 'RearApertureAnchor');
-    const toRoot = (o) => o.getWorldPosition(new THREE.Vector3()).applyMatrix4(_m.copy(rig.root.matrixWorld).invert());
     const point = toRoot(reticleAnchor);
-    const info = { point, type: opticId, frontAp, rearAp, optic, scope: opticId === 'acog' };
+    const info = { point, front: toRoot(frontAp), type: opticId, frontAp, rearAp, optic, scope: opticId === 'acog' };
     if (opticId === 'reddot' || opticId === 'holo') {
       const tex = reticleTex(opticId === 'reddot' ? 'dot' : 'holo', '#ff2a1a');
       const ret = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({
@@ -345,21 +393,24 @@ export class ViewModel {
       this.viewCam.add(ret); // positioned in camera space each frame (collimated reticle)
       ret.visible = false;
       info.reticle = ret;
-      info.reticleSize = opticId === 'reddot' ? 0.0042 : 0.012;
+      info.reticleAnchor = reticleAnchor;
+      // Angular size of the reticle (radians, full width of the texture quad).
+      info.reticleAngle = opticId === 'reddot' ? 0.012 : 0.05;
+      info.lensR = (opticId === 'reddot' ? 0.016 : 0.024) * osc;
       // Lens glass tint.
-      const lensR = opticId === 'reddot' ? 0.016 : 0.024;
-      const lens = new THREE.Mesh(new THREE.CircleGeometry(lensR, 24), new THREE.MeshPhysicalMaterial({
-        color: 0x6688aa, metalness: 0, roughness: 0.02, transparent: true, opacity: 0.12, envMapIntensity: 2,
+      const lens = new THREE.Mesh(new THREE.CircleGeometry(info.lensR, 24), new THREE.MeshPhysicalMaterial({
+        color: 0x6688aa, metalness: 0, roughness: 0.02, transparent: true, opacity: 0.12, envMapIntensity: 2, depthWrite: false,
       }));
       lens.position.copy(frontAp.position);
       frontAp.parent.add(lens);
     } else if (opticId === 'acog') {
       // Picture-in-picture lens at the rear aperture.
-      const lens = new THREE.Mesh(new THREE.CircleGeometry(0.019, 40), this.scopeLensMat);
+      const r = 0.019 * osc;
+      const lens = new THREE.Mesh(new THREE.CircleGeometry(r, 40), this.scopeLensMat);
       lens.position.copy(rearAp.position).add(new THREE.Vector3(0, 0, -0.004));
       rearAp.parent.add(lens);
       info.lens = lens;
-      info.lensRadius = 0.019;
+      info.lensRadius = r * (opticId === 'sniper' ? 1.3 : 1);
     } else if (opticId === 'sniper') {
       const lens = new THREE.Mesh(new THREE.CircleGeometry(0.02, 24), M('glass'));
       lens.position.copy(rearAp.position);
@@ -530,7 +581,10 @@ export class ViewModel {
 
     // ---- Root pose ----
     const pos = new THREE.Vector3().copy(rig.hip).lerp(rig.ads, adsE);
-    const rot = new THREE.Euler(rig.hipRot.x * (1 - adsE), rig.hipRot.y * (1 - adsE), rig.hipRot.z * (1 - adsE));
+    const rot = new THREE.Euler(
+      rig.hipRot.x + (rig.adsRot.x - rig.hipRot.x) * adsE,
+      rig.hipRot.y + (rig.adsRot.y - rig.hipRot.y) * adsE,
+      rig.hipRot.z + (rig.adsRot.z - rig.hipRot.z) * adsE);
     // Sprint pose: lower, tilt, canted (CoD/Apex style).
     const sb = smoothstep(this.sprintBlend);
     if (rig.sidearm) { pos.add(new THREE.Vector3(-0.04, -0.12, 0.05).multiplyScalar(sb)); rot.x += -0.55 * sb; rot.z += 0.15 * sb; }
@@ -723,7 +777,7 @@ export class ViewModel {
       rig.root.updateMatrixWorld(true);
       // Collimated reticle: dot sits where the weapon's bore-parallel line from the anchor (to infinity)
       // crosses the front lens, seen from the eye at the view-camera origin.
-      const anchor = find(a.optic, (a.type === 'reddot' ? 'Micro' : 'Holo') + 'ReticleAnchor');
+      const anchor = a.reticleAnchor;
       const frontAp = a.frontAp;
       const camInv = _m.copy(this.viewCam.matrixWorld).invert();
       const anc = anchor.getWorldPosition(new THREE.Vector3()).applyMatrix4(camInv);
@@ -735,12 +789,12 @@ export class ViewModel {
       const t = fa.dot(fwd) / denom;
       const hit = dir.multiplyScalar(t);
       const off = hit.clone().sub(fa);
-      const lensR = (a.type === 'reddot' ? 0.016 : 0.024) * rig.scale;
+      const lensR = a.lensR * rig.scale;
       const inside = off.length() < lensR * 0.95;
       a.reticle.position.copy(hit);
       a.reticle.quaternion.copy(rig.root.quaternion);
-      const sz = a.reticleSize * Math.abs(hit.z) / 0.5;
-      a.reticle.scale.setScalar(sz);
+      // Fixed angular size (collimated): independent of eye relief / lens distance.
+      a.reticle.scale.setScalar(a.reticleAngle * hit.length());
       a.reticle.visible = inside && w.adsT > 0.35 && !this.hidden;
       a.reticle.material.opacity = clamp((w.adsT - 0.35) * 3, 0, 1);
     }

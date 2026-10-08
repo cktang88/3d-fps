@@ -24,7 +24,11 @@ export class Audio {
     this.comp = ctx.createDynamicsCompressor();
     this.comp.threshold.value = -14; this.comp.knee.value = 10; this.comp.ratio.value = 4;
     this.comp.attack.value = 0.003; this.comp.release.value = 0.15;
-    this.master.connect(this.comp).connect(ctx.destination);
+    // Master low-pass: used for explosion concussion / near-death muffling.
+    this.muffleLP = ctx.createBiquadFilter();
+    this.muffleLP.type = 'lowpass'; this.muffleLP.frequency.value = 20000; this.muffleLP.Q.value = 0.5;
+    this.master.connect(this.muffleLP).connect(this.comp).connect(ctx.destination);
+    this._muffle = 0; this._muffleTarget = 0; this._ring = null;
     this.sfx = ctx.createGain(); this.sfx.connect(this.master);
     this.reverb = ctx.createConvolver();
     this.reverb.buffer = this._impulse(2.2, 2.8);
@@ -32,6 +36,37 @@ export class Audio {
     this.reverb.connect(this.reverbGain).connect(this.master);
     this._noise = this._noiseBuffer(2);
     this.ambient();
+  }
+
+  /**
+   * Muffle the whole mix (0..1). `hold` keeps a transient muffle (explosions) for that many seconds.
+   * Called every frame with the persistent level (low health).
+   */
+  setMuffle(level, dt = 0) {
+    if (!this.ctx) return;
+    this._muffleHold = Math.max(0, (this._muffleHold || 0) - dt);
+    const transient = this._muffleHold > 0 ? this._muffleShock : (this._muffleShock = Math.max(0, (this._muffleShock || 0) - dt * 0.6));
+    const m = Math.max(level, transient || 0);
+    if (Math.abs(m - this._muffle) < 0.005) return;
+    this._muffle = m;
+    const f = 20000 * Math.pow(350 / 20000, Math.min(1, m));
+    this.muffleLP.frequency.setTargetAtTime(f, this.ctx.currentTime, 0.05);
+  }
+
+  /** Concussion: muffle + tinnitus ring, scaled by intensity 0..1. */
+  concussion(k) {
+    if (!this.ctx || k <= 0.05) return;
+    this._muffleShock = Math.max(this._muffleShock || 0, Math.min(0.95, k));
+    this._muffleHold = 0.35 + k * 0.6;
+    if (k > 0.35) {
+      const ctx = this.ctx, t = ctx.currentTime;
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 3900 + Math.random() * 400;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.05 * k, t + 0.08);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 1.5 + k * 1.8);
+      o.connect(g).connect(this.comp); o.start(t); o.stop(t + 3.6);
+    }
   }
 
   setVolume(v) { this.volume = v; if (this.master) this.master.gain.value = v; }
@@ -281,11 +316,29 @@ export class Audio {
       const g = ctx.createGain(); this._env(g, t + at, 0.001, a, d);
       o.connect(g).connect(out); o.start(t + at); o.stop(t + at + d + 0.05);
     };
-    if (type === 'hit') { tone(2600, 0, 0.05, 0.18, 'square'); tone(1800, 0, 0.04, 0.12); }
-    else if (type === 'headshot') { tone(3400, 0, 0.06, 0.2, 'square'); tone(5200, 0.01, 0.12, 0.12); }
-    else if (type === 'kill') { tone(1200, 0, 0.09, 0.25, 'triangle'); tone(1800, 0.06, 0.18, 0.2, 'triangle'); }
-    else if (type === 'click') tone(1400, 0, 0.03, 0.1, 'square');
-    else if (type === 'hover') tone(900, 0, 0.02, 0.05);
+    const smp = (name, volume, pitch = 1, pitchVar = 0.03, when = 0) => this.play(name, { volume, pitch, pitchVar, reverb: 0, when });
+    // Hit confirms: a crisp sampled tick + a short synthetic "plink" body so it cuts through gunfire.
+    if (type === 'hit') {
+      if (!smp('ui_tick', 0.9, 1.15, 0.05)) tone(2600, 0, 0.05, 0.18, 'square');
+      tone(1750, 0, 0.035, 0.07, 'triangle');
+    } else if (type === 'headshot') {
+      smp('ui_tick', 1.0, 1.35, 0.03);
+      tone(4100, 0, 0.16, 0.09, 'sine'); tone(6150, 0.004, 0.12, 0.04, 'sine');
+    } else if (type === 'kill') {
+      // Heavy confirm: sub thud + metallic double chime (CoD-style "kill" tick).
+      smp('kill_thud', 0.55, 0.85, 0.05);
+      smp('ui_tick', 1.0, 0.9, 0.02);
+      tone(1320, 0.0, 0.11, 0.12, 'triangle'); tone(1980, 0.055, 0.22, 0.1, 'triangle');
+      const o = ctx.createOscillator(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(48, t + 0.16);
+      const g = ctx.createGain(); this._env(g, t, 0.002, 0.45, 0.16); o.connect(g).connect(out); o.start(t); o.stop(t + 0.25);
+    } else if (type === 'headkill') {
+      this.ui('kill');
+      tone(4100, 0.0, 0.2, 0.08, 'sine'); tone(6150, 0.01, 0.16, 0.035, 'sine');
+    } else if (type === 'medal') { if (!smp('ui_medal', 0.45, 1, 0.01)) tone(1600, 0, 0.12, 0.12, 'triangle'); }
+    else if (type === 'streak') { if (!smp('ui_streak', 0.6, 1, 0)) tone(900, 0, 0.3, 0.15, 'triangle'); }
+    else if (type === 'click') { if (!smp('ui_click', 0.5, 1, 0.04)) tone(1400, 0, 0.03, 0.1, 'square'); }
+    else if (type === 'hover') { if (!smp('ui_hover', 0.18, 1, 0.06)) tone(900, 0, 0.02, 0.05); }
+    else if (type === 'deploy') { smp('ui_deploy', 0.5, 1, 0); }
     else if (type === 'hurt') {
       const n = this._noiseSrc(t, 0.2);
       const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 400;
@@ -297,7 +350,10 @@ export class Audio {
   explosion(pos) {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime + 0.001;
-    const out = this._out(pos, 2.2, { reverb: 0.8, ref: 10, rolloff: 0.7 });
+    // Sampled crunch + low-frequency boom, with the synth layer as a long tail.
+    this.play('expl_crunch', { pos, volume: 1.6, pitch: 0.8, pitchVar: 0.08, reverb: 0.7, ref: 12, rolloff: 0.6 });
+    this.play('expl_low', { pos, volume: 1.8, pitch: 0.9, pitchVar: 0.05, reverb: 0.5, ref: 14, rolloff: 0.5 });
+    const out = this._out(pos, this.has('expl_crunch') ? 1.1 : 2.2, { reverb: 0.8, ref: 10, rolloff: 0.7 });
     const n = this._noiseSrc(t, 1.8);
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
     lp.frequency.setValueAtTime(6000, t); lp.frequency.exponentialRampToValueAtTime(120, t + 1.6);

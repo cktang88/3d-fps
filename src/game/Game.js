@@ -6,7 +6,8 @@ import { Input } from '../core/Input.js';
 import { Audio } from '../core/Audio.js';
 import { Assets } from '../core/Assets.js';
 import { Materials } from '../world/Materials.js';
-import { Level } from '../world/Level.js';
+import { Level, LEVEL_HDRI } from '../world/Level.js';
+import { Ambience } from '../world/Ambience.js';
 import { Player } from './Player.js';
 import { FPCamera } from './FPCamera.js';
 import { Weapon } from './weapons/Weapon.js';
@@ -24,6 +25,9 @@ import { DEG, clamp, rand } from '../core/MathUtil.js';
 const SAMPLE_SETS = ['m4a1', 'ak74', 'scarl', 'mp5a5', 'vss', 'awm', 'm24', 'p226', 'm1911', 'shotgun'];
 
 export class Game {
+  static RESPAWN_MIN = 1.6;
+  static RESPAWN_AUTO = 4.5;
+
   constructor(canvas, settings) {
     this.canvas = canvas;
     this.settings = settings;
@@ -37,6 +41,8 @@ export class Game {
     this.started = false;
     this.breath = 1;
     this.recoilAccum = new THREE.Vector2();
+    this.frame = 0;
+    this.matchStats = Game.freshStats();
     this.mode = { teams: true, name: 'TEAM DEATHMATCH', score: [0, 0], timeLeft: 600, scoreLimit: 50, friendlyFire: false };
   }
 
@@ -53,7 +59,7 @@ export class Game {
     this.level = new Level(this, this.materials);
     this.gunModels = new GunModels(this.assets);
     const [hdr] = await Promise.all([
-      this.assets.hdri('hdr/abandoned_parking_2k.hdr'),
+      this.assets.hdri(LEVEL_HDRI),
       this.materials.load(),
       this.level.loadProps(this.assets),
       this.gunModels.load(),
@@ -67,6 +73,9 @@ export class Game {
     this.level.setupEnvironment(hdr);
     this.renderer.viewScene.environment = this.renderer.scene.environment;
     this.renderer.viewScene.environmentIntensity = 0.9;
+    // Living war-zone ambience (fires/wrecks add colliders + nav proxies, so build before the navmesh).
+    this.ambience = new Ambience(this);
+    await this.ambience.init();
 
     onProgress?.(0.95, 'Generating navmesh');
     await new Promise((r) => setTimeout(r, 0));
@@ -116,7 +125,20 @@ export class Game {
       jobs.push(a.load('imp_flesh', `./assets/audio/impacts/impact_punch_medium_00${i}.ogg`));
       jobs.push(a.load('imp_glass', `./assets/audio/impacts/impact_glass_light_00${i}.ogg`));
     }
+    // UI / feedback layer (Kenney, CC0).
+    const ui = { ui_tick: ['tick_001', 'tick_002'], ui_hover: ['select_001', 'select_002'], ui_click: ['click_001'], ui_medal: ['confirmation_001'], ui_streak: ['confirmation_003'] };
+    for (const [k, files] of Object.entries(ui)) for (const f of files) jobs.push(a.load(k, `./assets/audio/ui/${f}.ogg`));
+    for (let i = 0; i < 5; i++) {
+      jobs.push(a.load('kill_thud', `./assets/audio/impacts/impact_punch_heavy_00${i}.ogg`));
+      jobs.push(a.load('expl_crunch', `./assets/audio/explosion/explosionCrunch_00${i}.ogg`));
+    }
+    for (let i = 0; i < 3; i++) jobs.push(a.load('imp_metal_heavy', `./assets/audio/impacts/impact_metal_heavy_00${i}.ogg`));
+    for (let i = 0; i < 2; i++) jobs.push(a.load('expl_low', `./assets/audio/explosion/lowFrequency_explosion_00${i}.ogg`));
     await Promise.all(jobs);
+  }
+
+  static freshStats() {
+    return { shots: 0, hits: 0, headshots: 0, damage: 0, bestStreak: 0, medals: {}, xp: 0 };
   }
 
   // ------------------------------------------------------------------ loadout
@@ -194,6 +216,8 @@ export class Game {
     this.currentWeapon.equip();
     this.deathInfo = null;
     this.recoilAccum.set(0, 0);
+    this.fpcam.dip.x = -1.2; // settle-in on deploy
+    this.hud.onSpawn?.();
   }
 
   addBot(team) {
@@ -238,10 +262,22 @@ export class Game {
     if (!actor.alive) return;
     if (this.mode.teams && attacker && actor !== attacker && attacker.team === actor.team && !this.mode.friendlyFire) return;
     const dealt = actor.takeDamage(dmg, attacker, info);
-    if (attacker === this.player && dealt > 0) {
+    if (attacker === this.player && dealt > 0 && actor !== this.player) {
       const kill = !actor.alive;
+      const ms = this.matchStats;
+      // One confirm per frame (shotgun pellets would otherwise machine-gun the hit sound).
+      const sameFrame = this._lastHitFrame === this.frame;
+      this._lastHitFrame = this.frame;
+      if (!sameFrame && info.type !== 'grenade' && info.type !== 'melee') ms.hits++;
+      if (info.headshot) ms.headshots += sameFrame ? 0 : 1;
+      ms.damage += dealt;
       this.hud.hitmarker(kill ? 'kill' : info.headshot ? 'head' : 'hit');
-      this.audio.ui(kill ? 'kill' : info.headshot ? 'headshot' : 'hit');
+      if (kill) {
+        this.audio.ui(info.headshot ? 'headkill' : 'kill');
+        // Kill punch: tiny upward camera nudge + shake, enough to feel it without losing aim.
+        this.fpcam.addKick(-0.006, 0, (Math.random() - 0.5) * 0.012);
+        this.fpcam.addTrauma(0.07);
+      } else if (!sameFrame) this.audio.ui(info.headshot ? 'headshot' : 'hit');
     }
     if (this.audio.has('imp_flesh') && info.point && info.point.distanceTo(this.player.position) < 30) this.audio.play('imp_flesh', { pos: info.point, volume: 0.35 });
     // Blood decal on wall behind.
@@ -254,8 +290,10 @@ export class Game {
   onPlayerDamaged(amount, attacker, info) {
     this.renderer.setDamage(Math.min(1, amount / 40));
     this.fpcam.addTrauma(Math.min(0.35, amount / 100));
+    // Flinch: pushes view away from the hit direction a little (aim punch).
     this.fpcam.addKick(rand(0.01, 0.03), rand(-0.02, 0.02), rand(-0.03, 0.03));
-    if (attacker) this.hud.damageFrom(attacker.position);
+    const src = info.origin || attacker?.position;
+    if (src && attacker !== this.player) this.hud.damageFrom(src, amount);
     this.audio.ui('hurt');
   }
 
@@ -268,10 +306,14 @@ export class Game {
     this.match.onKill(victim, killer, info);
     if (victim === this.player) {
       this.deathInfo = {
-        killer, weapon: info.weapon ? WEAPONS[info.weapon]?.name : info.type === 'grenade' ? 'Frag Grenade' : info.type === 'fall' ? 'Fall' : 'Melee',
+        killer, weapon: info.weapon ? (WEAPONS[info.weapon]?.name ?? info.weapon) : info.type === 'grenade' ? 'Frag Grenade' : info.type === 'fall' ? 'Fall damage' : 'Melee',
         headshot: info.headshot, distance: info.distance ?? (killer ? killer.position.distanceTo(victim.position) : 0),
+        killerHp: killer && killer !== victim ? Math.max(1, Math.ceil(killer.health)) : 0,
       };
-      this.respawnTimer = 3;
+      // Quick respawn: deploy allowed after RESPAWN_MIN, automatic at RESPAWN_AUTO.
+      this.respawnTimer = Game.RESPAWN_MIN;
+      this.deathTime = this.time;
+      this.player.velocity.set(0, 0, 0);
       this.audio.ui('hurt');
     }
   }
@@ -330,8 +372,13 @@ export class Game {
     this.effects.explosion(pos);
     this.audio.explosion(pos);
     const pd = pos.distanceTo(this.player.position);
-    this.fpcam.addTrauma(clamp(1 - pd / 25, 0, 1) * 0.9);
-    if (pd < 8) this.hud.flashbang(0);
+    const near = clamp(1 - pd / 25, 0, 1);
+    this.fpcam.addTrauma(near * 0.9);
+    this.fpcam.dip.impulse(-near * 2.5);
+    if (this.player.alive) {
+      this.audio.concussion(clamp(1 - pd / 14, 0, 1));
+      if (pd < 10) this.hud.flash(clamp(1 - pd / 10, 0, 1) * 0.55);
+    }
     for (const a of this.actors) {
       if (!a.alive) continue;
       const c = a.center;
@@ -340,7 +387,7 @@ export class Game {
       if (!this.physics.lineOfSight(pos.clone().setY(pos.y + 0.3), c)) continue;
       const dmg = d < 3.5 ? 150 : 150 * (1 - (d - 3.5) / 4.5);
       if (this.mode.teams && owner && a !== owner && a.team === owner.team) continue;
-      this.onActorHit(a, Math.round(dmg), owner, { type: 'grenade', point: c, dir: c.clone().sub(pos).normalize(), weapon: null, distance: owner ? owner.position.distanceTo(a.position) : 0 });
+      this.onActorHit(a, Math.round(dmg), owner, { type: 'grenade', point: c, origin: pos.clone(), dir: c.clone().sub(pos).normalize(), weapon: null, distance: owner ? owner.position.distanceTo(a.position) : 0 });
     }
     this.alertBots({ position: pos }, 50);
   }
@@ -363,6 +410,7 @@ export class Game {
 
   _playerFire(shot) {
     const w = this.currentWeapon, s = w.stats, p = this.player;
+    this.matchStats.shots++;
     const cam = this.renderer.camera;
     const origin = cam.position.clone();
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
@@ -435,6 +483,7 @@ export class Game {
   update(dt) {
     const inp = this.input, p = this.player, s = this.settings;
     this.time += dt;
+    this.frame++;
     const live = !this.paused && this.started;
     const m = inp.consumeMouse();
 
@@ -514,7 +563,7 @@ export class Game {
         this.currentSpread = w.currentSpread(Math.hypot(p.velocity.x, p.velocity.z) / 4.6, !p.grounded, p.crouching);
       } else {
         this.respawnTimer -= dt;
-        if (this.respawnTimer <= 0 && (inp.justPressed('jump') || inp.justPressed('fire') || this.respawnTimer < -5)) this.spawnPlayer();
+        if (this.respawnTimer <= 0 && (inp.justPressed('jump') || inp.justPressed('fire') || this.respawnTimer < -(Game.RESPAWN_AUTO - Game.RESPAWN_MIN))) this.spawnPlayer();
         // Death cam: look at killer.
         if (this.deathInfo?.killer && this.deathInfo.killer.alive) {
           const k = this.deathInfo.killer.head;
@@ -544,9 +593,11 @@ export class Game {
     this.viewmodel.holder.visible = p.alive && this.started;
     this.audio.updateListener(this.renderer.camera);
     this.effects.update(dt, this.renderer.camera);
+    this.ambience?.update(dt);
     if (this.started) this.hud.update(dt);
-    // Muffle on low health.
+    // Muffle on low health (visual + audio).
     const lowHealth = p.alive ? clamp(1 - p.health / 40, 0, 1) : 0.6;
+    this.audio.setMuffle(live || !this.started ? lowHealth * 0.55 : 0.75, dt);
     this.renderer.render(dt, lowHealth);
     inp.endFrame();
   }

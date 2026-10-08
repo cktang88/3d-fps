@@ -20,10 +20,11 @@ const browser = await chromium.launch({
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],
 });
 const page = await browser.newPage({ viewport: { width: W, height: H } });
+page.setDefaultTimeout(600000);
 const logs = [];
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning' || process.env.VERBOSE) logs.push(`[${m.type()}] ${m.text()}`); });
 page.on('pageerror', (e) => logs.push('[pageerror] ' + e.message + '\n' + e.stack));
-await page.exposeFunction('__shot', async (name) => { fs.mkdirSync('tools/shots', { recursive: true }); await page.screenshot({ path: `tools/shots/probe_${name}.png` }); });
+await page.exposeFunction('__shot', async (name) => { fs.mkdirSync('tools/shots', { recursive: true }); await page.screenshot({ path: `tools/shots/probe_${name}.png`, timeout: 180000 }); });
 await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
 await page.waitForFunction(() => window.__game?.menu, null, { timeout: 240000 }).catch(() => {});
 if (!process.env.NOSTART) await page.evaluate(() => { const g = window.__game; g.menu.close(); g.startMatch(window.__mode || 'tdm'); g.paused = false; });

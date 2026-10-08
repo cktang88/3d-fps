@@ -38,8 +38,16 @@ export class Match {
     g.spawnPlayer();
     this.state = 'live';
     this.streak = 0;
+    this.firstBlood = false;
+    this._warned = false;
+    this._multi = 0;
+    this.revengeTarget = null;
+    this.lastKillTimes.clear();
+    for (const a of g.actors) a._streak = 0;
+    g.matchStats = g.constructor.freshStats();
     g.uavTime = 0;
-    g.hud.banner(def.name, def.teams ? `FIRST TO ${def.scoreLimit} KILLS` : `FIRST TO ${def.scoreLimit} KILLS · EVERY OPERATOR FOR THEMSELVES`, 3.5);
+    g.hud.reset?.();
+    g.hud.banner(def.name, def.teams ? `${g.bots.filter((b) => b.team === 1).length}v${g.bots.filter((b) => b.team === 1).length} · FIRST TO ${def.scoreLimit} KILLS` : `FIRST TO ${def.scoreLimit} KILLS · EVERY OPERATOR FOR THEMSELVES`, 3.5);
   }
 
   update(dt) {
@@ -86,41 +94,74 @@ export class Match {
   }
 
   onKill(victim, killer, info) {
-    const g = this.game, mode = g.mode;
+    const g = this.game, mode = g.mode, hud = g.hud;
     victim.stats.deaths++;
-    const weaponName = info.weapon ? WEAPONS[info.weapon]?.name : info.type === 'grenade' ? 'FRAG' : info.type === 'melee' ? 'MELEE' : info.type === 'fall' ? 'FALL' : '';
+    const weaponName = info.weapon ? (WEAPONS[info.weapon]?.name ?? info.weapon) : info.type === 'grenade' ? 'FRAG' : info.type === 'melee' ? 'MELEE' : info.type === 'fall' ? 'FALL' : '';
+    const victimStreak = victim._streak || 0;
+    victim._streak = 0;
+    const isFirstBlood = !this.firstBlood && killer && killer !== victim;
+    if (isFirstBlood) this.firstBlood = true;
     if (killer && killer !== victim) {
       killer.stats.kills++;
-      let pts = 100;
-      if (info.headshot) pts += 25;
-      if ((info.distance ?? 0) > 50) pts += 25;
-      killer.stats.score += pts;
-      if (mode.teams) mode.score[killer.team === 0 ? 0 : 1]++;
+      killer._streak = (killer._streak || 0) + 1;
+      // Score lines (CoD-style tally): base + bonuses.
+      const lines = [['ENEMY KILLED', 100]];
+      if (info.headshot) lines.push(['HEADSHOT', 25]);
+      if ((info.distance ?? 0) > 50) lines.push([`LONGSHOT ${Math.round(info.distance)}M`, 25]);
+      if (info.type === 'melee') lines.push(['MELEE', 25]);
+      if (victimStreak >= 3) lines.push(['BUZZKILL', 50]);
+      if (isFirstBlood) lines.push(['FIRST BLOOD', 50]);
       // Assists.
-      if (victim.damageLog) for (const [a, dmg] of victim.damageLog) if (a !== killer && dmg >= 30 && a.stats) { a.stats.assists++; a.stats.score += 25; if (a === g.player) g.hud.event('ASSIST', 25); }
+      if (victim.damageLog) for (const [a, dmg] of victim.damageLog) if (a !== killer && dmg >= 30 && a.stats) { a.stats.assists++; a.stats.score += 25; if (a === g.player) hud.score('ASSIST', 25); }
       if (killer === g.player) {
         this.streak++;
+        const ms = g.matchStats;
+        ms.bestStreak = Math.max(ms.bestStreak, this.streak);
         const now = g.time;
         const last = this.lastKillTimes.get(killer) ?? -99;
         this.lastKillTimes.set(killer, now);
-        const multi = now - last < 4 ? (this._multi = (this._multi || 1) + 1) : (this._multi = 1);
-        g.hud.event(info.headshot ? 'HEADSHOT KILL' : 'KILL', pts, 'kill');
-        if ((info.distance ?? 0) > 50) g.hud.event(`LONGSHOT · ${Math.round(info.distance)}M`);
-        if (multi === 2) g.hud.event('DOUBLE KILL', 50);
-        if (multi === 3) g.hud.event('TRIPLE KILL', 75);
-        if (multi >= 4) g.hud.event('MULTI KILL', 100);
-        if (this.streak === 4) { g.uavTime = 30; g.hud.event('UAV ONLINE', 0); g.hud.banner('UAV ONLINE', 'ENEMY POSITIONS REVEALED', 2); }
-        if (this.streak === 7) g.hud.event('7 KILL STREAK', 0);
-        if (victim.lastAttacker === g.player && this.revengeTarget === victim) { g.hud.event('REVENGE', 25); this.revengeTarget = null; }
+        this._multi = now - last < 4 ? (this._multi || 1) + 1 : 1;
+        const medals = [];
+        if (this._multi === 2) { lines.push(['DOUBLE KILL', 50]); medals.push('double'); }
+        if (this._multi === 3) { lines.push(['TRIPLE KILL', 75]); medals.push('triple'); }
+        if (this._multi >= 4) { lines.push(['MULTI KILL', 100]); medals.push('multi'); }
+        if (info.headshot) medals.push('headshot');
+        if ((info.distance ?? 0) > 50) medals.push('longshot');
+        if (info.type === 'melee') medals.push('melee');
+        if (info.type === 'grenade') medals.push('frag');
+        if (victimStreak >= 3) medals.push('buzzkill');
+        if (isFirstBlood) medals.push('firstblood');
+        if (this.revengeTarget === victim) { lines.push(['REVENGE', 25]); medals.push('revenge'); this.revengeTarget = null; }
+        if (this.streak === 3) medals.push('streak3');
+        if (this.streak === 5) medals.push('streak5');
+        if (this.streak === 10) medals.push('streak10');
+        const pts = lines.reduce((t, l) => t + l[1], 0);
+        killer.stats.score += pts;
+        for (const [txt, p] of lines) hud.score(txt, p);
+        for (const m of medals) { hud.medal(m); ms.medals[m] = (ms.medals[m] || 0) + 1; }
+        hud.killConfirm(victim, info.headshot);
+        hud.streak(this.streak);
+        if (this.streak === 4) {
+          g.uavTime = 30;
+          g.audio.ui('streak');
+          hud.banner('UAV ONLINE', 'ENEMY POSITIONS REVEALED · 30s', 2.4, 'ally');
+        }
+      } else {
+        killer.stats.score += lines.reduce((t, l) => t + l[1], 0);
       }
-    } else if (mode.teams && victim.team !== undefined) {
-      // Suicide.
+      if (mode.teams) mode.score[killer.team === 0 ? 0 : 1]++;
+    } else {
+      // Suicide / environment.
       victim.stats.score = Math.max(0, victim.stats.score - 50);
     }
-    if (victim === g.player) { this.streak = 0; this.revengeTarget = killer; }
-    g.hud.killfeed(killer && killer !== victim ? killer : null, victim, weaponName, info.headshot, killer === g.player || victim === g.player);
-    // Victory check.
+    if (victim === g.player) { this.streak = 0; hud.streak(0); this.revengeTarget = killer && killer !== victim ? killer : null; }
+    hud.killfeed(killer && killer !== victim ? killer : null, victim, weaponName, info.headshot, killer === g.player || victim === g.player, info.type);
+    // Score-limit warnings + victory check.
     const lim = mode.scoreLimit;
+    if (mode.teams) {
+      const mine = mode.score[g.player.team === 0 ? 0 : 1], theirs = mode.score[g.player.team === 0 ? 1 : 0];
+      if (!this._warned && Math.max(mine, theirs) === lim - 5) { this._warned = true; hud.banner(mine > theirs ? 'WINNING' : 'LOSING', `${lim - Math.max(mine, theirs)} KILLS REMAIN`, 2, mine > theirs ? 'ally' : 'enemy'); }
+    }
     if (mode.teams && (mode.score[0] >= lim || mode.score[1] >= lim)) this.end();
     if (!mode.teams && killer && killer.stats.kills >= lim) this.end();
   }
