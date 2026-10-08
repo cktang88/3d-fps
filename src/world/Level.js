@@ -204,6 +204,14 @@ export class Level {
       this.box(mat, cx, (ya + yb) / 2, cz, b - a, yb - ya, thick, { ...opt, rot, map: opt.map ?? (yb - ya > 1.5 || ya < 1) });
     }
     const at = (s, off = 0) => V(x1 + dir.x * s + nrm.x * off, 0, z1 + dir.z * s + nrm.z * off);
+    if (opt.wainscot) {
+      // Painted lower band + skirting, slightly proud of both faces (institutional interior finish).
+      const wh = hs.filter((h) => h.y0 <= y0 + 0.05).map((h) => ({ ...h, y1: y0 + 2 }));
+      const o2 = { collide: false, nav: false, map: false, uv: 1.5 };
+      this.wall(opt.wainscot, x1, z1, x2, z2, y0, 1.05, thick + 0.016, wh, o2);
+      this.wall('woodDark', x1, z1, x2, z2, y0, 0.1, thick + 0.03, wh, { ...o2, uv: 1 });
+      this.wall('woodDark', x1, z1, x2, z2, y0 + 1.05, 0.03, thick + 0.03, wh, { ...o2, uv: 1 });
+    }
     for (const hl of hs) {
       const c = at(hl.at);
       const isWin = hl.y0 > y0 + 0.1;
@@ -763,14 +771,14 @@ export class Level {
     for (const zz of [z0 + 0.25, z0 + 4.15]) this.box('steel', 0, cy - 0.15, zz, 35.4, 0.24, 0.1, { map: false, nav: false, collide: false });
     for (let x = x0 + 1; x < x1; x += 2.5) this.box('steel', x, cy - 0.12, z0 + 2.2, 0.08, 0.16, 3.9, { map: false, nav: false, collide: false });
     // Railing: posts, top + mid rail, kick plate.
-    for (let x = x0 + 0.8; x <= x1 - 0.5; x += 2.5) this.box('steel', x, cy + 0.5, z0 + 4.15, 0.06, 1.0, 0.06, { map: false, nav: false, collide: false });
-    this.box('steel', -1.2, cy + 1.0, z0 + 4.15, 33, 0.06, 0.06, { map: false, nav: false });
-    this.box('steel', -1.2, cy + 0.5, z0 + 4.15, 33, 0.05, 0.05, { map: false, nav: false, collide: false });
-    this.box('steel', -1.2, cy + 0.08, z0 + 4.15, 33, 0.14, 0.02, { map: false, nav: false, collide: false });
-    this.game.physics.addStaticBox(V(-1.2, cy + 0.55, z0 + 4.15), V(16.5, 0.55, 0.03), null, { surface: 'metal' });
+    for (let x = -15.2; x <= x1 - 0.3; x += 2.5) this.box('steel', x, cy + 0.5, z0 + 4.15, 0.06, 1.0, 0.06, { map: false, nav: false, collide: false });
+    this.box('steel', 1.25, cy + 1.0, z0 + 4.15, 32.9, 0.06, 0.06, { map: false, nav: false });
+    this.box('steel', 1.25, cy + 0.5, z0 + 4.15, 32.9, 0.05, 0.05, { map: false, nav: false, collide: false });
+    this.box('steel', 1.25, cy + 0.08, z0 + 4.15, 32.9, 0.14, 0.02, { map: false, nav: false, collide: false });
+    this.game.physics.addStaticBox(V(1.25, cy + 0.55, z0 + 4.15), V(16.45, 0.55, 0.03), null, { surface: 'metal' });
     for (let x = x0 + 4; x < x1; x += 8) this.box('steel', x, cy / 2, z0 + 4, 0.25, cy, 0.25, { map: false });
-    // Open steel stairs to the catwalk (west end), rising north.
-    this.stairs('steel', -16.4, -33.5, Math.PI, 1.8, cy, 7.2, 0, { rail: true, open: true, tread: 'grating' });
+    // Open steel stairs to the catwalk (west end), rising north and landing on the deck edge (z = -44.8).
+    this.stairs('steel', -16.4, -44.8 + 7.2, Math.PI, 1.8, cy, 7.2, 0, { rail: true, open: true, tread: 'grating' });
     // Racks (cover lanes).
     for (const x of [-8, 0, 8]) for (const z of [-38.5, -32]) this.rack(x, z);
     // Sodium high-bay lamps + their light.
@@ -897,7 +905,7 @@ export class Level {
     // Entrance canopy over the main door.
     this.box('concrete', -2.4, 2.75, z0 - 0.7, 3.2, 0.14, 1.4, { map: false, nav: false, collide: false });
     // Interior partitions (plaster) with door casings.
-    const pw = { doorFrame: 'woodDark' };
+    const pw = { doorFrame: 'woodDark', wainscot: 'plasterGreen' };
     this.wall('plasterWhite', -4, z0 + 0.15, -4, z1 - 0.15, 0, F - 0.25, 0.15, [{ at: 3, w: 1.2, y0: 0, y1: 2.2 }, { at: 9, w: 1.2, y0: 0, y1: 2.2 }], pw);
     this.wall('plasterWhite', x0 + 0.15, 38, -4, 38, 0, F - 0.25, 0.15, [{ at: 5, w: 1.2, y0: 0, y1: 2.2 }], pw);
     this.wall('plasterWhite', -2, z0 + 0.15, -2, z1 - 0.15, F, F - 0.25, 0.15, [{ at: 6, w: 1.2, y0: F, y1: F + 2.2 }], pw);
@@ -942,8 +950,8 @@ export class Level {
     this.prop('wetSign', 4.2, 37.2, 0.6, { nav: false, collide: false });
     this.prop('cardboard', -7.4, 42.7, 0.2, { y: F, nav: false });
     // Ceiling fluorescents (cool) — one flickers on each floor.
-    for (const [x, z] of [[-10, 35], [-10, 41], [-1, 35], [-1, 41], [4, 41]]) this.prop('fluoro', x, z, 0, { y: F - 0.29, mount: true });
-    for (const [x, z] of [[-9, 35], [-9, 41], [2, 35], [2, 41], [-5, 38]]) this.prop('fluoro', x, z, Math.PI / 2, { y: 2 * F - 0.05, mount: true });
+    for (const [x, z] of [[-10, 35], [-10, 41], [-1, 35], [-1, 41], [4, 41]]) this.prop('fluoro', x, z, 0, { y: F - 0.32, mount: true });
+    for (const [x, z] of [[-9, 35], [-9, 41], [2, 35], [2, 41], [-5, 38]]) this.prop('fluoro', x, z, Math.PI / 2, { y: 2 * F - 0.07, mount: true });
     this.interiorLight(-6, F - 0.5, 38, 0xdbe8ff, 10, 14, true);
     this.interiorLight(-4, 2 * F - 0.5, 38, 0xdbe8ff, 10, 14);
     // Exterior: AC units on the roof and wall, lamps over doors, downpipes, leak streaks.
