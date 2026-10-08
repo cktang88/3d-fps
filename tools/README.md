@@ -20,3 +20,15 @@ console errors, `read`/`script` data, draw stats, build errors. Default 960x540.
 QA runner timing model: frames advance on a fixed 50 ms step (`window.__qaFixedDt`); GPU rendering is skipped
 (`window.__qaSkipRender`) except the final frame before each screenshot. `shot:false` views and `script`s don't render
 unless the job sets `renderScript:true`. Use `fresh:true` to force a clean page load.
+
+## Fast iteration rules (read before testing)
+1. **Logic first, pixels second.** Check behaviour with `shot:false` views + `read` expressions or a `script` (no GPU
+   work, fixed 50 ms step → hundreds of frames in seconds). Only screenshot what needs eyes.
+2. **`lofi:true`** for functional screenshots (quality Low, 0.5 render scale). Full quality only for art review.
+3. **Batch** everything into one job per iteration; warm pages make follow-up jobs skip the ~60 s load
+   (use `fresh:true` only if you need a clean boot).
+4. **Isolated labs for art** (e.g. viewmodel lab with a tiny scene) render ~10× faster than the full map —
+   build one for your area if you iterate visually a lot.
+5. **Don't wait idle**: `submit.mjs ... --nowait` returns a job id; keep coding, then read
+   `tools/qa/results/<id>/result.json`.
+6. Runner backend: headful Chromium on Xvfb + Mesa llvmpipe (~1.4× SwiftShader). Restart with `tools/qa/restart.sh`.

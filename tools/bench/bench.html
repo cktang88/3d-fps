@@ -1,0 +1,15 @@
+<!doctype html><html><body style="margin:0"><canvas id=c width=960 height=540></canvas>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+const r = new THREE.WebGLRenderer({ canvas: c }); r.setSize(960, 540, false); r.shadowMap.enabled = true;
+const s = new THREE.Scene(), cam = new THREE.PerspectiveCamera(70, 16/9, 0.1, 500); cam.position.set(0, 8, 30);
+const l = new THREE.DirectionalLight(0xffffff, 3); l.position.set(20, 40, 10); l.castShadow = true; l.shadow.mapSize.set(2048, 2048); s.add(l, new THREE.AmbientLight(0x404040));
+const g = new THREE.SphereGeometry(1, 64, 32), m = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.5 });
+for (let i = 0; i < 300; i++) { const o = new THREE.Mesh(g, m); o.position.set((i % 20) * 3 - 30, 1, Math.floor(i / 20) * 3 - 30); o.castShadow = o.receiveShadow = true; s.add(o); }
+const fl = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), m); fl.rotation.x = -Math.PI / 2; fl.receiveShadow = true; s.add(fl);
+r.render(s, cam); r.getContext().finish();
+const t = performance.now(); for (let i = 0; i < 5; i++) { r.render(s, cam); r.getContext().readPixels(0,0,1,1,r.getContext().RGBA,r.getContext().UNSIGNED_BYTE,new Uint8Array(4)); }
+window.__ms = (performance.now() - t) / 5;
+window.__gl = r.getContext().getParameter(r.getContext().getExtension('WEBGL_debug_renderer_info').UNMASKED_RENDERER_WEBGL);
+</script></body></html>

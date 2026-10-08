@@ -27,10 +27,26 @@ http.createServer((req, res) => {
   fs.createReadStream(f).pipe(res);
 }).listen(PORT, () => log('QA server on', PORT));
 
+// Rendering backend: headful Chromium on a private Xvfb display with Mesa llvmpipe via ANGLE-GL is ~1.4x faster
+// than headless SwiftShader on this box. Falls back to SwiftShader if Xvfb is unavailable (QA_BACKEND=swiftshader).
+let headless = true, glArgs = ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
+if (process.env.QA_BACKEND !== 'swiftshader' && fs.existsSync('/usr/bin/Xvfb')) {
+  const { spawn } = await import('node:child_process');
+  const disp = ':' + (90 + (PORT % 9));
+  const xvfb = spawn('/usr/bin/Xvfb', [disp, '-screen', '0', '1920x1080x24', '-nolisten', 'tcp'], { stdio: 'ignore', detached: false });
+  process.on('exit', () => xvfb.kill());
+  await new Promise((r) => setTimeout(r, 800));
+  process.env.DISPLAY = disp;
+  process.env.GALLIUM_DRIVER = 'llvmpipe';
+  headless = false;
+  glArgs = ['--use-gl=angle', '--use-angle=gl'];
+}
 const browser = await chromium.launch({
-  executablePath: '/opt/pw-browsers/chromium',
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],
+  executablePath: '/opt/pw-browsers/chromium', headless,
+  args: [...glArgs, '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required', '--disable-gpu-vsync', '--disable-frame-rate-limit'],
 });
+for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, async () => { log('shutting down'); await browser.close().catch(() => {}); process.exit(0); });
+log('browser backend:', headless ? 'swiftshader (headless)' : 'llvmpipe (Xvfb ' + process.env.DISPLAY + ')');
 
 function build() {
   // Each snapshot gets its own directory so in-flight jobs keep a consistent build.
@@ -98,6 +114,12 @@ async function runJob(job, buildInfo, worker = 0) {
       const f = () => { i++; window.__qaSkipRender = i <= n - render; if (i >= n) { window.__qaSkipRender = false; r(); } else requestAnimationFrame(f); };
       requestAnimationFrame(f);
     }), [n, render]);
+    // lofi: cheap functional screenshots (no AO, small shadows, half render scale). Art reviews omit it.
+    await page.evaluate((lofi) => {
+      const g = window.__game;
+      if (lofi) { g.settings.quality = 0; g.settings.renderScale = 0.5; } 
+      g.renderer.applySettings?.();
+    }, !!job.lofi);
     if (job.setup) await page.evaluate(job.setup);
     if (job.match !== false) {
       await page.evaluate((mode) => { const g = window.__game; g.menu.close(); g.startMatch(mode); g.paused = false; }, job.match || 'tdm');
