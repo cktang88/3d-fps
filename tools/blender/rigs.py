@@ -36,11 +36,13 @@ RIGS = {
 # "bore point above the web marker" of each gun; rot = (pitch, yaw, roll) degrees
 # (pitch + = muzzle up, yaw + = muzzle toward screen centre, roll + = top of the gun cants left).
 FRAMING = {
-    'rifle': dict(pos=(0.105, 0.30, -0.105), rot=(1.5, 2.0, 4.0)),
-    'smg': dict(pos=(0.100, 0.29, -0.100), rot=(1.5, 2.0, 4.0)),
-    'sniper': dict(pos=(0.110, 0.31, -0.110), rot=(1.5, 1.5, 3.0)),
-    'shotgun': dict(pos=(0.105, 0.30, -0.105), rot=(1.5, 2.0, 4.0)),
-    'pistol': dict(pos=(0.070, 0.36, -0.100), rot=(2.0, 3.0, 2.0)),
+    # Solved from the reference screenshots (docs/FP_FRAMING.md): rifle rear sight ~(64%, 60%), front sight
+    # ~(57-60%, 52%) of the screen at viewmodel vFOV 52 -> web of the grip ~0.20 m ahead of the eye.
+    'rifle': dict(pos=(0.085, 0.200, -0.080), rot=(0.5, 0.5, 3.0)),
+    'smg': dict(pos=(0.082, 0.195, -0.078), rot=(0.5, 0.5, 3.0)),
+    'sniper': dict(pos=(0.090, 0.215, -0.088), rot=(0.5, 0.5, 2.0)),
+    'shotgun': dict(pos=(0.085, 0.200, -0.082), rot=(0.5, 0.5, 3.0)),
+    'pistol': dict(pos=(0.065, 0.260, -0.072), rot=(1.0, 2.0, 2.0)),
 }
 # Shoulders (UpArm heads) in view-camera space, REAL metres; elbow pole targets likewise.
 SHOULDER = {'R': (0.19, -0.04, -0.21), 'L': (-0.17, 0.00, -0.21)}

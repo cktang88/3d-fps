@@ -80,7 +80,7 @@ Code is original except where noted. Third-party assets:
 - **Shotgun model**: by Harry_L — CC BY (https://sketchfab.com/models/53b158b0d5a54b4491b09d1fb3058e29), via Mugen87/dive.
 - **Gunshot & firearm foley**: The Free Firearm Sound Library (CC0) — https://github.com/buddingmonkey/FreeFirearmsSFXLibrary
   and edits from operation-steel-tide.
-- **Footsteps / impacts**: Kenney Impact Sounds — CC0.
+- **Footsteps / impacts / UI / explosions**: Kenney Impact Sounds, Interface Sounds and Sci-Fi Sounds — CC0 (https://kenney.nl).
 - **PBR textures**: ambientCG and Poly Haven — CC0 (via Tiddybub/3d-assets and operation-steel-tide).
 - **Props**: Poly Haven — CC0 (old_military_crate, concrete_road_barrier(_02), Barrel_01/02, barrel_03, ammo_box,
   cardboard_box_01, old_tyre, exterior_aircon_unit, street_lamp_01, security_light, utility_box_01/02, metal_trash_can,

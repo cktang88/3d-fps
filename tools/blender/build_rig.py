@@ -83,6 +83,9 @@ before = set(bpy.data.objects)
 bpy.ops.import_scene.gltf(filepath=os.path.join(SFDIR, 'cc_ak74/model.glb'), guess_original_bind_pose=False, bone_heuristic='TEMPERANCE')
 new = [o for o in bpy.data.objects if o not in before]
 arm = [o for o in new if o.type == 'ARMATURE'][0]
+arm.animation_data_clear()  # the importer assigns a clip; it would override the authored pose at render/export
+for act in list(bpy.data.actions):
+    bpy.data.actions.remove(act)
 arms_mesh = [o for o in new if o.type == 'MESH' and any(m and m.name == 'arms' for m in o.data.materials)][0]
 for o in new:
     if o not in (arm, arms_mesh):
@@ -148,6 +151,16 @@ DOM = []
 for v in arms_mesh.data.vertices:
     best = max(v.groups, key=lambda g: g.weight, default=None)
     DOM.append(gname.get(best.group) if best else None)
+
+
+if os.environ.get('FP_DEBUG'):
+    from collections import Counter
+    cnt = Counter(DOM)
+    log('DOM groups', sorted(cnt.items(), key=lambda x: -x[1])[:60])
+    for side in SIDES:
+        idx = [i for i, n in enumerate(DOM) if n == f'Hand_{side}']
+        co = [arms_mesh.data.vertices[i].co for i in idx]
+        if co: log('rest hand verts', side, [round(sum(c[k] for c in co) / len(co), 3) for k in range(3)], 'bone head', [round(x, 3) for x in arm.data.bones[f'Hand_{side}'].head_local])
 
 
 def verts_of(names):
@@ -243,9 +256,23 @@ def set_hand(side, Mx, B):
 
 set_hand('R', M_R, TR)
 set_hand('L', M_L, TL)
+for side in SIDES:
+    idx = verts_of([f'Hand_{side}', f'Bone_{side}.008', f'Bone_{side}.012'])
+    bpy.context.view_layer.update()
+    e = arms_mesh.evaluated_get(bpy.context.evaluated_depsgraph_get()); me_ = e.to_mesh()
+    cen = sum((arms_mesh.matrix_world @ me_.vertices[i].co for i in idx), Vector()) / len(idx)
+    e.to_mesh_clear()
+    log('hand mesh centroid', side, [round(x, 3) for x in cen], 'bone', [round(x, 3) for x in pb[f'Hand_{side}'].matrix.translation], 'dist', round((cen - pb[f'Hand_{side}'].matrix.translation).length, 3))
+for side, Mx, B in (('R', M_R, TR), ('L', M_L, TL)):
+    want = (Mx @ B[f'Hand_{side}']).translation
+    got = (arm.matrix_world @ pb[f'Hand_{side}'].matrix).translation
+    log('hand check', side, 'want', [round(x, 3) for x in want], 'got', [round(x, 3) for x in got], 'arm mw', arm.matrix_world.to_translation(), arm.matrix_world.to_scale())
 
 # ------------------------------------------------------------------ 4. framing + IK
-FR = FRAMING[SPEC['cls']]
+FR = dict(FRAMING[SPEC['cls']])
+if os.environ.get('FP_FRAME'):
+    v = [float(x) for x in os.environ['FP_FRAME'].split(',')]
+    FR = dict(pos=tuple(v[:3]), rot=tuple(v[3:6]))
 B_ref = Vector((0, SPEC['web'][0], BORE_Z))
 p, y_, r = [math.radians(v) for v in FR['rot']]
 ROT = Matrix.Rotation(y_, 4, 'Z') @ Matrix.Rotation(p, 4, 'X') @ Matrix.Rotation(-r, 4, 'Y')
@@ -353,26 +380,29 @@ TOL = 0.0006 * K       # 0.6 mm real
 CONTACT = 0.0035 * K   # fingertips closer than 3.5 mm count as touching
 
 
-def push_hand_out(side, iters=12):
-    hb = verts_of([f'Hand_{side}'] + [f'Bone_{side}.{c[0]}' for c in FINGERS[:4]])
+def push_hand_out(side, iters=16, max_move=0.012):
+    """Rigidly translate the hand (IK control) out of the gun using every hand/finger vertex."""
+    hb = verts_of([f'Hand_{side}'] + [f'Bone_{side}.{i}' for c in FINGERS for i in c])
     ctrl = pb[f'IK_Hand_Cntrl_{side}']
     moved = Vector()
     for _ in range(iters):
         co = eval_co(hb)
-        push = Vector(); n = 0; worst = 0
+        push = Vector(); wsum = 0.0
         for p in co:
             hit = gun_bvh.find_nearest(p, 0.03 * K)
             if hit[0] is None: continue
             loc, nrm, _, d = hit
             if (p - loc).dot(nrm) < 0 and d > TOL:
-                push += nrm * (d + 0.3 * TOL); n += 1; worst = max(worst, d)
-        if not n:
+                push += nrm * d * d; wsum += d
+        if wsum == 0:
             break
-        step = push / n
-        if step.length > 0.004 * K: step = step.normalized() * 0.004 * K
+        step = push / wsum
+        if step.length > 0.002 * K: step = step.normalized() * 0.002 * K
+        if (moved + step).length > max_move * K:
+            break
         m = ctrl.matrix.copy(); m.translation += step; ctrl.matrix = m
         moved += step
-    log('palm push', side, 'mm', round(moved.length / K * 1000, 1))
+    log('hand push', side, 'mm', round(moved.length / K * 1000, 1), [round(x / K * 1000, 1) for x in moved])
     return moved
 
 
@@ -401,8 +431,11 @@ def solve_finger(side, chain, wrap=True, max_iter=40):
         bad = [n for n in names if pen[n] > TOL]
         if bad:
             n = bad[-1] if pen[bad[-1]] > 0.6 * max(pen[b] for b in bad) else max(bad, key=lambda b: pen[b])
-            if curl[n] < -math.radians(60):
-                n = names[max(0, names.index(n) - 1)]
+            if curl[n] <= -math.radians(30):
+                cand = [m for m in names if curl[m] > -math.radians(30)]
+                if not cand:
+                    break
+                n = cand[-1]
             pb[n].matrix_basis = pb[n].matrix_basis @ Matrix.Rotation(-sign[n] * step, 4, 'X'); curl[n] -= step
             continue
         if not wrap:
@@ -426,7 +459,7 @@ def solve_finger(side, chain, wrap=True, max_iter=40):
     return {n: round(math.degrees(c), 1) for n, c in curl.items()}
 
 
-for side in SIDES:
+for side in ([] if os.environ.get('FP_NOIK') else SIDES):
     push_hand_out(side)
     solve_arm(side)
     push_hand_out(side, iters=4)
@@ -452,23 +485,52 @@ for k, names in REG.items():
     pen[k] = {'max_mm': round(max(inside) / K * 1000, 2) if inside else 0.0, 'n_inside': len(inside),
               'min_gap_mm': round(-max(x for x in d if x <= 0) / K * 1000, 2) if any(x <= 0 for x in d) else None}
 REPORT['penetration'] = pen
+allidx = list(range(len(arms_mesh.data.vertices)))
+dall = depths(allidx, maxd=0.05 * K)
+per = {}
+for i, d in zip(allidx, dall):
+    if d > TOL:
+        per[DOM[i]] = max(per.get(DOM[i], 0), d)
+REPORT['per_bone_mm'] = {k: round(v / K * 1000, 1) for k, v in sorted(per.items(), key=lambda x: -x[1])}
+log('per-bone', REPORT['per_bone_mm'])
 REPORT['max_mm'] = max(v['max_mm'] for v in pen.values())
 log('PENETRATION', json.dumps(pen))
 
 # ------------------------------------------------------------------ 7. renders
+if os.environ.get('FP_SIDE'):
+    bpy.context.view_layer.update()
+    for side in SIDES:
+        idx = verts_of([f'Hand_{side}', f'Bone_{side}.008', f'Bone_{side}.012'])
+        co = eval_co(idx)
+        log('pre-render centroid', side, [round(x, 3) for x in sum(co, Vector()) / len(co)])
+    co = eval_co(list(range(len(arms_mesh.data.vertices))))
+    log('arms eval bbox', [[round(x, 3) for x in v] for v in bbox(co)], 'objects', [(o.name, o.type, o.hide_render) for o in bpy.data.objects if o.type == 'MESH' and 'Arm' in o.name])
+    vis = [o for o in bpy.data.objects if o.type == 'MESH' and not o.hide_render]
+    side_render(vis, os.path.join(WORK, f'rig_{GID}_side.png'), step=0.05)
+    side_render(vis, os.path.join(WORK, f'rig_{GID}_top.png'), step=0.05, view='top')
+    bpy.context.scene.camera = None
 setup_render('', 1280, 720, samples=24)
 for o in bpy.data.objects:
     if o.name.startswith('pole_'): o.hide_render = True
+ov = os.environ.get('FP_OVERRIDE')
 make_camera(CAM_W, vfov_deg=52.0)
 render(os.path.join(WORK, f'rig_{GID}_fp.png'))
+# Overview from outside (right, above, behind) incl. the eye position, to judge arm / shoulder layout.
+eye = Ginv @ Vector((0, 0, 0)); tgt = Ginv @ (Vector((0.0, 0.3, -0.12)) * K)
+for nm, off in (('ov_r', (0.9, 0.05, 0.25)), ('ov_t', (0.05, 0.25, 1.0))):
+    loc = Ginv @ (Vector(off) * K)
+    make_camera(Matrix.Translation(loc) @ (tgt - loc).to_track_quat('-Z', 'Z' if nm == 'ov_r' else 'Y').to_matrix().to_4x4(), vfov_deg=50)
+    mk = bpy.data.objects.new('eye', None); mk.empty_display_type = 'SPHERE'
+    render(os.path.join(WORK, f'rig_{GID}_{nm}.png'))
 if not FAST:
     # Close-ups of each hand (orbit from the outside / below).
     for side in SIDES:
-        c = pb[f'Hand_{side}'].matrix.translation
-        eye = c + Vector((0.22 * K if side == 'R' else -0.22 * K, -0.05 * K, -0.06 * K))
+        hv = eval_co(verts_of(REG[f'{side}_hand']))
+        c = sum(hv, Vector()) / len(hv)
+        eye = c + Vector((0.20 * K if side == 'R' else -0.20 * K, 0.16 * K, -0.04 * K))
         make_camera(Matrix.Translation(eye) @ (c - eye).to_track_quat('-Z', 'Z').to_matrix().to_4x4(), vfov_deg=40)
         render(os.path.join(WORK, f'rig_{GID}_hand{side}.png'))
-        eye = c + Vector((0.0, 0.02 * K, -0.25 * K))
+        eye = c + Vector((0.04 * K if side == 'R' else -0.04 * K, 0.10 * K, -0.26 * K))
         make_camera(Matrix.Translation(eye) @ (c - eye).to_track_quat('-Z', 'Y').to_matrix().to_4x4(), vfov_deg=40)
         render(os.path.join(WORK, f'rig_{GID}_hand{side}_under.png'))
     cam = bpy.context.scene.camera; cam.data.type = 'PERSP'
