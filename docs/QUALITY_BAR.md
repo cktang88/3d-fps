@@ -10,3 +10,11 @@ Every change to Ironline is held to these principles:
    stuck movement, UI overlap, abrupt cuts or missing sounds. Nothing should look like a prototype.
 
 Verification: every visual change is checked with the headless screenshot harness (`tools/shot.mjs`) before it lands.
+6. **Jaw-drop visuals** — would a player stop and stare? Every frame should read like key art.
+
+## Art direction: "Ironline — edge of a live war zone"
+Stormy golden hour after rain: a low warm sun breaks through dark storm clouds; wet asphalt and puddles mirror
+fire and sodium light; haze glows toward the sun; god rays cut through warehouse windows. Beyond the walls a battle
+rages — artillery flashes on the clouds, smoke columns, descending flares, tracer arcs, a helicopter sweeping by.
+Inside the depot: burning wrecks, embers and ash drifting through light shafts. Cinematic grade: warm highlights,
+cool teal shadows.

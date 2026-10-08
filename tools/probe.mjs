@@ -11,7 +11,9 @@ const file = process.argv[2];
 const body = fs.readFileSync(file, 'utf8');
 const PORT = process.env.PORT || '5204';
 const W = +(process.env.W || 1280), H = +(process.env.H || 720);
-const server = spawn('npx', ['vite', '--port', PORT, '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'] });
+const server = spawn('npx', ['vite', '--port', PORT, '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+const killServer = () => { try { process.kill(-server.pid, 'SIGTERM'); } catch {} };
+server.stderr.on('data', (d) => { if (String(d).includes('already in use')) { console.log('port busy'); process.exit(1); } });
 await new Promise((res) => server.stdout.on('data', (d) => { if (String(d).includes('Local') || String(d).includes('ready')) res(); }));
 const browser = await chromium.launch({
   executablePath: '/opt/pw-browsers/chromium',
@@ -54,5 +56,5 @@ try {
 } catch (e) { console.log('ERROR', e.message); }
 console.log(logs.slice(0, 40).join('\n'));
 await browser.close();
-server.kill();
+killServer();
 process.exit(0);
