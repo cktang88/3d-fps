@@ -36,6 +36,7 @@ export const MOVE = {
 
 const UP = new THREE.Vector3(0, 1, 0), DOWN = new THREE.Vector3(0, -1, 0);
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _fwd = new THREE.Vector3(), _right = new THREE.Vector3();
+const _uf = new THREE.Vector3(), _ur = new THREE.Vector3(), _wish = new THREE.Vector3(), _vh = new THREE.Vector3(), _eye = new THREE.Vector3(), _ld = new THREE.Vector3(), _sl = new THREE.Vector3(), _sa = new THREE.Vector3(), _GRAV = new THREE.Vector3(0, -MOVE.gravity, 0);
 
 export class Player {
   constructor(game) {
@@ -113,6 +114,7 @@ export class Player {
     this.alive = true;
     this.crouching = this.sliding = false;
     this.mantle = null;
+    this.stepOffset = 0; this.lean = 0; this.tacSprint = false; this.sprinting = false; this.slideCooldown = 0;
     this.setHeight(MOVE.standHeight);
     this.eyeHeight.x = this.eyeHeight.target = MOVE.eyeStand;
     this.spawnProtect = 1.5;
@@ -159,8 +161,8 @@ export class Player {
 
     if (this.mantle) { this._updateMantle(dt); return; }
 
-    const fwd = this.forward(new THREE.Vector3()), right = this.right(new THREE.Vector3());
-    const wish = new THREE.Vector3()
+    const fwd = this.forward(_uf), right = this.right(_ur);
+    const wish = _wish.set(0, 0, 0)
       .addScaledVector(fwd, cmd.moveY)
       .addScaledVector(right, cmd.moveX);
     if (wish.lengthSq() > 1) wish.normalize();
@@ -224,7 +226,7 @@ export class Player {
     // Moving backwards/strafing is a bit slower than forward.
     if (cmd.moveY < -0.1) maxSpeed *= 0.85;
 
-    const vh = new THREE.Vector3(this.velocity.x, 0, this.velocity.z);
+    const vh = _vh.set(this.velocity.x, 0, this.velocity.z);
     if (this.grounded) {
       if (this.sliding) {
         this._updateSlide(dt, vh);
@@ -250,8 +252,8 @@ export class Player {
     let leanT = (cmd.leanRight ? 1 : 0) - (cmd.leanLeft ? 1 : 0);
     if (this.sprinting || this.sliding) leanT = 0;
     if (leanT !== 0) {
-      const eye = this.position.clone().setY(this.position.y + this.eyeHeight.x);
-      const dir = this.right(new THREE.Vector3()).multiplyScalar(Math.sign(leanT));
+      const eye = _eye.copy(this.position).setY(this.position.y + this.eyeHeight.x);
+      const dir = this.right(_ld).multiplyScalar(Math.sign(leanT));
       const hit = this.phys.raycast(eye, dir, MOVE.leanOffset + 0.25, G.WORLD);
       if (hit) leanT *= clamp((hit.distance - 0.25) / MOVE.leanOffset, 0, 1);
     }
@@ -310,10 +312,10 @@ export class Player {
   _updateSlide(dt, vh) {
     this.slideTimer += dt;
     // Slope gravity: ground normal from a short downward ray.
-    const hit = this.phys.raycast(this.position.clone().setY(this.position.y + 0.3), new THREE.Vector3(0, -1, 0), 0.8, G.WORLD);
+    const hit = this.phys.raycast(_sl.copy(this.position).setY(this.position.y + 0.3), DOWN, 0.8, G.WORLD);
     if (hit) {
       const n = hit.normal;
-      const slopeAccel = new THREE.Vector3(0, -MOVE.gravity, 0).projectOnPlane(n);
+      const slopeAccel = _sa.copy(_GRAV).projectOnPlane(n);
       slopeAccel.y = 0;
       vh.addScaledVector(slopeAccel, dt);
     }
@@ -413,7 +415,7 @@ export class Player {
     const stride = this.sprinting ? 2.0 : this.crouching ? 1.1 : 1.6;
     if (this.stepDist >= stride) {
       this.stepDist = 0;
-      const hit = this.phys.raycast(this.position.clone().setY(this.position.y + 0.2), new THREE.Vector3(0, -1, 0), 0.6, G.WORLD);
+      const hit = this.phys.raycast(_sl.copy(this.position).setY(this.position.y + 0.2), DOWN, 0.6, G.WORLD);
       const surface = hit?.data?.surface ?? 'concrete';
       const vol = this.sprinting ? 0.9 : this.crouching ? 0.25 : 0.55;
       this.events.onStep?.(surface, vol);

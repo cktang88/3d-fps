@@ -4,7 +4,7 @@ import { Spring, Spring3, damp, clamp, DEG, smoothstep, easeInOutSine, rand } fr
 import { muzzleFlashAtlas, muzzleSideTex, reticleTex, glowTex } from '../../render/ProcTex.js';
 
 const V = (a) => new THREE.Vector3(a[0], a[1], a[2]);
-const _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4(), _v = new THREE.Vector3(), _q = new THREE.Quaternion();
+const _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4(), _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
 
 function find(root, name) {
   let r = null;
@@ -78,20 +78,28 @@ export class ViewModel {
   _buildFlash() {
     const atlas = muzzleFlashAtlas();
     const side = muzzleSideTex();
-    const mk = (tex, w, h) => new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({
+    const mat = (tex, c) => new THREE.MeshBasicMaterial({
       map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: true, toneMapped: false,
-      color: new THREE.Color(3.2, 2.6, 2.0), side: THREE.DoubleSide,
-    }));
+      color: c, side: THREE.DoubleSide, fog: false,
+    });
     this.flash = new THREE.Group();
-    const front = mk(atlas, 0.16, 0.16);
-    front.material.map = atlas;
-    front.geometry.attributes.uv.array.forEach((v, i, a) => (a[i] = v * 0.5));
+    // Front star: a camera-facing card a touch ahead of the crown so the device never occludes it.
+    const front = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.36), mat(atlas, new THREE.Color(3.4, 2.7, 2.0)));
+    front.geometry.attributes.uv.array.forEach((v, i, arr) => (arr[i] = v * 0.5));
+    front.position.z = -0.025;
     this.flashFront = front;
-    const s1 = mk(side, 0.3, 0.12); s1.position.z = -0.14; s1.rotation.y = Math.PI / 2;
-    const s2 = s1.clone(); s2.rotation.x = Math.PI / 2;
-    this.flash.add(front, s1, s2);
+    // Side cones: three cards rotated about the bore, each starting at the crown and extending forward.
+    const coneGeo = new THREE.PlaneGeometry(0.42, 0.2);
+    coneGeo.translate(0.21, 0, 0); coneGeo.rotateY(Math.PI / 2); // +x → −z (down range)
+    this.flashCones = [];
+    for (let i = 0; i < 3; i++) {
+      const c = new THREE.Mesh(coneGeo, mat(side, new THREE.Color(2.6, 1.9, 1.3)));
+      c.rotation.z = (i / 3) * Math.PI;
+      this.flash.add(c); this.flashCones.push(c);
+    }
+    this.flash.add(front);
+    this.flash.traverse((o) => { o.renderOrder = 20; o.frustumCulled = false; });
     this.flash.visible = false;
-    this.flash.renderOrder = 20;
   }
 
   _buildAnimatedArms() {
@@ -114,6 +122,9 @@ export class ViewModel {
     this.leftGripAnchor = find(this.reloadArms, 'LeftGripAnchorFrame');
     this.leftPalm = find(this.reloadArms, 'LeftPalmFrame');
     this.leftSideMagAnchor = find(this.reloadArms, 'LeftSidearmMagazineAnchorFrame');
+    // The clip also carries a right forearm; the static rig's right arm already holds the grip, so
+    // the animated one is collapsed (its open sleeve otherwise swings into view when the gun tilts).
+    this.reloadRightArmBone = find(this.reloadArms, 'R_arm_024');
     // Clip names are in the form reload_<stem>_<empty|tactical>.
   }
 
@@ -192,6 +203,16 @@ export class ViewModel {
     if (tune.chargingOffset && rig.charging) rig.charging.position.add(V(tune.chargingOffset));
     rig.magHome = rig.magazine ? { p: rig.magazine.position.clone(), q: rig.magazine.quaternion.clone() } : null;
     rig.spareHome = rig.spare ? { p: rig.spare.position.clone(), q: rig.spare.quaternion.clone() } : null;
+    // Bolt-action: hang the bolt on a pivot on the bore axis so the handle can lift, run back and
+    // lock down (the authored handle node sits out at the knob).
+    if (rig.charging && s.modes[0] === 'bolt') {
+      const pivot = new THREE.Group(); pivot.name = 'BoltPivot';
+      pivot.position.set(0, rig.charging.position.y - 0.01, rig.charging.position.z);
+      rig.charging.parent.add(pivot);
+      rig.charging.position.sub(pivot.position);
+      pivot.add(rig.charging);
+      rig.boltPivot = pivot; rig.boltHome = pivot.position.clone();
+    }
     rig.chargingHome = rig.charging ? rig.charging.position.clone() : null;
     rig.magGrip = rig.magazine ? findAny(rig.magazine, ['MagazineGripSocket', 'MagazineGrip']) : null;
     rig.spareGrip = rig.spare ? findAny(rig.spare, ['SpareMagazineGrip', 'MagazineGripSocket']) : null;
@@ -300,7 +321,7 @@ export class ViewModel {
     const axis = a.front.clone().sub(a.point).normalize();
     const qAds = new THREE.Quaternion().setFromUnitVectors(axis, new THREE.Vector3(0, 0, -1));
     rig.adsRot = new THREE.Euler().setFromQuaternion(qAds);
-    const relief = a.overlay ? 0.3 : a.lens ? (tune.scopeRelief ?? 0.17) : a.reticle ? (tune.dotRelief ?? 0.3) : (tune.ironRelief ?? 0.26);
+    const relief = a.overlay ? 0.3 : a.lens ? (tune.scopeRelief ?? 0.12) : a.reticle ? (tune.dotRelief ?? 0.3) : (tune.ironRelief ?? 0.26);
     rig.ads = a.point.clone().multiplyScalar(scale).applyQuaternion(qAds).negate().add(new THREE.Vector3(0, 0, -relief));
     rig.phases = RELOAD_PHASES[sidearm ? 'sidearm' : pose.kind === 'long' ? 'long' : 'rifle'];
     rig.clipStem = { m4a1: 'm4a1', ak74: 'ak74', scarl: 'scarl', mp5a5: 'mp5a5', vss: 'vss', m24: 'm24', awm: 'awm', p226: 'p226', m1911: 'm1911' }[poseKey];
@@ -341,7 +362,13 @@ export class ViewModel {
         return info;
       }
     }
-    if (opticId && opticId !== 'irons' && rear) rear.visible = false;
+    const railAdapter = find(gun, 'OpticRailAdapterGeometry');
+    if (railAdapter) railAdapter.visible = !!opticId && opticId !== 'irons';
+    if (opticId && opticId !== 'irons' && rear) {
+      rear.visible = false;
+      // M4: the flip-up rear sight's loose leaves sit right under the eye at ADS; stow them too.
+      for (const n of ['M4A1Body_05_Switch1', 'M4A1Body_06_Switch2']) { const o = find(gun, n); if (o) o.visible = false; }
+    }
     if (opticId && opticId !== 'irons' && front && rig.poseKey !== 'ak74') front.visible = false;
     if (!opticId || opticId === 'irons') {
       // Iron sight line: through the rear notch/aperture and the front post tip, so ADS can align
@@ -391,8 +418,10 @@ export class ViewModel {
     if (opticId === 'reddot' || opticId === 'holo') {
       const tex = reticleTex(opticId === 'reddot' ? 'dot' : 'holo', '#ff2a1a');
       const ret = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({
-        map: tex, transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
-        color: new THREE.Color(2.5, 2.5, 2.5),
+        // Normal blend with an HDR tint: stays a saturated, glowing red even over bright skies / walls
+        // (additive washes out to white there).
+        map: tex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false,
+        color: new THREE.Color(1.6, 0.9, 0.85),
       }));
       ret.renderOrder = 30;
       ret.frustumCulled = false;
@@ -401,19 +430,19 @@ export class ViewModel {
       info.reticle = ret;
       info.reticleAnchor = reticleAnchor;
       // Angular size of the reticle (radians, full width of the texture quad).
-      info.reticleAngle = opticId === 'reddot' ? 0.016 : 0.032;
-      info.lensR = (opticId === 'reddot' ? 0.016 : 0.024) * osc;
+      info.reticleAngle = opticId === 'reddot' ? 0.028 : 0.06;
+      info.lensR = (opticId === 'reddot' ? 0.022 : 0.04) * osc;
       // Lens glass tint.
-      const lens = new THREE.Mesh(new THREE.CircleGeometry(info.lensR, 24), new THREE.MeshPhysicalMaterial({
+      const lens = new THREE.Mesh(new THREE.CircleGeometry(info.lensR * 0.8, 24), new THREE.MeshPhysicalMaterial({
         color: 0x6688aa, metalness: 0, roughness: 0.02, transparent: true, opacity: 0.12, envMapIntensity: 2, depthWrite: false,
       }));
       lens.position.copy(frontAp.position);
       frontAp.parent.add(lens);
     } else if (opticId === 'acog') {
       // Picture-in-picture lens at the rear aperture.
-      const r = 0.019 * osc;
-      const lens = new THREE.Mesh(new THREE.CircleGeometry(r, 40), this.scopeLensMat);
-      lens.position.copy(rearAp.position).add(new THREE.Vector3(0, 0, -0.004));
+      const r = 0.034 * osc; // fills the eyepiece bore (measured inner radius ≈ 0.035)
+      const lens = new THREE.Mesh(new THREE.CircleGeometry(r, 48), this.scopeLensMat);
+      lens.position.copy(rearAp.position).add(new THREE.Vector3(0, 0, -0.006));
       rearAp.parent.add(lens);
       info.lens = lens;
       info.lensRadius = r * (opticId === 'sniper' ? 1.3 : 1);
@@ -507,14 +536,17 @@ export class ViewModel {
     this.kickPos.impulse(rand(-0.03, 0.03) * k, rand(0.02, 0.05) * k, 0.5 * k * (rig.sidearm ? 0.6 : 1));
     this.kickRot.impulse(1.6 * k * (rig.sidearm ? 2.2 : 1), rand(-0.6, 0.6) * k, rand(-1.4, 1.4) * k);
     if (!s.suppressed) {
-      this.flashT = 0.045;
-      this.flashFront.rotation.z = Math.random() * Math.PI * 2;
+      this.flashT = 0.05;
+      this.flashSpin = Math.random() * Math.PI * 2;
+      this.flashLen = 0.75 + Math.random() * 0.5;
       const f = (Math.random() * 4) | 0;
       const uv = this.flashFront.geometry.attributes.uv;
       const ox = (f % 2) * 0.5, oy = Math.floor(f / 2) * 0.5;
       uv.setXY(0, ox, oy); uv.setXY(1, ox + 0.5, oy); uv.setXY(2, ox, oy + 0.5); uv.setXY(3, ox + 0.5, oy + 0.5);
       uv.needsUpdate = true;
-      const sc = (rig.sidearm ? 0.7 : 1) * (0.8 + Math.random() * 0.5) * (s.flash ?? 1) * (s.pellets > 1 ? 1.5 : 1);
+      // Flash hiders still flash visibly in first person (they trim the fireball, not remove it).
+      const fl = Math.max(0.55, Math.min(1.5, s.flash ?? 1));
+      const sc = (rig.sidearm ? 0.75 : 1) * (0.85 + Math.random() * 0.35) * fl * (s.pellets > 1 ? 1.35 : 1);
       this.flash.scale.setScalar(sc / rig.scale);
     }
     // Slide / bolt carrier cycles.
@@ -608,24 +640,35 @@ export class ViewModel {
     rot.x -= 0.5 * this.mantleBlend;
     // Reload offset: bring gun in & roll toward the support hand.
     const rb = smoothstep(this.reloadBlend);
-    if (rig.sidearm) { pos.add(new THREE.Vector3(-0.02, 0.0, 0.03).multiplyScalar(rb)); rot.z += 0.05 * rb; }
-    else { pos.add(new THREE.Vector3(-0.04, 0.02, 0.05).multiplyScalar(rb)); rot.z += 0.22 * rb; rot.x += 0.06 * rb; }
-    // Shotgun shell loading roll.
-    if (s.tube && reloading) { rot.z += 0.35 * rb; rot.x += 0.12 * rb; }
+    {
+      const rp = rig.tune.reloadPos, rr = rig.tune.reloadRot;
+      pos.x += rp[0] * rb; pos.y += rp[1] * rb; pos.z += rp[2] * rb;
+      rot.x += rr[0] * rb; rot.y += rr[1] * rb; rot.z += rr[2] * rb;
+    }
     // Bolt/pump cycle.
     if (w.state === 'bolt') {
+      // Bolt cycle: lift (0–.18) → run back (.18–.45) → drive home (.45–.7) → lock down (.7–.85).
       const t = clamp(w.stateTime / w.stateDur, 0, 1);
       const k = Math.sin(t * Math.PI);
-      rot.z += 0.18 * k; rot.x += 0.06 * k; pos.y -= 0.02 * k;
-      if (rig.charging) rig.charging.position.z = rig.chargingHome.z + Math.sin(clamp((t - 0.15) / 0.7, 0, 1) * Math.PI) * 0.12;
-      this.adsHoldDuringBolt = true;
+      rot.z += 0.22 * k; rot.x += 0.07 * k; rot.y -= 0.05 * k; pos.y -= 0.025 * k; pos.x -= 0.015 * k;
+      if (rig.boltPivot) {
+        const lift = smoothstep(clamp(t / 0.18, 0, 1)) * (1 - smoothstep(clamp((t - 0.7) / 0.15, 0, 1)));
+        const back = smoothstep(clamp((t - 0.18) / 0.27, 0, 1)) * (1 - smoothstep(clamp((t - 0.45) / 0.25, 0, 1)));
+        rig.boltPivot.rotation.z = 1.05 * lift;
+        rig.boltPivot.position.z = rig.boltHome.z + 0.16 * back;
+      }
+    } else if (rig.boltPivot && (rig.boltPivot.rotation.z !== 0 || rig.boltPivot.position.z !== rig.boltHome.z)) {
+      rig.boltPivot.rotation.z = 0; rig.boltPivot.position.copy(rig.boltHome);
     }
+    // Pump / shell loading: drive the support arm in WeaponRoot space.
+    const leftTarget = this._supportArmOffset(rig, w, dt, reloading);
+    if (rig.leftArm && leftTarget) rig.leftArm.position.copy(rig.leftArmHome).add(leftTarget);
+    else if (rig.leftArm && w.state !== 'reload') rig.leftArm.position.lerp(rig.leftArmHome, 1 - Math.exp(-20 * dt));
     if (w.state === 'pump') {
       const t = clamp(w.stateTime / w.stateDur, 0, 1);
       const k = Math.sin(t * Math.PI);
-      pos.z += 0.03 * k; rot.x += 0.05 * k;
-      if (rig.leftArm) rig.leftArm.position.z = rig.leftArmHome.z + k * 0.12;
-    } else if (rig.leftArm && w.state !== 'reload') rig.leftArm.position.lerp(rig.leftArmHome, 1 - Math.exp(-20 * dt));
+      pos.z += 0.025 * k; rot.x += 0.05 * k; rot.z += 0.04 * k;
+    }
     // Equip: rise from below.
     const eq = smoothstep(this.equipT);
     pos.y -= (1 - eq) * 0.35; rot.x -= (1 - eq) * 0.9; rot.z += (1 - eq) * 0.3;
@@ -675,6 +718,15 @@ export class ViewModel {
       rig.root.updateMatrixWorld(true);
       const mp = rig.muzzle.getWorldPosition(_v);
       this.flash.position.copy(mp.applyMatrix4(_m.copy(rig.root.matrixWorld).invert()));
+      // Bloom out then collapse over the ~3 frames it lives; star always faces the eye.
+      const life = clamp(this.flashT / 0.05, 0, 1);
+      const k = Math.sin(Math.min(1, (1 - life) * 1.6 + 0.25) * Math.PI) * 0.6 + 0.4;
+      this.flashFront.scale.setScalar(k);
+      for (const c of this.flashCones) c.scale.set(1, k, this.flashLen * (0.7 + 0.3 * k));
+      this.flash.rotation.z = this.flashSpin;
+      _q.copy(rig.root.getWorldQuaternion(new THREE.Quaternion())).multiply(_q2.setFromEuler(this.flash.rotation)).invert();
+      this.flashFront.quaternion.copy(_q).multiply(this.viewCam.getWorldQuaternion(_q2));
+      this.flashFront.rotateZ(this.flashSpin);
       this.vmFill.intensity = 6;
     } else this.vmFill.intensity = 0;
 
@@ -707,8 +759,11 @@ export class ViewModel {
     // Show animated support arm, hide static left arm.
     this.reloadArms.visible = true;
     if (rig.leftArm) rig.leftArm.visible = false;
-    this.reloadMeshes.long.visible = !rig.sidearm;
-    this.reloadMeshes.side.visible = rig.sidearm;
+    // The cropped (forearm-only) mesh reads better with our closer camera for every platform: the
+    // long-gun mesh's upper-arm sleeve swings into frame during the mag swap.
+    this.reloadMeshes.long.visible = false;
+    this.reloadMeshes.side.visible = true;
+    if (this.reloadRightArmBone) this.reloadRightArmBone.scale.setScalar(1);
     this._alignReloadArms(rig);
     const action = this.reloadMixer.clipAction(clip);
     if (this._curClip !== clip) {
@@ -719,6 +774,19 @@ export class ViewModel {
     }
     action.time = progress * clip.duration;
     this.reloadMixer.update(0);
+    this.reloadArms.updateMatrixWorld(true);
+    // The authored clips swing the support hand far below the receiver (framed for a lower camera).
+    // Compress the hand's excursion around the magazine well so the whole mag swap stays on screen.
+    if (rig.magazine && rig.magHome) {
+      const hand0 = rig.sidearm ? this.leftPalm : this.leftGripAnchor;
+      const rootInv = _m2.copy(rig.root.matrixWorld).invert();
+      const hp = hand0.getWorldPosition(new THREE.Vector3()).applyMatrix4(rootInv);
+      const well = rig.magazine.parent === rig.root ? rig.magHome.p.clone()
+        : rig.magHome.p.clone().applyMatrix4(_m.copy(rig.root.matrixWorld).invert().multiply(rig.magazine.parent.matrixWorld));
+      const k = rig.tune.reloadReach ?? 0.5;
+      this.reloadArms.position.addScaledVector(hp.sub(well), -(1 - k));
+    }
+    if (this.reloadRightArmBone) this.reloadRightArmBone.scale.setScalar(1e-4);
     this.reloadArms.updateMatrixWorld(true);
     // Magazine follows the support hand between reach→stow (old mag) and acquire→seat (new mag).
     const ph = rig.phases;
@@ -773,6 +841,67 @@ export class ViewModel {
     const k = Math.sin(progress * Math.PI);
     rig.leftArm.position.copy(rig.leftArmHome).add(new THREE.Vector3(0.02, -0.12 * k, 0.25 * k));
   }
+
+  /** Root-local delta → static-arms LeftArm local delta (arms carry a Y-flip and presentation scale). */
+  _rootToArms(rig, v) {
+    const par = rig.leftArm.parent;
+    const m = relMatrix(par, rig.root, _m2);
+    const lin = new THREE.Matrix3().setFromMatrix4(m).invert();
+    return v.clone().applyMatrix3(lin);
+  }
+
+  /**
+   * Support-hand choreography for pump guns (rack and shell-by-shell loading). Returns the LeftArm
+   * offset (arms space) or null when the hand should rest on its grip.
+   */
+  _supportArmOffset(rig, w, dt, reloading) {
+    if (!rig.leftArm || !rig.arms) return null;
+    const sup = V(rig.pose.support);
+    if (w.state === 'pump') {
+      // Rack: snap back fast, drive forward a touch slower.
+      const t = clamp(w.stateTime / w.stateDur, 0, 1);
+      const back = t < 0.45 ? smoothstep(t / 0.45) : 1 - smoothstep((t - 0.45) / 0.45);
+      this._hideShell();
+      return this._rootToArms(rig, new THREE.Vector3(0, -0.01, 0.17).multiplyScalar(back));
+    }
+    if (reloading && rig.stats.tube) {
+      // Per shell: drop to the belt (0–.3), bring a shell up under the port (.3–.62), thumb it in (.62–.8), return.
+      const t = clamp(w.stateTime / w.stateDur, 0, 1);
+      const port = new THREE.Vector3(0.0, -0.36, -0.12);
+      const belt = new THREE.Vector3(0.12, -0.75, 0.15);
+      let p;
+      if (t < 0.3) p = sup.clone().lerp(belt, smoothstep(t / 0.3));
+      else if (t < 0.62) p = belt.clone().lerp(port, smoothstep((t - 0.3) / 0.32));
+      else if (t < 0.8) p = port.clone().add(new THREE.Vector3(0, 0.07, -0.05).multiplyScalar(smoothstep((t - 0.62) / 0.18)));
+      else p = port.clone().add(new THREE.Vector3(0, 0.07, -0.05)).lerp(sup, smoothstep((t - 0.8) / 0.2));
+      // Shell in the fingers while carried.
+      const carry = t >= 0.22 && t < 0.78 && w.ammo < rig.stats.mag;
+      this._showShell(rig, carry ? p.clone().add(new THREE.Vector3(0, 0.035, -0.02)) : null);
+      return this._rootToArms(rig, p.sub(sup));
+    }
+    this._hideShell();
+    return null;
+  }
+
+  _showShell(rig, posRoot) {
+    if (!this.shell) {
+      const g = new THREE.Group();
+      const hull = new THREE.Mesh(new THREE.CylinderGeometry(0.0115, 0.0115, 0.058, 12), new THREE.MeshStandardMaterial({ color: 0x7a1d18, roughness: 0.55 }));
+      const head = new THREE.Mesh(new THREE.CylinderGeometry(0.0125, 0.0125, 0.014, 12), M('brass'));
+      head.position.y = -0.03;
+      g.add(hull, head);
+      g.rotation.x = Math.PI / 2; // lies along the bore, brass to the rear
+      g.traverse((o) => { o.frustumCulled = false; });
+      this.shell = g;
+    }
+    if (!posRoot) { this.shell.visible = false; return; }
+    if (this.shell.parent !== rig.root) rig.root.add(this.shell);
+    this.shell.visible = true;
+    this.shell.position.copy(posRoot);
+    this.shell.scale.setScalar(1.7); // 12ga hull at the guns' ~1.75x model scale
+  }
+
+  _hideShell() { if (this.shell) this.shell.visible = false; }
 
   shellInsert() {
     // Shotgun: quick push of the support hand to the loading port.

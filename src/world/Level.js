@@ -15,7 +15,7 @@ const rnd = () => ((_seed = (_seed * 16807) % 2147483647) / 2147483647);
 const rand = (a, b) => a + rnd() * (b - a);
 
 /** HDRI used for sky + IBL (Poly Haven, CC0). Game.js loads it and passes it to setupEnvironment. */
-export const LEVEL_HDRI = 'hdr/bambanani_sunset_4k.hdr';
+export const LEVEL_HDRI = 'hdr/bambanani_sunset_2k.hdr';
 
 /**
  * Prop catalogue (Poly Haven CC0, optimised to .glb w/ webp textures). Each prop becomes one InstancedMesh per
@@ -1020,7 +1020,7 @@ export class Level {
     for (const [dx, dz, w, d] of [[0, -1.85, 3.8, 0.1], [-1.85, 0, 0.1, 3.8], [1.85, 0, 0.1, 3.8]]) this.box('wood', tx + dx, ty + 0.5, tz + dz, w, 1.0, d, { map: false });
     this.box('corrugated', tx, ty + 2.6, tz, 4.4, 0.12, 4.4, { nav: false, map: false });
     for (const [dx, dz] of [[-1.85, -1.85], [1.85, -1.85], [-1.85, 1.85], [1.85, 1.85]]) this.box('woodDark', tx + dx, ty + 1.3, tz + dz, 0.12, 2.6, 0.12, { map: false, nav: false });
-    this.stairs('woodDark', tx, tz + 2.0, 0, 1.2, ty, 6.2, 0, { open: true, tread: 'wood' });
+    this.stairs('woodDark', tx, tz + 1.95 + 6.2, Math.PI, 1.2, ty, 6.2, 0, { open: true, tread: 'wood', rail: true });
     this.prop('wallLamp', tx, tz - 1.7, Math.PI, { y: ty + 2.0, mount: true });
     // Dressing.
     this.tyres(-35.5, -11.5, 3); this.pallets(-47.5, 9.0, 0.6, 2); this.pallets(-36.2, 22.4, 1.1, 1);
@@ -1059,7 +1059,7 @@ export class Level {
     this.box('concrete', 9, 0.6, -24.5, 6, 1.2, 3);
     this.box('metalDark', 9, 1.18, -23.0, 6, 0.06, 0.08, { map: false, nav: false, collide: false });
     for (const xx of [6.8, 11.2]) this.box('black', xx, 0.75, -22.95, 0.5, 0.45, 0.12, { map: false, nav: false, collide: false });
-    this.stairs('concrete', 4.2, -24.5, -Math.PI / 2, 3, 1.2, 1.8, 0);
+    this.stairs('concrete', 4.2, -24.5, Math.PI / 2, 3, 1.2, 1.8, 0);
     // Street lights along the road + utility boxes, manholes, bins.
     for (const x of [-42, -18, 6, 30]) this.lampPost(x, -1.4, 0);
     for (const x of [-30, -6, 18]) this.lampPost(x, 9.4, Math.PI);
@@ -1176,7 +1176,7 @@ export class Level {
         merged.computeBoundingSphere();
         const mesh = new THREE.Mesh(merged, mat);
         mesh.castShadow = cast && !mat.transparent;
-        mesh.receiveShadow = !mat.transparent || mat === this.mats.get('leakDecal') || mat === this.mats.get('roadLines');
+        mesh.receiveShadow = !mat.transparent || mat === this.mats.get('leakDecal');
         mesh.matrixAutoUpdate = false;
         mesh.updateMatrix();
         mesh.name = 'lvl_' + (mat.name || 'mat');
@@ -1193,13 +1193,16 @@ export class Level {
     // Re-orient the HDRI so the low sun sits in the south-south-west (rakes across the courtyard and
     // pours through the warehouse's south windows).
     const targetPhi = Math.atan2(0.89, -0.45);
+    const _t0 = performance.now();
     const info = orientHDR(hdr, targetPhi);
+    console.warn('TIMING orient', (performance.now() - _t0).toFixed(0));
     this.hdrInfo = info;
     // IBL from a sun-clamped copy (the sun is a real shadowed light; leaving it in the IBL leaks light indoors).
     const pmrem = new THREE.PMREMGenerator(r);
     const iblSrc = clampedHDR(hdr, 6);
     const env = pmrem.fromEquirectangular(iblSrc).texture;
     iblSrc.dispose(); pmrem.dispose();
+    console.warn('TIMING ibl', (performance.now() - _t0).toFixed(0), JSON.stringify({ el: info.el / DEG, phi: info.phi / DEG, hz: info.horizon.toArray(), shz: info.sunHorizon.toArray(), zen: info.zenith.toArray(), sc: info.sunColor.toArray(), peak: info.peak }));
     scene.environment = env;
     scene.environmentIntensity = 0.75;
     // Grounded skybox: HDR projected onto a dome so its field horizon reads as real ground.

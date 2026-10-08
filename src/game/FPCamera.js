@@ -64,15 +64,16 @@ export class FPCamera {
     const shP = noise1(t) * 2.5 * DEG * sh, shY = noise1(t + 100) * 2.5 * DEG * sh, shR = noise1(t + 200) * 2.5 * DEG * sh;
 
     // Roll: lean + slide + strafe tilt.
-    const right = player.right(new THREE.Vector3());
+    const right = player.right(this._right || (this._right = new THREE.Vector3()));
     const lateral = player.velocity.dot(right);
     let rollT = -player.lean * MOVE.leanAngle - clamp(lateral / 6, -1, 1) * 0.6 * DEG;
     if (player.sliding) rollT += 4 * DEG * (player.moveIntent.x >= 0 ? -1 : 1);
     if (player.mantle) rollT += Math.sin(player.mantle.t * Math.PI) * 3 * DEG;
+    if (!player.alive) rollT = 22 * DEG; // death cam: slump to the side
     this.roll = damp(this.roll, rollT, 9, dt);
 
     // Position.
-    const eye = player.position.clone();
+    const eye = (this._eye || (this._eye = new THREE.Vector3())).copy(player.position);
     eye.y += player.eyeHeight.x + this.dip.x * 0.1 + bobY + (player.stepOffset || 0);
     eye.addScaledVector(right, player.lean * MOVE.leanOffset + bobX);
     // When leaning, the head also drops a little.

@@ -28,10 +28,10 @@ export class DistantBattle {
 
     this._buildGlow();
     const glow = glowTex(), smoke = smokeAtlas();
-    this.flashes = new AmbParticles(this.scene, { max: 64, texture: glow, additive: true, fogScale: 0.3, nearFade: 0, renderOrder: 4 });
-    this.tracers = new AmbParticles(this.scene, { max: 700, texture: glow, additive: true, stretch: 0.055, fogScale: 0.28, nearFade: 0, renderOrder: 5 });
-    this.fireballs = new AmbParticles(this.scene, { max: 120, texture: smoke, atlas: 4, additive: true, fogScale: 0.35, nearFade: 0, renderOrder: 5 });
-    this.smoke = new AmbParticles(this.scene, { max: 900, texture: smoke, atlas: 4, lit: true, sort: true, fogScale: 0.42, nearFade: 0, renderOrder: 3 });
+    this.flashes = new AmbParticles(this.scene, { max: 64, texture: glow, additive: true, fogScale: 0.17, nearFade: 0, renderOrder: 4 });
+    this.tracers = new AmbParticles(this.scene, { max: 700, texture: glow, additive: true, stretch: 0.055, fogScale: 0.16, nearFade: 0, renderOrder: 5 });
+    this.fireballs = new AmbParticles(this.scene, { max: 120, texture: smoke, atlas: 4, additive: true, fogScale: 0.2, nearFade: 0, renderOrder: 5 });
+    this.smoke = new AmbParticles(this.scene, { max: 900, texture: smoke, atlas: 4, lit: true, sort: true, fogScale: 0.25, nearFade: 0, renderOrder: 3 });
 
     // Smoke columns from burning buildings on the skyline.
     this.columns = [];
@@ -310,7 +310,7 @@ export class DistantBattle {
       }
       // Fog-out the sprites with distance (sprites ignore fog here so we control it).
       const fog = this.scene.fog, dist = p.distanceTo(ctx.camera.position);
-      const fk = fog?.density ? Math.exp(-Math.pow(fog.density * 0.32 * dist, 2)) : 1;
+      const fk = fog?.density ? Math.exp(-Math.pow(fog.density * 0.2 * dist, 2)) : 1;
       f.core.material.opacity = fk; f.halo.material.opacity *= fk;
       if (b > bv) { bv = b; brightest = f; }
     }

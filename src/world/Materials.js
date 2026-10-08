@@ -221,7 +221,7 @@ export class Materials {
 
   async load() {
     const sets = [...new Set(Object.values(DEFS).map((d) => d.set))];
-    const alphaSets = ['Fence006', 'MetalWalkway013', 'Leaking003', 'RoadLines007'];
+    const alphaSets = ['Fence006', 'MetalWalkway013', 'Leaking003'];
     const alpha = {};
     await Promise.all([
       ...sets.map((s) => this.assets.materialSet(s)),
@@ -264,7 +264,7 @@ export class Materials {
     this.mats.grating.name = 'grating';
     this.applyUnify(this.mats.grating, { grime: 0.3, wet: 0.2, rmin: 0.3, sat: 0.9, contact: 0, streaks: 0, alphaOK: true });
     this.surfaceOf.set(this.mats.grating, 'metal');
-    // Decals: rain/leak streaks on walls, worn road lines. Depth-tested, no depth write, polygon offset.
+    // Decal: rain/leak streaks on walls. Depth-tested, no depth write, polygon offset.
     const ls = alpha.Leaking003;
     ls.map.wrapS = ls.map.wrapT = THREE.ClampToEdgeWrapping;
     this.mats.leakDecal = new THREE.MeshStandardMaterial({
@@ -272,13 +272,6 @@ export class Materials {
       depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
     });
     this.mats.leakDecal.name = 'leakDecal';
-    const rl = alpha.RoadLines007;
-    this.mats.roadLines = new THREE.MeshStandardMaterial({
-      map: rl.map, roughness: 0.55, metalness: 0, color: 0xcfc6ae, transparent: true, opacity: 0.85,
-      depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
-    });
-    this.mats.roadLines.name = 'roadLines';
-    this.applyUnify(this.mats.roadLines, { grime: 0.5, wet: 1, puddle: 1, rmin: 0.35, sat: 0.9, contact: 0, streaks: 0, alphaOK: true });
     // Window glass: dirty, slightly reflective, see-through.
     this.mats.glass = new THREE.MeshPhysicalMaterial({
       color: 0x6f7f84, roughness: 0.12, metalness: 0, transparent: true, opacity: 0.32, envMapIntensity: 1.6,

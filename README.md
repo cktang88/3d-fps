@@ -80,7 +80,15 @@ Code is original except where noted. Third-party assets:
   and edits from operation-steel-tide.
 - **Footsteps / impacts**: Kenney Impact Sounds — CC0.
 - **PBR textures**: ambientCG and Poly Haven — CC0 (via Tiddybub/3d-assets and operation-steel-tide).
-- **Props** (crates, barrels, barriers, boxes): Poly Haven — CC0. **HDRI**: Poly Haven "abandoned_parking" — CC0.
+- **Props**: Poly Haven — CC0 (old_military_crate, concrete_road_barrier(_02), Barrel_01/02, barrel_03, ammo_box,
+  cardboard_box_01, old_tyre, exterior_aircon_unit, street_lamp_01, security_light, utility_box_01/02, metal_trash_can,
+  water_manhole_cover, covered_car, trashbag, metal_jerrycan_green, propane_tank, portable_generator,
+  hanging_industrial_lamp, mounted_fluorescent_lights, modular_airduct_circular_01, modular_industrial_pipes_01,
+  wooden_crate_02, cement_bag, plastic_crate_03, rusted_wheel_rim_01, WetFloorSign_01, barrel_stove), simplified and
+  re-encoded (webp) with gltf-transform.
+- **HDRI**: Poly Haven "Bambanani Sunset" (Dimitrios Savva, Jarod Guest) — CC0.
+- **Level textures added**: ambientCG Ground110, Fence006 (chain-link), MetalWalkway013 (grating), Leaking003 (wall
+  streaks) — CC0.
 - Design references: Mugen87/dive & Yuka (bot architecture), Quake/Source movement, CS/Valorant recoil design,
   F.E.A.R. & Killzone bot AI talks.
 - Fonts: Rajdhani, Barlow Condensed (SIL OFL) via Fontsource.

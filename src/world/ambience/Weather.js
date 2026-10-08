@@ -48,6 +48,7 @@ export class Weather {
     this._rainT = rand(20, 40);
     this._buildRain([500, 2200, 4000, 6000][q]);
     this._buildMotes([150, 400, 700, 1000][q], [20, 40, 70, 90][q]);
+    if (q >= 1) this._buildSplashes([0, 250, 450, 650][q]);
     this._buildLightning();
     this.nextStrike = rand(9, 16);
   }
@@ -183,6 +184,64 @@ export class Weather {
     this.emberMat = mk(emberCount, true);
   }
 
+  /** Rain splashes: tiny crowns popping on the ground around the player (GPU-cycled, no CPU cost). */
+  _buildSplashes(count) {
+    const geo = new THREE.InstancedBufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0], 3));
+    geo.setIndex([0, 1, 2, 0, 2, 3]);
+    const seeds = new Float32Array(count * 4);
+    for (let i = 0; i < count * 4; i++) seeds[i] = Math.random();
+    geo.setAttribute('iSeed', new THREE.InstancedBufferAttribute(seeds, 4));
+    geo.instanceCount = count;
+    this.splashMat = new THREE.ShaderMaterial({
+      uniforms: {
+        camPos: { value: new THREE.Vector3() }, boxSize: { value: new THREE.Vector3(18, 1, 18) }, time: { value: 0 },
+        ...boxUniforms(this.game.level), amount: { value: 0.6 },
+        lightCol: { value: new THREE.Color() }, sunCol: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(0, 1, 0) },
+        fogColor: { value: new THREE.Color() }, fogDensity: { value: 0 }, fogScale: { value: 1 },
+      },
+      vertexShader: /* glsl */`
+        attribute vec4 iSeed;
+        uniform float amount;
+        ${WRAP}
+        varying vec2 vUv; varying float vA; varying float vPh; varying float vDepth;
+        float h1(float n) { return fract(sin(n) * 43758.5453); }
+        void main() {
+          float rate = 1.6 + iSeed.w;
+          float cyc = time * rate + iSeed.z * 10.0;
+          float ph = fract(cyc), id = floor(cyc);
+          vec2 r = vec2(h1(id * 12.9 + iSeed.x * 78.2), h1(id * 4.1 + iSeed.y * 37.7));
+          vec3 lo = camPos - boxSize * 0.5;
+          vec3 p = vec3(lo.x + r.x * boxSize.x, 0.025, lo.z + r.y * boxSize.z);
+          vec3 toCam = cameraPosition - p; toCam.y = 0.0;
+          vec3 right = normalize(vec3(toCam.z, 0.0, -toCam.x) + vec3(1e-5));
+          float s = 0.05 + 0.07 * ph;
+          vec3 wp = p + right * position.x * s * 1.6 + vec3(0.0, position.y * s * (1.0 - ph) * 1.4, 0.0);
+          bool hide = iSeed.w > amount || indoor(p + vec3(0.0, 0.5, 0.0)) > 0.5 || ph > 0.35;
+          vec4 mv = viewMatrix * vec4(wp, 1.0);
+          gl_Position = hide ? vec4(2.0, 2.0, 2.0, 1.0) : projectionMatrix * mv;
+          vUv = vec2(position.x + 0.5, position.y); vPh = ph / 0.35; vDepth = -mv.z;
+          vA = 1.0 - smoothstep(5.0, 9.0, length(toCam));
+        }`,
+      fragmentShader: /* glsl */`
+        uniform vec3 lightCol; uniform vec3 sunCol;
+        ${FOG}
+        varying vec2 vUv; varying float vA; varying float vPh; varying float vDepth;
+        void main() {
+          // Crown: two droplet arcs rising from a central point, fading as it ends.
+          float x = vUv.x * 2.0 - 1.0, y = vUv.y;
+          float crown = smoothstep(0.35, 0.0, abs(abs(x) - (0.25 + 0.5 * vPh) * (1.0 - y * 0.4)) * 4.0 + y * 0.6);
+          float a = crown * vA * (1.0 - vPh) * 0.55;
+          if (a < 0.003) discard;
+          gl_FragColor = vec4(lightCol * 1.2 + sunCol * 0.4, a * (1.0 - a_fog(vDepth)));
+        }`,
+      transparent: true, depthWrite: false,
+    });
+    const m = new THREE.Mesh(geo, this.splashMat);
+    m.frustumCulled = false; m.renderOrder = 13;
+    this.scene.add(m);
+  }
+
   _buildLightning() {
     this.lDir = new THREE.DirectionalLight(0xc8d4ff, 0);
     this.lDir.castShadow = false;
@@ -263,6 +322,12 @@ export class Weather {
       syncFog(m, this.scene);
     }
 
+    if (this.splashMat) {
+      const u = this.splashMat.uniforms;
+      u.time.value = t; u.camPos.value.copy(cam); u.amount.value = this.rainAmount;
+      u.lightCol.value.copy(L.ambient); u.sunCol.value.copy(L.sun);
+      syncFog(this.splashMat, this.scene);
+    }
     // Lightning.
     if ((this.nextStrike -= dt) <= 0) { this.strike(); this.nextStrike = rand(16, 42); }
     const f = this.flash;

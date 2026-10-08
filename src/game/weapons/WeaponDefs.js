@@ -93,8 +93,9 @@ export const WEAPONS = {
     recoil: pattern(20, 0.7, [0.15, -0.2, 0.2]), hJitter: 0.22, kick: 0.6, mobility: 0.98, adsMove: 0.6,
     velocity: 290, penetration: 2.2, closedBolt: true, integralSuppressor: true, sample: 'vss',
     sound: { punch: 150, crack: 1300, body: 0.9, tail: 0.2 },
-    attachments: ['irons', 'reddot', 'holo', 'acog', 'vgrip', 'agrip', 'extmag', 'fastmag', 'laser'],
-    defaults: { optic: 'acog' },
+    // Fixed PSO-style scope (authored into the model): optic slot only selects its magnification.
+    attachments: ['acog', 'vgrip', 'agrip', 'extmag', 'fastmag', 'laser'],
+    defaults: { optic: 'acog' }, fixedOptic: 'acog',
   },
   m24: {
     name: 'M24 SWS', cls: 'Marksman Rifle', slot: 'primary', model: 'm24', pose: 'm24',
@@ -104,8 +105,8 @@ export const WEAPONS = {
     recoil: pattern(5, 4.5, [0.3, -0.25]), hJitter: 0.4, kick: 3.0, mobility: 0.92, adsMove: 0.5,
     velocity: 850, penetration: 3.5, closedBolt: false, sample: 'm24',
     sound: { punch: 85, crack: 950, body: 2.0, tail: 0.6 },
-    attachments: ['irons', 'reddot', 'acog', 'sniper', 'suppressor', 'brake', 'bipod', 'extmag', 'laser'],
-    defaults: { optic: 'acog' },
+    attachments: ['acog', 'sniper', 'suppressor', 'brake', 'bipod', 'extmag', 'laser'],
+    defaults: { optic: 'acog' }, fixedOptic: 'acog',
   },
   awm: {
     name: 'AWM .338', cls: 'Sniper Rifle', slot: 'primary', model: 'awm', pose: 'awm',
@@ -116,7 +117,7 @@ export const WEAPONS = {
     velocity: 940, penetration: 4, closedBolt: false, sample: 'awm',
     sound: { punch: 70, crack: 850, body: 2.4, tail: 0.8 },
     attachments: ['sniper', 'acog', 'suppressor', 'brake', 'bipod', 'extmag'],
-    defaults: { optic: 'sniper', muzzle: 'brake', underbarrel: 'bipod' },
+    defaults: { optic: 'sniper', muzzle: 'brake', underbarrel: 'bipod' }, fixedOptic: 'sniper',
     sway: 0.5,
   },
   rpk: {
@@ -180,7 +181,8 @@ export function computeStats(id, loadout) {
   s.zoomLevel = ATTACHMENTS.irons.zoom; s.reticle = null; s.scope = false; s.overlay = false;
   s.suppressed = !!base.integralSuppressor; s.flash = base.integralSuppressor ? 0.15 : 1; s.beam = false; s.glint = false;
   for (const slot of SLOTS) {
-    const aid = loadout?.[slot];
+    let aid = loadout?.[slot];
+    if (slot === 'optic' && base.fixedOptic && (!aid || !base.attachments.includes(aid))) aid = base.fixedOptic;
     if (!aid || !base.attachments.includes(aid)) continue;
     const a = ATTACHMENTS[aid];
     s.att[slot] = aid;

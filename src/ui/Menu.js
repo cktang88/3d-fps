@@ -160,7 +160,7 @@ export class Menu {
     };
     const d = DIFFICULTY[this.s.botDifficulty]?.label ?? '';
     return `<div class="card hero"><h3>Loadout</h3><div class="loadout">${wcard(lo.primary, 'PRIMARY')}${wcard(lo.secondary, 'SECONDARY')}
-        <div class="wcard eq"><div class="slotlbl">LETHAL</div><div class="wn">Frag ×2</div><div class="wc">Cookable · 3.2s fuse</div><div class="atts"><span>Killstreak · UAV at 4</span></div></div></div></div>
+        <div class="wcard eq"><div class="slotlbl">LETHAL</div><div class="wn">Frag ×2</div><div class="wc">3.2s fuse · lethal radius 3.5m</div><div class="atts"><span>Killstreak · UAV at 4</span></div></div></div></div>
       <div class="card"><h3>Briefing</h3><div class="brief">
         <div><b>Ironline Depot</b><span>Warehouse catwalks, a two-storey office, the container yard and the western ruins. Long sightlines down the road; close quarters inside.</span></div>
         <div><b>Bots · ${esc(d)}</b><span>${this.s.botCount} per team. They hear gunfire and footsteps, flank, throw grenades and use cover.</span></div>

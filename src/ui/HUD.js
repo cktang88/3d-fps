@@ -314,8 +314,8 @@ export class HUD {
         this.el.reserve.textContent = w.reserve;
         const ratio = w.ammo / w.stats.mag;
         this.el.mag.className = 'mag' + (w.ammo === 0 ? ' empty' : ratio <= 0.25 ? ' low' : '');
-        if (prevAmmo !== undefined && w.ammo > prevAmmo) { this.el.mag.classList.add('refill'); }
-        this._prevAmmo = w.ammo;
+        if (prevAmmo !== undefined && this._prevWid === w.id && w.ammo > prevAmmo + 1) { void this.el.mag.offsetWidth; this.el.mag.classList.add('refill'); }
+        this._prevAmmo = w.ammo; this._prevWid = w.id;
         const m = w.mode;
         const pips = m === 'auto' ? 3 : m === 'burst' ? 2 : 1;
         this.el.mode.innerHTML = `${m.toUpperCase()}<span class="pips">${'<b></b>'.repeat(pips)}</span>`;

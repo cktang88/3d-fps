@@ -16,7 +16,7 @@ function rotorDiscMat(blades, alpha) {
         float a = atan(vP.y, vP.x) - rot;
         // Motion-blurred blades: sharp leading edge, smeared trailing wake.
         float ph = fract(a * ${blades.toFixed(1)} / 6.2831853);
-        float blade = exp(-ph * 9.0) * 0.85 + 0.12;
+        float blade = exp(-ph * 7.0) * 0.8 + 0.2;
         float disc = smoothstep(1.0, 0.92, r) * smoothstep(0.06, 0.16, r);
         float tipRing = smoothstep(0.88, 0.97, r) * (1.0 - smoothstep(0.97, 1.0, r)) * 0.4;
         gl_FragColor = vec4(tint, (blade * disc + tipRing) * alpha);
@@ -61,7 +61,7 @@ function buildHeli(unify) {
   add(new THREE.CylinderGeometry(0.1, 0.12, 0.6, 8), dark, 0, 1.6, -0.2);
   add(new THREE.CylinderGeometry(0.25, 0.25, 0.14, 10), dark, 0, 1.9, -0.2);
   // Rotor discs + two visible blades (thin) for silhouette when edge-on.
-  const disc = new THREE.Mesh(new THREE.CircleGeometry(7.2, 48), rotorDiscMat(2, 0.55));
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(7.2, 48), rotorDiscMat(2, 0.7));
   disc.rotation.x = -Math.PI / 2; disc.position.set(0, 1.95, -0.2); g.add(disc);
   const tdisc = new THREE.Mesh(new THREE.CircleGeometry(1.25, 24), rotorDiscMat(2, 0.6));
   tdisc.rotation.y = Math.PI / 2; tdisc.position.set(0.18, 1.3, -7.75); g.add(tdisc);

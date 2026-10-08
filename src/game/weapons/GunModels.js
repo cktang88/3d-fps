@@ -38,9 +38,10 @@ export const RELOAD_PHASES = {
  * primary/support override the POSES grips (WeaponRoot-local).
  */
 export const VM_TUNE = {
-  default: { scale: 0.68, hipAnchor: [0.21, -0.12, -0.4], hipRot: [0.03, 0.08, -0.15], opticScale: 0.72 },
+  default: { scale: 0.68, hipAnchor: [0.21, -0.12, -0.4], hipRot: [0.03, 0.08, -0.15], opticScale: 0.72,
+    reloadPos: [-0.06, 0.06, -0.03], reloadRot: [-0.08, 0.18, -0.35] },
   m4a1: { primary: [0.0, -0.17, 0.215], opticScale: 1 },
-  ak74: { scale: 0.82, opticScale: 0.62, ironRelief: 0.34 },
+  ak74: { scale: 0.82, opticScale: 0.62, ironRelief: 0.34, ironRear: [0, 0.076, -0.53], ironFront: [0, 0.083, -1.08] },
   scarl: { hipOffset: [0, -0.025, -0.04] },
   mp5a5: { opticScale: 0.62, hipOffset: [-0.03, 0.025, -0.02] },
   // Fixed-scope precision platforms: the authored scope glass defines the optical axis. Their
@@ -48,41 +49,74 @@ export const VM_TUNE = {
   vss: { integratedScope: true, muzzle: [0, 0.05, -1.26], magOffset: [0, 0.175, -0.03], chargingOffset: [0, 0, -0.04] },
   m24: { integratedScope: true, muzzle: [0, 0.08, -1.42], magOffset: [0, 0.125, 0], chargingOffset: [0, 0, -0.12], primary: [-0.005, -0.08, -0.07] },
   awm: { integratedScope: true, muzzle: [0, 0.165, -1.68], magOffset: [0, 0.19, 0], chargingOffset: [0, 0.02, -0.1], primary: [0, -0.05, -0.15] },
-  shotgun: { scale: 0.6, hipOffset: [0.03, -0.09, 0], ironRear: [0, 0.15, -0.05], ironFront: [0, 0.07, -1.17], ironRelief: 0.3 },
-  p226: { scale: 0.85, hipAnchor: [0.09, -0.08, -0.46], hipRot: [0.08, 0.1, -0.15], muzzle: [0, 0.09, -0.08], ironRear: [0, 0.128, 0.3], ironFront: [0, 0.128, -0.05] },
-  m1911: { scale: 0.85, hipAnchor: [0.09, -0.08, -0.46], hipRot: [0.08, 0.1, -0.15], muzzle: [0, 0.09, -0.08], ironRear: [0, 0.13, 0.3], ironFront: [0, 0.13, -0.05] },
+  shotgun: { reloadPos: [-0.05, 0.07, -0.02], reloadRot: [0.1, 0.12, 0.42], scale: 0.6, hipOffset: [0.03, -0.09, 0], ironRear: [0, 0.15, -0.05], ironFront: [0, 0.07, -1.17], ironRelief: 0.3 },
+  p226: { reloadPos: [-0.02, 0.03, 0], reloadRot: [0.12, 0.08, 0.22], scale: 0.85, hipAnchor: [0.09, -0.08, -0.46], hipRot: [0.08, 0.1, -0.15], muzzle: [0, 0.09, -0.08], ironRear: [0, 0.128, 0.3], ironFront: [0, 0.128, -0.05] },
+  m1911: { reloadPos: [-0.02, 0.03, 0], reloadRot: [0.12, 0.08, 0.22], scale: 0.85, hipAnchor: [0.09, -0.08, -0.46], hipRot: [0.08, 0.1, -0.15], muzzle: [0, 0.09, -0.08], ironRear: [0, 0.13, 0.3], ironFront: [0, 0.13, -0.05] },
 };
 export const vmTune = (key) => ({ ...VM_TUNE.default, ...(VM_TUNE[key] || {}) });
 
 let _grime = null;
 const grime = () => (_grime ||= grimeTex(256, 77));
 
-/** Gun material with object-space triplanar micro-variation (wear, fingerprints, roughness breakup). */
-export function gunMaterial(color, metalness, roughness, opts = {}) {
-  const m = new THREE.MeshStandardMaterial({ color, metalness, roughness, envMapIntensity: opts.env ?? 1.0 });
+/**
+ * Shared first-person "look" patch (the viewmodel counterpart of Materials.applyUnify — that pass works
+ * in world space, which is meaningless for a camera-space viewmodel, so this one runs in object space):
+ *  - albedo normalised into a common PBR band and saturation pulled to the palette,
+ *  - roughness remapped into [rmin, 1] with object-space triplanar breakup (fingerprints / handling),
+ *  - edge-ish wear (bright worn metal) driven by the same noise,
+ * so the authored-texture guns (M4, AK), the flat-shaded steel-tide guns, optics and arms all read at
+ * one fidelity. Idempotent; chains any existing onBeforeCompile.
+ */
+export function applyGunLook(m, opts = {}) {
+  if (!m || m.userData.gunLook || !(m.isMeshStandardMaterial || m.isMeshPhysicalMaterial)) return m;
   const g = grime();
-  m.onBeforeCompile = (sh) => {
+  const wear = opts.wear ?? 0.5, sat = opts.sat ?? 0.88, rmin = opts.rmin ?? 0.28, lumMax = opts.lumMax ?? 0.55;
+  const micro = opts.micro ?? 1;
+  m.userData.gunLook = true;
+  if (m.normalMap && m.normalScale) {
+    const k = THREE.MathUtils.clamp(Math.abs(m.normalScale.x), 0.6, 1.25);
+    m.normalScale.set(k * Math.sign(m.normalScale.x || 1), k * Math.sign(m.normalScale.y || 1));
+  }
+  const prev = m.onBeforeCompile;
+  const prevKey = m.customProgramCacheKey?.bind(m);
+  m.onBeforeCompile = (sh, r) => {
+    prev?.call(m, sh, r);
     sh.uniforms.gunGrime = { value: g };
-    sh.uniforms.wearAmt = { value: opts.wear ?? 0.5 };
+    sh.uniforms.gunLook = { value: new THREE.Vector4(wear, sat, rmin, lumMax) };
+    sh.uniforms.gunMicro = { value: micro };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vObjPos; varying vec3 vObjN;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObjPos = position; vObjN = normal;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform sampler2D gunGrime; uniform float wearAmt; varying vec3 vObjPos; varying vec3 vObjN;\n' +
+      .replace('#include <common>', '#include <common>\nuniform sampler2D gunGrime; uniform vec4 gunLook; uniform float gunMicro; varying vec3 vObjPos; varying vec3 vObjN;\n' +
         'float tri(vec3 p, vec3 n, float s){ vec3 w = abs(n); w /= (w.x+w.y+w.z+1e-4); return texture2D(gunGrime, p.yz*s).r*w.x + texture2D(gunGrime, p.xz*s).r*w.y + texture2D(gunGrime, p.xy*s).r*w.z; }')
       .replace('#include <map_fragment>', `#include <map_fragment>
         float gA = tri(vObjPos, vObjN, 6.0);
         float gB = tri(vObjPos, vObjN, 23.0);
-        diffuseColor.rgb *= 0.9 + 0.2 * gA;
-        float wearMask = smoothstep(0.62, 0.8, gB) * wearAmt;`)
+        {
+          float l = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+          diffuseColor.rgb = mix(vec3(l), diffuseColor.rgb, gunLook.y);
+          diffuseColor.rgb *= min(1.0, gunLook.w / max(l, 1e-3));
+          diffuseColor.rgb = max(diffuseColor.rgb, vec3(0.018));
+          diffuseColor.rgb *= mix(1.0, 0.9 + 0.2 * gA, gunMicro);
+        }
+        float wearMask = smoothstep(0.62, 0.8, gB) * gunLook.x;`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        roughnessFactor = clamp(roughnessFactor * (0.75 + 0.5 * gA) - wearMask * 0.25, 0.08, 1.0);`)
+        roughnessFactor = clamp(roughnessFactor * mix(1.0, 0.75 + 0.5 * gA, gunMicro) - wearMask * 0.25, gunLook.z, 1.0);`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
-        metalnessFactor = clamp(metalnessFactor + wearMask * 0.4, 0.0, 1.0);
-        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.42, 0.44), wearMask * 0.35);`);
+        float metalWear = wearMask * step(0.3, metalnessFactor);
+        metalnessFactor = clamp(metalnessFactor + metalWear * 0.4, 0.0, 1.0);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.42, 0.44), metalWear * 0.35);`);
   };
-  m.customProgramCacheKey = () => 'gunmat';
+  m.customProgramCacheKey = () => (prevKey ? prevKey() : '') + '|gunlook';
+  m.needsUpdate = true;
   return m;
+}
+
+/** Gun material: palette colour + the shared first-person look. */
+export function gunMaterial(color, metalness, roughness, opts = {}) {
+  const m = new THREE.MeshStandardMaterial({ color, metalness, roughness, envMapIntensity: opts.env ?? 1.0 });
+  return applyGunLook(m, { wear: opts.wear ?? 0.5 });
 }
 
 const LIB = {
@@ -108,6 +142,8 @@ function unifyMaterial(mat, modelKey) {
   if (mat.map || mat.normalMap) {
     mat.envMapIntensity = 1.0;
     if (n.includes('wood')) mat.roughness = Math.max(mat.roughness, 0.45);
+    // Authored PBR (M4 / AK): same normalisation, lighter procedural wear (they carry their own).
+    applyGunLook(mat, { wear: modelKey === 'shotgun' ? 0.45 : 0.25, micro: 0.6, rmin: n.includes('wood') ? 0.42 : 0.3 });
     return mat;
   }
   if (n.includes('glass')) return M('glass');
@@ -140,6 +176,13 @@ export class GunModels {
     // Normalise the shotgun (third-party model, different axes/scale) into the shared contract:
     // muzzle toward −Z, ~1.75 units long (same Godot-space scale as the steel-tide rifles).
     if (this.src.shotgun) this.src.shotgun = this.normaliseShotgun(this.src.shotgun);
+    // Arms share the look (no metal wear; cloth / leather roughness floor).
+    for (const a of [this.armsRifle, this.armsPistol, this.armsReload]) {
+      a?.scene.traverse((o) => {
+        if (!o.isMesh) return;
+        for (const m of Array.isArray(o.material) ? o.material : [o.material]) applyGunLook(m, { wear: 0, micro: 0.5, rmin: 0.5, sat: 0.85, lumMax: 0.45 });
+      });
+    }
     for (const [k, s] of Object.entries(this.src)) {
       s.traverse((o) => {
         if (o.isMesh) {

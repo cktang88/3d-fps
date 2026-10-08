@@ -491,8 +491,8 @@ export class Bot {
     const g = this.game;
     const w = this.weapon;
     this.lastFiredTime = g.time;
-    const muzzle = this.model ? this.model.muzzleWorld(this) : this.eye;
     const eye = this.eye;
+    const muzzle = this.model?.muzzleWorld(this) ?? eye;
     const aimDir = new THREE.Vector3(
       -Math.sin(this.aimYaw) * Math.cos(this.aimPitch), Math.sin(this.aimPitch), -Math.cos(this.aimYaw) * Math.cos(this.aimPitch));
     // Recoil the bot fails to control drifts aim upward.

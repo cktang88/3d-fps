@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { AmbParticles } from './AmbParticles.js';
-import { NOISE, FOG, syncFog } from './glsl.js';
-import { smokeAtlas, glowTex, scorchTex } from '../../render/ProcTex.js';
+import { syncFog } from './glsl.js';
+import { makeFlameMaterial } from './flame.js';
+import { smokeAtlas, glowTex } from '../../render/ProcTex.js';
 import { rand } from '../../core/MathUtil.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -58,6 +59,29 @@ function emberTex() {
   return t;
 }
 
+/** Soft, irregular burn mark that fades fully to transparent at the edges (no visible quad). */
+function scorchMark() {
+  const S = 256, c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d');
+  const img = g.createImageData(S, S);
+  const blobs = [];
+  for (let i = 0; i < 14; i++) blobs.push([rand(0.3, 0.7) * S, rand(0.3, 0.7) * S, rand(0.12, 0.3) * S]);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    let v = 0;
+    for (const [bx, by, br] of blobs) { const d = Math.hypot(x - bx, y - by) / br; v = Math.max(v, 1 - d); }
+    const r = Math.hypot(x - S / 2, y - S / 2) / (S / 2);
+    const n = Math.sin(x * 0.21 + Math.sin(y * 0.13) * 3) * 0.5 + 0.5;
+    let a = Math.min(1, v * 1.6) * (1 - Math.min(1, r) ** 2) * (0.75 + 0.25 * n);
+    a = Math.max(0, Math.min(1, a));
+    const i = (y * S + x) * 4;
+    const shade = 12 + 18 * n * (1 - a);
+    img.data[i] = shade; img.data[i + 1] = shade * 0.9; img.data[i + 2] = shade * 0.85; img.data[i + 3] = a * 235;
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 /**
  * Burning wrecks inside the map: a burnt-out sedan (SE yard), a burn barrel (courtyard) and a debris
  * fire in the collapsed house (west ruins). Shader flames on cylindrical billboards (one draw call),
@@ -106,7 +130,7 @@ export class Fires {
     this.mats = {
       burnt: new THREE.MeshStandardMaterial({
         name: 'amb_burnt_metal', map: diff, normalMap: nor, roughnessMap: arm, metalnessMap: arm,
-        color: new THREE.Color(0.42, 0.36, 0.33), roughness: 0.95, metalness: 0.85, normalScale: new THREE.Vector2(1.2, 1.2),
+        color: new THREE.Color(0.62, 0.52, 0.47), roughness: 1, metalness: 0.3, normalScale: new THREE.Vector2(1.3, 1.3),
       }),
       char: new THREE.MeshStandardMaterial({
         name: 'amb_char', map: diff, normalMap: nor, color: new THREE.Color(0.075, 0.065, 0.06), roughness: 0.92, metalness: 0.15,
@@ -117,7 +141,7 @@ export class Fires {
         emissive: new THREE.Color(1, 0.4, 0.12), emissiveMap: this.ember, emissiveIntensity: 2.2,
       }),
       scorch: new THREE.MeshStandardMaterial({
-        name: 'amb_scorch', map: scorchTex(), transparent: true, depthWrite: false, polygonOffset: true,
+        name: 'amb_scorch', map: scorchMark(), transparent: true, depthWrite: false, polygonOffset: true,
         polygonOffsetFactor: -6, polygonOffsetUnits: -6, roughness: 0.55, color: new THREE.Color(0.85, 0.8, 0.78),
       }),
     };
@@ -185,86 +209,115 @@ export class Fires {
 
   _buildCar(root, d, local, site) {
     const ext = [], int = [];
-    // Floor pan + sills (sits on the rims: tyres burnt away).
-    ext.push(place(uvBox(4.3, 0.12, 1.66), 0, 0.26, 0));
-    // Lower side panels with wheel arches; full-length upper belt.
-    for (const s of [-1, 1]) {
-      const z = s * 0.86;
-      ext.push(place(uvBox(1.15, 0.3, 0.05), -0.05, 0.42, z, 0, 0, 0));
-      ext.push(place(uvBox(0.45, 0.3, 0.05), 1.98, 0.42, z));
-      ext.push(place(uvBox(0.5, 0.3, 0.05), -1.96, 0.42, z));
-      ext.push(place(uvBox(4.3, 0.26, 0.05), 0, 0.7, z, s * 0.04, 0, 0));
-      // Door gaps/creases read as thin dark strips.
-      for (const x of [0.75, -0.35]) int.push(place(uvBox(0.02, 0.5, 0.06), x, 0.58, z));
+    // Lower body: extruded side profile of a sedan (bumper → hood → belt → trunk) with wheel arches.
+    const body = new THREE.Shape();
+    body.moveTo(-2.24, 0.24);
+    // Rear arch (from rear to front along the bottom) then front arch.
+    body.lineTo(-1.76, 0.24);
+    for (let i = 0; i <= 12; i++) { const a = Math.PI - Math.PI * (i / 12); body.lineTo(-1.38 + Math.cos(a) * 0.38, 0.24 + Math.sin(a) * 0.36); }
+    body.lineTo(1.0, 0.24);
+    for (let i = 0; i <= 12; i++) { const a = Math.PI - Math.PI * (i / 12); body.lineTo(1.38 + Math.cos(a) * 0.38, 0.24 + Math.sin(a) * 0.36); }
+    body.lineTo(2.2, 0.24);
+    body.lineTo(2.3, 0.4); body.lineTo(2.28, 0.6); body.lineTo(2.16, 0.72);
+    body.lineTo(1.4, 0.8); body.lineTo(0.98, 0.86);
+    body.lineTo(-1.3, 0.9); body.lineTo(-1.42, 0.9);
+    body.lineTo(-2.12, 0.86); body.lineTo(-2.28, 0.66); body.lineTo(-2.3, 0.42);
+    body.lineTo(-2.24, 0.24);
+    const bodyG = new THREE.ExtrudeGeometry(body, { depth: 1.7, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.04, bevelSegments: 2, curveSegments: 4 });
+    bodyG.translate(0, 0, -0.85);
+    // Sag + slump: the shell has settled onto its rims and the roof line drooped from the heat.
+    const bp = bodyG.attributes.position;
+    for (let i = 0; i < bp.count; i++) {
+      const x = bp.getX(i), y = bp.getY(i), z = bp.getZ(i);
+      bp.setY(i, y - 0.05 * Math.max(0, x / 2.3) - 0.03 * Math.abs(z) * y);
     }
-    // Front: hood popped & buckled, engine bay, bumper drooping.
-    const hood = uvBox(1.25, 0.04, 1.62);
-    hood.translate(0.62, 0, 0);
-    ext.push(place(hood, 0.92, 0.84, 0, 0.05, 0, 0.24));
-    int.push(place(uvBox(0.9, 0.42, 1.2), 1.55, 0.55, 0));
-    ext.push(place(uvBox(0.06, 0.45, 1.62), 2.15, 0.58, 0));
-    ext.push(place(uvBox(0.16, 0.2, 1.74), 2.2, 0.36, 0.06, 0.12, 0, -0.06));
-    // Rear: trunk lid ajar, tail panel, bumper.
-    ext.push(place(uvBox(0.95, 0.04, 1.6), -1.72, 0.86, 0, 0, 0, -0.1));
-    ext.push(place(uvBox(0.06, 0.48, 1.62), -2.15, 0.6, 0));
-    ext.push(place(uvBox(0.16, 0.2, 1.74), -2.2, 0.36, 0));
-    // Greenhouse: roof (sagging) + A/B/C pillars, glass gone.
-    ext.push(place(uvBox(1.55, 0.045, 1.3), -0.22, 1.33, 0, 0.03, 0, 0.03));
-    for (const s of [-1, 1]) {
-      ext.push(strut(V(0.98, 0.84, s * 0.8), V(0.56, 1.33, s * 0.64), 0.07, 0.08));
-      ext.push(strut(V(-0.2, 0.84, s * 0.83), V(-0.2, 1.33, s * 0.65), 0.08, 0.1));
-      ext.push(strut(V(-1.28, 0.86, s * 0.8), V(-0.98, 1.33, s * 0.64), 0.09, 0.1));
+    bodyG.computeVertexNormals();
+    this._uvScale(bodyG, 0.38);
+    ext.push(bodyG);
+    // Greenhouse: two side frames (A/B/C pillars + roof rail) with blown-out windows, then the roof skin.
+    const frame = new THREE.Shape();
+    frame.moveTo(0.98, 0.86); frame.lineTo(0.36, 1.36); frame.lineTo(-0.78, 1.38); frame.lineTo(-1.36, 0.9); frame.lineTo(0.98, 0.86);
+    const h1 = new THREE.Path(); h1.moveTo(0.8, 0.92); h1.lineTo(0.34, 1.29); h1.lineTo(-0.14, 1.3); h1.lineTo(-0.14, 0.92); h1.lineTo(0.8, 0.92);
+    const h2 = new THREE.Path(); h2.moveTo(-0.27, 0.93); h2.lineTo(-0.27, 1.3); h2.lineTo(-0.72, 1.3); h2.lineTo(-1.14, 0.93); h2.lineTo(-0.27, 0.93);
+    frame.holes.push(h1, h2);
+    for (const sgn of [-1, 1]) {
+      const fg = new THREE.ExtrudeGeometry(frame, { depth: 0.06, bevelEnabled: false, curveSegments: 2 });
+      fg.translate(0, 0, -0.03);
+      // Tumblehome: lean the frame inward as it rises.
+      const p = fg.attributes.position;
+      for (let i = 0; i < p.count; i++) p.setZ(i, p.getZ(i) + sgn * (0.8 - (p.getY(i) - 0.86) * 0.32));
+      fg.computeVertexNormals();
+      this._uvScale(fg, 0.38);
+      ext.push(fg);
     }
-    // Dashboard, seat frames, steering wheel.
-    int.push(place(uvBox(0.32, 0.22, 1.5), 0.78, 0.86, 0));
+    const roof = uvBox(1.18, 0.05, 1.42);
+    const rp = roof.attributes.position;
+    for (let i = 0; i < rp.count; i++) rp.setY(i, rp.getY(i) - 0.06 * (1 - Math.abs(rp.getX(i) / 0.6)) * (1 - Math.abs(rp.getZ(i) / 0.72)));
+    roof.computeVertexNormals();
+    ext.push(place(roof, -0.21, 1.36, 0));
+    // Panel seams & a buckled, half-open hood edge.
+    for (const sgn of [-1, 1]) for (const x of [0.96, -0.2, -1.3]) int.push(place(uvBox(0.025, 0.52, 0.03), x, 0.6, sgn * 0.885));
+    const hood = uvBox(1.15, 0.035, 1.62);
+    hood.translate(0.58, 0, 0);
+    ext.push(place(hood, 1.0, 0.9, 0.02, 0.04, 0.03, 0.17));
+    // Interior: charred floor, dash, seat frames, steering wheel (all ember-lit).
+    int.push(place(uvBox(3.2, 0.06, 1.6), -0.2, 0.4, 0));
+    int.push(place(uvBox(0.34, 0.24, 1.5), 0.78, 0.9, 0));
     for (const z of [-0.4, 0.4]) {
-      int.push(place(uvBox(0.5, 0.12, 0.48), 0.05, 0.48, z));
-      int.push(place(uvBox(0.1, 0.6, 0.46), -0.22, 0.78, z, 0, 0, 0.2));
+      int.push(place(uvBox(0.5, 0.12, 0.48), 0.1, 0.52, z));
+      int.push(place(uvBox(0.09, 0.62, 0.46), -0.18, 0.82, z, 0, 0, 0.22));
     }
-    int.push(place(uvBox(0.55, 0.12, 1.4), -0.95, 0.48, 0));
-    int.push(place(uvBox(0.12, 0.55, 1.4), -1.22, 0.76, 0, 0, 0, 0.25));
-    const sw = new THREE.TorusGeometry(0.17, 0.016, 6, 18);
-    int.push(place(sw, 0.55, 0.98, 0.4, 0, Math.PI / 2, 0.55));
+    int.push(place(uvBox(0.55, 0.12, 1.42), -0.85, 0.52, 0));
+    int.push(place(uvBox(0.1, 0.55, 1.42), -1.1, 0.8, 0, 0, 0, 0.3));
+    int.push(place(new THREE.TorusGeometry(0.17, 0.016, 6, 18), 0.56, 1.0, 0.4, 0, Math.PI / 2, 0.55));
+    // Engine bay showing under the lifted hood.
+    int.push(place(uvBox(0.9, 0.36, 1.3), 1.6, 0.58, 0));
     this._mesh(ext, this.mats.burnt, root);
     this._mesh(int, this.mats.char, root);
-    // Rims (no tyres) at the wheel arches; a scorched loose tyre nearby.
+    // Rims (no tyres: burnt off) under the arches; a scorched loose tyre nearby.
     if (this.models.rim) {
-      for (const [x, z, tilt] of [[1.38, 0.8, 0.12], [1.38, -0.8, -0.05], [-1.38, 0.8, 0.02], [-1.38, -0.8, -0.1]]) {
-        const { obj } = this._fitModel(this.models.rim, 0.44);
+      for (const [x, z, tilt] of [[1.38, 0.74, 0.1], [1.38, -0.74, -0.05], [-1.38, 0.74, 0.03], [-1.38, -0.74, -0.08]]) {
+        const { obj } = this._fitModel(this.models.rim, 0.46);
         const inner = obj.children[0];
-        // Thin axis → lateral (z).
-        const bb = new THREE.Box3().setFromObject(inner), s = bb.getSize(V(0, 0, 0));
-        if (s.x < s.y && s.x < s.z) obj.rotation.y = Math.PI / 2;
-        else if (s.y < s.x && s.y < s.z) obj.rotation.x = Math.PI / 2;
+        const bb = new THREE.Box3().setFromObject(inner), sz = bb.getSize(V(0, 0, 0));
+        if (sz.x < sz.y && sz.x < sz.z) obj.rotation.y = Math.PI / 2;
+        else if (sz.y < sz.x && sz.y < sz.z) obj.rotation.x = Math.PI / 2;
+        obj.traverse((c) => { if (c.isMesh) { c.material = c.material.clone(); c.material.color.setRGB(0.5, 0.42, 0.38); } });
         const w = new THREE.Group(); w.add(obj);
-        w.position.set(x, 0.2, z * 0.98); w.rotation.x = tilt;
+        w.position.set(x, 0.22, z); w.rotation.x = tilt;
         root.add(w);
       }
     }
     if (this.models.tyre) {
       const { obj, size } = this._fitModel(this.models.tyre, 0.64);
       const inner = obj.children[0];
-      const bb = new THREE.Box3().setFromObject(inner), s = bb.getSize(V(0, 0, 0));
+      const bb = new THREE.Box3().setFromObject(inner), sz = bb.getSize(V(0, 0, 0));
       // Lay flat on the ground.
-      if (s.y >= Math.min(s.x, s.z)) { if (s.x < s.z) obj.rotation.z = Math.PI / 2; else obj.rotation.x = Math.PI / 2; }
-      obj.position.set(-2.6, Math.min(size.x, size.y, size.z) / 2, 1.7);
-      obj.traverse((c) => { if (c.isMesh) { c.material = c.material.clone(); c.material.color.multiplyScalar(0.55); } });
+      if (sz.y >= Math.min(sz.x, sz.z)) { if (sz.x < sz.z) obj.rotation.z = Math.PI / 2; else obj.rotation.x = Math.PI / 2; }
+      obj.position.set(-2.7, Math.min(size.x, size.y, size.z) / 2, 1.6);
+      obj.traverse((c) => { if (c.isMesh) { c.material = c.material.clone(); c.material.color.multiplyScalar(0.5); } });
       root.add(obj);
     }
     this._scorch(root, 7.5);
     this._collider(local(0, 0.7, 0), V(2.3, 0.7, 0.92), d.rot, 'metal');
-    this._collider(local(-2.6, 0.12, 1.7), V(0.3, 0.12, 0.3), d.rot, 'dirt', 'rgba(0,0,0,0)');
-    // Flames: cabin (two), engine bay, under-chassis lick.
+    this._collider(local(-2.7, 0.12, 1.6), V(0.3, 0.12, 0.3), d.rot, 'dirt', 'rgba(0,0,0,0)');
+    // Flames: licking out of the cabin windows/windshield, engine bay, and a pool under the chassis.
     site.flames.push(
-      { p: local(-0.1, 0.55, 0.1), w: 1.5, h: 2.5, k: 1.0 },
-      { p: local(-0.75, 0.5, -0.15), w: 1.25, h: 2.0, k: 0.9 },
-      { p: local(1.45, 0.7, 0.0), w: 1.2, h: 1.55, k: 0.85 },
-      { p: local(1.2, 0.02, 0.85), w: 0.55, h: 0.65, k: 0.7 },
-      { p: local(0.4, 0.75, -0.3), w: 0.8, h: 1.3, k: 0.8 },
+      { p: local(-0.1, 0.6, 0.15), w: 1.5, h: 2.3, k: 1.0 },
+      { p: local(-0.7, 0.55, -0.2), w: 1.3, h: 1.9, k: 0.9 },
+      { p: local(0.45, 0.8, -0.25), w: 0.9, h: 1.4, k: 0.85 },
+      { p: local(1.6, 0.78, 0.1), w: 1.1, h: 1.35, k: 0.85 },
+      { p: local(1.25, 0.02, 0.9), w: 0.6, h: 0.6, k: 0.65 },
+      { p: local(-1.5, 0.02, -0.9), w: 0.5, h: 0.45, k: 0.6 },
     );
-    site.smokeAt = [local(-0.3, 2.2, 0), local(1.3, 1.6, 0)];
+    site.smokeAt = [local(-0.3, 2.0, 0), local(1.4, 1.5, 0)];
     site.lightPos = local(0.2, 1.7, 0);
     site.spread = 0.6; site.rate = 7; site.smokeCol = [0.07, 0.065, 0.06]; site.smokeEnd = [0.16, 0.15, 0.145]; site.size = 1.1;
+  }
+
+  _uvScale(g, k) {
+    const uv = g.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * k, uv.getY(i) * k);
   }
 
   _buildBarrel(root, d, local, site) {
@@ -278,8 +331,9 @@ export class Fires {
     }
     this._scorch(root, 2.2);
     site.flames.push(
-      { p: local(0, top - 0.15, 0), w: 0.72, h: 1.15, k: 1.0 },
-      { p: local(0.08, top - 0.12, -0.06), w: 0.5, h: 0.85, k: 0.9 },
+      { p: local(0, top - 0.2, 0), w: 0.95, h: 1.35, k: 1.0 },
+      { p: local(0.1, top - 0.15, -0.08), w: 0.7, h: 1.0, k: 0.9 },
+      { p: local(-0.1, top - 0.15, 0.08), w: 0.65, h: 0.9, k: 0.85 },
     );
     site.smokeAt = [local(0, top + 0.9, 0)];
     site.lightPos = local(0, top + 0.6, 0);
@@ -328,52 +382,7 @@ export class Fires {
     geo.setAttribute('iBase', this.fBase); geo.setAttribute('iSize', this.fSize);
     geo.instanceCount = 0;
     this.flameGeo = geo;
-    this.flameMat = new THREE.ShaderMaterial({
-      uniforms: {
-        time: { value: 0 }, wind: { value: new THREE.Vector3() },
-        fogColor: { value: new THREE.Color() }, fogDensity: { value: 0 }, fogScale: { value: 1 },
-      },
-      vertexShader: /* glsl */`
-        attribute vec3 iBase; attribute vec4 iSize;
-        uniform float time; uniform vec3 wind;
-        varying vec2 vUv; varying float vInt; varying float vSeed; varying float vDepth;
-        void main() {
-          vec3 toCam = cameraPosition - iBase; toCam.y = 0.0;
-          vec3 right = normalize(vec3(toCam.z, 0.0, -toCam.x) + vec3(1e-5));
-          float h = iSize.y * (0.92 + 0.1 * sin(time * 2.7 + iSize.w * 7.0) + 0.05 * sin(time * 7.3 + iSize.w));
-          vec3 p = iBase + right * position.x * iSize.x + vec3(0.0, position.y * h, 0.0);
-          float k = position.y * position.y;
-          p.xz += wind.xz * k * h * 0.11 + vec2(sin(time * 3.1 + iSize.w), cos(time * 2.3 + iSize.w * 3.0)) * k * 0.08 * h;
-          vec4 mv = viewMatrix * vec4(p, 1.0);
-          gl_Position = projectionMatrix * mv;
-          vUv = uv; vInt = iSize.z; vSeed = iSize.w; vDepth = -mv.z;
-        }`,
-      fragmentShader: /* glsl */`
-        uniform float time;
-        ${NOISE}
-        ${FOG}
-        varying vec2 vUv; varying float vInt; varying float vSeed; varying float vDepth;
-        void main() {
-          float x = (vUv.x - 0.5) * 2.0, y = vUv.y;
-          float n1 = a_fbm(vec2(x * 1.8 + vSeed * 3.1, y * 2.2 - time * 2.1));
-          float n2 = a_fbm(vec2(x * 4.2 - vSeed, y * 4.6 - time * 3.9));
-          float sway = (n1 - 0.45) * 0.9 * y;
-          float w = (1.0 - pow(y, 1.15)) * 0.8 + 0.06;
-          float d = abs(x + sway) / w;
-          float shape = (1.0 - smoothstep(0.25, 1.0, d)) * smoothstep(0.0, 0.1, y);
-          float heat = shape * (0.45 + n2 * 1.0) + n1 * 0.35 - y * 0.75 - 0.08;
-          heat = clamp(heat * 1.7, 0.0, 1.0);
-          vec3 col = mix(vec3(0.5, 0.04, 0.0), vec3(1.0, 0.28, 0.03), smoothstep(0.0, 0.3, heat));
-          col = mix(col, vec3(1.0, 0.62, 0.2), smoothstep(0.3, 0.65, heat));
-          col = mix(col, vec3(1.0, 0.92, 0.72), smoothstep(0.72, 1.0, heat));
-          float a = smoothstep(0.03, 0.32, heat) * (1.0 - a_fog(vDepth));
-          // Soft fade at the base (no hard edge where it meets geometry).
-          a *= smoothstep(0.0, 0.06, y);
-          if (a < 0.004) discard;
-          gl_FragColor = vec4(col * vInt * (0.9 + 2.6 * heat), a);
-        }`,
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-    });
+    this.flameMat = makeFlameMaterial();
     this.flameMesh = new THREE.Mesh(geo, this.flameMat);
     this.flameMesh.frustumCulled = false;
     this.flameMesh.renderOrder = 11;
@@ -386,7 +395,7 @@ export class Fires {
       if (n >= 32) break;
       f.seed ??= Math.random() * 10;
       this.fBase.setXYZ(n, f.p.x, f.p.y, f.p.z);
-      this.fSize.setXYZW(n, f.w, f.h, f.k * 1.15, f.seed);
+      this.fSize.setXYZW(n, f.w * 1.6, f.h * 1.35, f.k * 1.2, f.seed);
       n++;
     }
     this.fBase.needsUpdate = this.fSize.needsUpdate = true;
@@ -424,7 +433,7 @@ export class Fires {
           vx: rand(-0.3, 0.3), vy: rand(1.6, 2.6), vz: rand(-0.3, 0.3),
           life: rand(9, 15), size0: 0.7 * sz, size1: rand(6, 9) * sz, alpha: rand(0.5, 0.7), fadeIn: 0.04,
           color: s.smokeCol, color1: s.smokeEnd, colorSpan: 0.6,
-          emissive: [1.6, 0.55, 0.14], emissiveSpan: 0.09,
+          emissive: [0.9, 0.3, 0.07], emissiveSpan: 0.035,
           drag: 0.18, gravity: -0.05, wind: 0.9, turb: 0.25, rotV: rand(-0.25, 0.25),
         });
       }
