@@ -242,3 +242,61 @@ def save_json(path, data):
 def load_json(path):
     with open(path) as f:
         return json.load(f)
+
+
+def _gltf_output_group():
+    """Node group the glTF exporter reads extra outputs from (Occlusion)."""
+    g = bpy.data.node_groups.get('glTF Material Output')
+    if g is None:
+        g = bpy.data.node_groups.new('glTF Material Output', 'ShaderNodeTree')
+        g.interface.new_socket('Occlusion', in_out='INPUT', socket_type='NodeSocketFloat')
+        g.interface.new_socket('Thickness', in_out='INPUT', socket_type='NodeSocketFloat')
+    return g
+
+
+def bake_ao(meshes, size=1024, samples=48, distance=0.1, out_png=None):
+    """Bake ambient occlusion of `meshes` (posed / evaluated, all scene geometry occludes) into ONE shared
+    atlas on a second UV layer 'AO', and wire it as each material's glTF occlusion (TEXCOORD_1)."""
+    meshes = [o for o in meshes if o.type == 'MESH' and len(o.data.polygons)]
+    for o in meshes:
+        o.data = o.data.copy() if o.data.users > 1 else o.data
+        uv = o.data.uv_layers.get('AO') or o.data.uv_layers.new(name='AO')
+        o.data.uv_layers.active = uv
+    bpy.ops.object.mode_set(mode='OBJECT') if bpy.context.object and bpy.context.object.mode != 'OBJECT' else None
+    bpy.ops.object.select_all(action='DESELECT')
+    for o in meshes: o.select_set(True)
+    bpy.context.view_layer.objects.active = meshes[0]
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=0.004, area_weight=0.0, scale_to_bounds=False)
+    bpy.ops.uv.pack_islands(margin=0.004, rotate=True)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    img = bpy.data.images.new('AO', size, size, alpha=False)
+    img.generated_color = (1, 1, 1, 1)
+    grp = _gltf_output_group()
+    mats = {m for o in meshes for m in o.data.materials if m}
+    for m in mats:
+        m.use_nodes = True
+        nt = m.node_tree
+        tex = nt.nodes.new('ShaderNodeTexImage'); tex.image = img; tex.name = 'AO_bake'
+        uvn = nt.nodes.new('ShaderNodeUVMap'); uvn.uv_map = 'AO'
+        nt.links.new(uvn.outputs['UV'], tex.inputs['Vector'])
+        sep = nt.nodes.new('ShaderNodeSeparateColor')
+        nt.links.new(tex.outputs['Color'], sep.inputs['Color'])
+        gn = nt.nodes.new('ShaderNodeGroup'); gn.node_tree = grp
+        nt.links.new(sep.outputs['Red'], gn.inputs['Occlusion'])
+        nt.nodes.active = tex
+    # Meshes without materials get a neutral one so they can be baked.
+    sc = bpy.context.scene
+    sc.render.engine = 'CYCLES'; sc.cycles.samples = samples; sc.cycles.device = 'CPU'
+    sc.world = sc.world or bpy.data.worlds.new('w')
+    sc.world.light_settings.distance = distance
+    sc.render.bake.margin = 4
+    bpy.ops.object.select_all(action='DESELECT')
+    for o in meshes:
+        if o.data.materials: o.select_set(True)
+    bpy.ops.object.bake(type='AO', use_clear=True)
+    if out_png:
+        img.filepath_raw = out_png; img.file_format = 'PNG'; img.save()
+    img.pack()
+    return img

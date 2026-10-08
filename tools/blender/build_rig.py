@@ -715,6 +715,12 @@ if OUT != '-':
         marker('VGripMount', Matrix.Translation(vg_mount))
     root['fp'] = json.dumps({'K': K, 'cls': SPEC['cls'], 'hip': REPORT['hip'], 'boreZ': BORE_Z, 'web': list(SPEC['web']),
                              'trig': list(SPEC['trig']), 'maxPenetrationMm': REPORT.get('final_max_mm', REPORT['max_mm'])})
+    if not os.environ.get('FP_NOAO'):
+        tb = time.time()
+        for o in bpy.data.objects: o.hide_render = False  # every exported mesh needs the AO uv set
+        bake_ao([o for o in bpy.data.objects if o.type == 'MESH'], distance=0.05 * K,
+                out_png=os.path.join(WORK, f'rig_{GID}_ao.png'))
+        log('AO baked', round(time.time() - tb, 1), 's')
     for o in bpy.data.objects: o.select_set(True)
     bpy.ops.export_scene.gltf(filepath=OUT, use_selection=True, export_format='GLB', export_extras=True,
                               export_skins=True, export_animations=bool(bpy.data.actions), export_animation_mode='ACTIONS',

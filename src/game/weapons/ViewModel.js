@@ -1293,11 +1293,12 @@ export class ViewModel {
       for (let i = 4; i < 9; i++) cv[i].set(0, 0, 0);
       this.probeLum = cw[0].x * 0.2126 + cw[0].y * 0.7152 + cw[0].z * 0.0722;
       this.probeLumRef = Math.max(this.probeLumRef * (1 - dt * 0.02), this.probeLum); // slow-decaying "outdoor" reference
-      this.vmProbe.intensity = damp(this.vmProbe.intensity, 1, 3, dt);
+      this.vmProbe.intensity = damp(this.vmProbe.intensity, 0.8, 3, dt);
     }
-    const probeOn = this.vmProbe.intensity;
+    const probeOn = this.vmProbe.intensity / 0.8;
     const dark = this.shTarget ? clamp(this.probeLum / Math.max(1e-4, this.probeLumRef), 0.2, 1) : 1 - this._indoorK * 0.65;
-    this.viewScene.environmentIntensity = 0.9 * dark;
+    // With the probe carrying diffuse ambient, the sky IBL is mostly there for reflections.
+    this.viewScene.environmentIntensity = (0.9 - 0.4 * probeOn) * dark;
     this.vmHemi.intensity = 0.3 * (1 - this._indoorK * 0.5) * (1 - probeOn);
     this.vmHemi.position.set(0, 1, 0).applyQuaternion(camQi);
 

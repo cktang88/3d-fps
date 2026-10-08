@@ -158,7 +158,7 @@ export const M = (k) => (matCache[k] ||= LIB[k]());
 function unifyMaterial(mat, modelKey) {
   const n = (mat.name || '').toLowerCase();
   // Keep authored PBR textures (M4 / AK) but clamp their response so they match the palette.
-  if (mat.map || mat.normalMap) {
+  if (mat.map || mat.normalMap || mat.aoMap) {
     mat.envMapIntensity = 1.0;
     if (n.includes('wood')) mat.roughness = Math.max(mat.roughness, 0.45);
     // Authored PBR (M4 / AK): same normalisation, lighter procedural wear (they carry their own).
