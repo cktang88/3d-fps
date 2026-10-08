@@ -307,6 +307,23 @@ export class CharacterTemplate {
     // Forward crumple: knees from the crouch, arms from mid-way through the death clip.
     this.toppleLo = splitClip(pick('aim_crouch_idle', 'crouch_idle'), false);
     this.toppleUp = splitClip(this.death, true);
+    // Mocap lower-body locomotion (100STYLE, CC BY 4.0): directional walk / jog / crouch cycles named
+    // 'mocap_<kind>_<dir>@<speed in leg-lengths per second>', all starting on a left-foot strike.
+    this.mocap = null;
+    {
+      const bn = {}; g.traverse((o) => { if (o.isBone) bn[boneKey(o.name)] = o; });
+      const leg = bn.Hips && bn.LeftFoot ? (bn.Hips.getWorldPosition(new THREE.Vector3()).y - bn.LeftFoot.getWorldPosition(new THREE.Vector3()).y) * this.scale : 0.9;
+      const mc = {};
+      for (const [name, clip] of this.clips) {
+        const m = /^mocap_(\w+)_([FBLR])@([\d.]+)$/.exec(name);
+        if (!m) continue;
+        (mc[m[1]] ||= {})[m[2]] = { clip: splitClip(clip, false), speed: +m[3] * leg, dur: clip.duration };
+      }
+      if (mc.walk?.F && mc.walk?.B && mc.walk?.L && mc.walk?.R) {
+        for (const set of Object.values(mc)) for (const d of Object.values(set)) d.stride = d.speed * d.dur;
+        this.mocap = mc;
+      }
+    }
     // Gait table: natural ground speed of each in-place clip (planted-foot travel, measured offline from
     // the clips) and the phase where the left foot is furthest forward, so blended clips stay in step.
     const G = { walk: [1.2, 0.02], run: [4.8, 0.03], sprint: [6.2, 0.05], crouchWalk: [0.8, 0] };
@@ -402,6 +419,61 @@ const V3 = () => new THREE.Vector3(), Q = () => new THREE.Quaternion();
 const _ik = { a: V3(), b: V3(), c: V3(), t: V3(), ac: V3(), ab: V3(), acN: V3(), abN: V3(), bcN: V3(), atN: V3(), ax0: V3(), ax1: V3(), tmp: V3(), qa: Q(), qb: Q(), r0: Q(), r1: Q(), r2: Q() };
 const UP = new THREE.Vector3(0, 1, 0), UP_NEG = new THREE.Vector3(0, -1, 0);
 const smooth = (t) => t * t * (3 - 2 * t);
+/**
+ * Dead blending (D. Holden, 2023): on a discrete animation switch, keep extrapolating the last output
+ * pose with decaying velocity and smoothstep-crossfade to the live pose. Needs only the current pose.
+ */
+const _dbq = new THREE.Quaternion(), _dbq2 = new THREE.Quaternion(), _dbv = new THREE.Vector3();
+function quatLog(q, out) {
+  const s = Math.hypot(q.x, q.y, q.z), w = q.w < 0 ? -1 : 1;
+  if (s < 1e-8) return out.set(2 * q.x * w, 2 * q.y * w, 2 * q.z * w);
+  const ang = 2 * Math.atan2(s, Math.abs(q.w));
+  return out.set(q.x, q.y, q.z).multiplyScalar((w * ang) / s);
+}
+function quatExp(v, out) {
+  const a = v.length();
+  if (a < 1e-8) return out.set(v.x * 0.5, v.y * 0.5, v.z * 0.5, 1).normalize();
+  const s = Math.sin(a * 0.5) / a;
+  return out.set(v.x * s, v.y * s, v.z * s, Math.cos(a * 0.5));
+}
+class DeadBlend {
+  constructor(bones, halflife = 0.05) {
+    this.bones = bones; this.halflife = halflife; this.t = Infinity; this.dur = 0.2;
+    this.prev = bones.map((b) => b.quaternion.clone());
+    this.vel = bones.map(() => new THREE.Vector3());
+    this.extQ = bones.map(() => new THREE.Quaternion());
+    this.extV = bones.map(() => new THREE.Vector3());
+    this.primed = false;
+  }
+  trigger(dur = 0.2) {
+    if (!this.primed) return;
+    for (let i = 0; i < this.bones.length; i++) { this.extQ[i].copy(this.prev[i]); this.extV[i].copy(this.vel[i]); }
+    this.t = 0; this.dur = dur;
+  }
+  reset() { this.t = Infinity; this.primed = false; }
+  apply(dt) {
+    const blending = this.t < this.dur;
+    let alpha = 1, decay = 1;
+    if (blending) {
+      this.t += dt; const x = Math.min(1, this.t / this.dur); alpha = x * x * (3 - 2 * x);
+      decay = Math.exp((-Math.LN2 * dt) / this.halflife);
+    }
+    const idt = 1 / Math.max(dt, 1 / 120);
+    for (let i = 0; i < this.bones.length; i++) {
+      const q = this.bones[i].quaternion;
+      if (blending) {
+        const v = this.extV[i].multiplyScalar(decay);
+        quatExp(_dbv.copy(v).multiplyScalar(dt), _dbq);
+        this.extQ[i].premultiply(_dbq);
+        q.slerpQuaternions(this.extQ[i], q, alpha);
+      }
+      if (this.primed) { _dbq2.copy(this.prev[i]).invert().premultiply(q); quatLog(_dbq2, this.vel[i]).multiplyScalar(idt); }
+      this.prev[i].copy(q);
+    }
+    this.primed = true;
+  }
+}
+
 /** Exact critically-damped spring (D. Holden, "Spring-It-On", MIT idea): s = {x, v}. Stable for large dt. */
 function springDamperExact(s, goal, halflife, dt) {
   const y = (4 * Math.LN2) / (halflife + 1e-5) / 2, j0 = s.x - goal, j1 = s.v + j0 * y, e = Math.exp(-y * dt);
@@ -463,6 +535,12 @@ export class Character {
       if (GAIT_KEYS.includes(k)) a.timeScale = 0; // driven by the gait phase
       this.lowerActions[k] = a;
     }
+    this.mocapActions = [];
+    if (tpl.mocap) for (const [kind, set] of Object.entries(tpl.mocap)) for (const [dir, d] of Object.entries(set)) {
+      const a = this.mixer.clipAction(d.clip);
+      a.play(); a.setEffectiveWeight(0); a.timeScale = 0;
+      this.mocapActions.push({ kind, dir, a, d, w: 0 });
+    }
     this.upperActions = {};
     for (const [k, c] of Object.entries(tpl.upper)) {
       const a = this.mixer.clipAction(c);
@@ -505,7 +583,9 @@ export class Character {
     this.buttLocal = new THREE.Vector3(0, 0.05, 0.25);
     this.boreY = 0.06;
     this.reloadW = 0; // procedural reload blend
-    this.stanceYaw = Character.STANCE_YAW; // hips vs aim when standing (negative = toward the firing side)
+    // Per-soldier variation so a squad never moves in lockstep (stance, posture, timing).
+    this.stanceYaw = Character.STANCE_YAW + (Math.random() * 2 - 1) * 6 * DEG; // hips vs aim when standing (negative = toward the firing side)
+    this.gaitPhase = Math.random();
     this.twistTrim = Character.TWIST_TRIM; // leave the shoulders slightly bladed
     this.rc = { pitch: { x: 0, v: 0 }, yaw: { x: 0, v: 0 }, back: { x: 0, v: 0 } }; // recoil springs
     this.handOff = null; // grip-relative hand rotations, captured from the settled hold
@@ -621,10 +701,12 @@ export class Character {
     this.dying = null;
     this.mixer.stopAllAction();
     for (const [k, a] of Object.entries(this.lowerActions)) { a.reset().play(); a.setEffectiveWeight(k === 'idle' ? 1 : 0); if (GAIT_KEYS.includes(k)) a.timeScale = 0; }
+    for (const m of this.mocapActions) { m.a.reset().play(); m.a.setEffectiveWeight(0); m.a.timeScale = 0; m.w = 0; }
     for (const [k, a] of Object.entries(this.upperActions)) { a.reset().play(); a.setEffectiveWeight(k === 'aim' ? 1 : 0); if (k === 'reload' || k === 'throw') a.timeScale = 0; }
     this.hitAction.stop(); this.hitAction.setEffectiveWeight(0);
     this.oneShot = null; this.oneShotW = 0;
     this.hitJerk = 0; this.fireKick = 0;
+    this.dblend?.reset(); this._dbSig = undefined; this._procSaved = false;
     this.bodyYaw = bot ? bot.yaw + this.stanceYaw : 0;
     this.twist = 0; this.lean = 0; this.fwdLean = 0; this.yawRate = 0;
     this.speedS = 0;
@@ -652,6 +734,9 @@ export class Character {
   onHit(bot, info) {
     this.lastHit = info || null;
     this.hitJerk = Math.min(1.3, this.hitJerk + 0.9);
+    this.hitPart = info?.part || 'torso';
+    // a hit also knocks the weapon off the aim for a beat
+    this.rc.pitch.v += (Math.random() * 2 - 1) * 2.5; this.rc.yaw.v += (Math.random() * 2 - 1) * 3.5;
     if (info?.dir) {
       // Flinch away from the shooter: tilt about the axis perpendicular to the bullet.
       _v1.set(info.dir.x, 0, info.dir.z);
@@ -675,6 +760,7 @@ export class Character {
     root.position.copy(bot.position);
     if (!bot.alive) { this._updateDead(dt, bot); return; }
     root.position.y += bot.jumpY || 0;
+    if (this.hitPart === 'legs' && this.hitJerk > 0) root.position.y -= Math.sin(Math.min(1, this.hitJerk) * Math.PI * 0.5) * 0.07; // knee buckle
 
     // --- Body yaw (legs follow movement, upper body twists toward the aim) ---
     const v = bot.velocity;
@@ -698,12 +784,23 @@ export class Character {
     // Bladed stance: standing, the hips sit ~30° to the firing side of the aim line (TC 3-22.9);
     // moving, the legs follow the travel direction.
     const stance = this.stanceYaw * (1 - clamp(sp / 1.5, 0, 1));
-    const targetBody = sp > 0.25 ? moveYaw + stance : this._idleBodyYaw(aimYaw + stance);
+    let targetBody = sp > 0.25 ? moveYaw + stance : this._idleBodyYaw(aimYaw + stance);
+    // With directional mocap cycles the hips stay on the aim (slightly bladed) and the legs pick the
+    // walk direction from the blend space; only fast running turns the body into the travel line.
+    if (this.tpl.mocap) {
+      const runTarget = sp > 2.15 + (this.runMode ? -0.25 : 0.25);
+      this.runMode = runTarget;
+      if (!this.runMode) {
+        this.backward = false;
+        targetBody = sp > 0.25 ? aimYaw + this.stanceYaw * 0.35 : this._idleBodyYaw(aimYaw + stance);
+      }
+    }
     const dy = wrapPi(targetBody - this.bodyYaw);
     const turn = dy * Math.min(1, dt * (sp > 0.25 ? 9 : 6));
     this.bodyYaw = wrapPi(this.bodyYaw + turn);
     this.yawRate = damp(this.yawRate, turn / Math.max(dt, 1e-4), 8, dt);
     this.twist = damp(this.twist, clamp(wrapPi(aimYaw - this.bodyYaw) + this.twistTrim, -100 * DEG, 100 * DEG), 16, dt);
+    this.velRel = sp > 0.05 ? wrapPi(Math.atan2(-v.x, -v.z) - this.bodyYaw) : 0; // travel direction relative to the legs
     // Lean into turns and with acceleration (small, speed-scaled).
     const accel = (sp - this.prevSpeed) / Math.max(dt, 1e-4);
     this.prevSpeed = sp;
@@ -755,7 +852,7 @@ export class Character {
    * bone we touch and restore them before the next mixer update.
    */
   _saveProc() {
-    const bs = this._procBones || (this._procBones = ['spine', 'spine1', 'spine2', 'neck', 'head', 'lSh', 'rSh', 'lArm', 'lFore', 'lHand', 'rArm', 'rFore', 'rHand'].map((k) => this.bones[k]).filter(Boolean));
+    const bs = this._procBones || (this._procBones = ['hips', 'lUp', 'lLeg', 'lFoot', 'rUp', 'rLeg', 'rFoot', 'spine', 'spine1', 'spine2', 'neck', 'head', 'lSh', 'rSh', 'lArm', 'lFore', 'lHand', 'rArm', 'rFore', 'rHand'].map((k) => this.bones[k]).filter(Boolean));
     const sv = this._procSave || (this._procSave = bs.map(() => new THREE.Quaternion()));
     for (let i = 0; i < bs.length; i++) sv[i].copy(bs[i].quaternion);
     this._procSaved = true;
@@ -789,11 +886,41 @@ export class Character {
     else W.sprint = st;
     const kc = clamp((sp - 0.1) / (vc * 0.5), 0, 1);
     W.crouchIdle = c * (1 - kc); W.crouchWalk = c * kc;
-    if (air > 0) { for (const k in W) W[k] *= 1 - air; W.jump = air; }
+    // Mocap regime: replace the walking part of the standing / crouched blend with directional cycles.
+    const MW = this._mw || (this._mw = new Map());
+    MW.clear();
+    if (this.mocapActions.length) {
+      const mocapK = this.runMode ? clamp(1 - (sp - 1.9) / 0.5, 0, 1) : 1; // fade to the run cycle at speed
+      const moveK = clamp((sp - 0.12) / 0.45, 0, 1);
+      const stand = (1 - c) * moveK * mocapK, crouchM = c * moveK;
+      {
+        const mv = W.walk + W.run + W.sprint;
+        const legacyMove = (1 - c) * moveK * (1 - mocapK);
+        if (mv > 1e-4) { const f = legacyMove / mv; W.walk *= f; W.run *= f; W.sprint *= f; }
+        else { W.walk = W.run = W.sprint = 0; W.run = legacyMove; }
+        W.idle = (1 - c) * (1 - moveK);
+        W.crouchIdle = c * (1 - moveK); W.crouchWalk = 0;
+        // 4-way direction weights (F=0, L=+90°, B=180°, R=-90°)
+        const a = ((this.velRel / (Math.PI / 2)) % 4 + 4) % 4, i0 = Math.floor(a) % 4, i1 = (i0 + 1) % 4, f = a - Math.floor(a);
+        const DIRS = ['F', 'L', 'B', 'R'], dw = { F: 0, L: 0, B: 0, R: 0 };
+        dw[DIRS[i0]] += 1 - f; dw[DIRS[i1]] += f;
+        const set = tpl.mocap;
+        const jog = clamp((sp - 1.15) / 0.6, 0, 1);
+        for (const d of DIRS) {
+          if (!dw[d]) continue;
+          const wd = dw[d] * stand;
+          if (set.jog?.[d] && jog > 0) { MW.set(set.jog[d], wd * jog); MW.set(set.walk[d], (MW.get(set.walk[d]) || 0) + wd * (1 - jog)); }
+          else MW.set(set.walk[d], (MW.get(set.walk[d]) || 0) + wd);
+          if (crouchM > 0) { const cd = set.crouch?.[d] || set.walk[d]; MW.set(cd, (MW.get(cd) || 0) + dw[d] * crouchM); }
+        }
+      }
+    }
+    if (air > 0) { for (const k in W) W[k] *= 1 - air; W.jump = air; for (const [k, v] of MW) MW.set(k, v * (1 - air)); }
 
     // --- Shared gait phase, advanced by distance travelled ---
     let wsum = 0, stride = 0;
     for (const k of GAIT_KEYS) { wsum += W[k]; stride += W[k] * gait[k].stride; }
+    for (const [d, w] of MW) { wsum += w; stride += w * d.stride; }
     if (wsum > 1e-3) {
       stride /= wsum;
       this.gaitPhase += (sp * dt / Math.max(0.3, stride)) * (this.backward ? -1 : 1);
@@ -803,6 +930,11 @@ export class Character {
       const a = this.lowerActions[k];
       a.setEffectiveWeight(W[k]);
       if (gait[k]) { const p = this.gaitPhase + gait[k].offset; a.time = (p - Math.floor(p)) * gait[k].dur; }
+    }
+    for (const m of this.mocapActions) {
+      const w = MW.get(m.d) || 0;
+      m.a.setEffectiveWeight(w);
+      if (w > 0) m.a.time = this.gaitPhase * m.d.dur;
     }
 
     // --- Upper body: aim stance + one-shots (reload / throw) ---
@@ -836,6 +968,12 @@ export class Character {
     if (!fresh) { this._matrixFrame = -1; return; } // matrices refreshed lazily (hitboxes) / by the renderer
     const root = this.root, b = this.bones;
     this._saveProc();
+    // Dead blending over discrete switches (run/walk regime, crouch, one-shots, carry state).
+    if (!this.dblend) this.dblend = new DeadBlend(this._procBones, 0.05);
+    const sig = (this.runMode ? 1 : 0) | (bot.crouch > 0.5 ? 2 : 0) | (this.oneShot ? 4 : 0) | (this.backward ? 8 : 0);
+    if (this._dbSig !== undefined && sig !== this._dbSig) this.dblend.trigger(this._animDt > 0.06 ? 0.25 : 0.2);
+    this._dbSig = sig;
+    this.dblend.apply(this._animDt || 1 / 60);
     root.updateMatrixWorld(true);
     const pitch = clamp(bot.pitch, -70 * DEG, 70 * DEG);
     const aimYaw = bot.yaw;
@@ -855,7 +993,12 @@ export class Character {
       _q3.setFromAxisAngle(UP, this.twist * share[i]);
       _q4.setFromAxisAngle(_v5, p);
       _q3.premultiply(_q4);
-      if (i >= 1 && this.hitJerk > 0) { _q4.setFromAxisAngle(this.hitAxis, this.hitJerk * 0.16 * (i === 2 ? 1.2 : 0.8)); _q3.premultiply(_q4); }
+      if (i >= 1 && this.hitJerk > 0) {
+        // Flinch by zone: torso hits fold the chest, arm hits spin the shoulders, head hits snap the neck (below).
+        const z = this.hitPart === 'arms' ? 0.08 : this.hitPart === 'legs' ? 0.06 : this.hitPart === 'head' ? 0.05 : 0.16;
+        _q4.setFromAxisAngle(this.hitAxis, this.hitJerk * z * (i === 2 ? 1.2 : 0.8)); _q3.premultiply(_q4);
+        if (this.hitPart === 'arms' && i === 2) { _q4.setFromAxisAngle(UP, this.hitJerk * 0.22 * (this.hitAxis.x > 0 ? 1 : -1)); _q3.premultiply(_q4); }
+      }
       if (i === 2 && this.fireKick > 0) { _q4.setFromAxisAngle(UP, this.kickRoll * this.fireKick * 0.03); _q3.premultiply(_q4); }
       this._rotateW(bone, _q3);
     }
@@ -875,6 +1018,7 @@ export class Character {
         _q3.setFromUnitVectors(_v1, _v2); _q4.identity().slerp(_q3, share * k);
         this._rotateW(bone, _q4);
       }
+      if (this.hitPart === 'head' && this.hitJerk > 0) { this._refreshW(b.neck); _q4.setFromAxisAngle(this.hitAxis, this.hitJerk * 0.45); this._rotateW(b.neck, _q4); }
     }
     root.updateMatrixWorld(true);
     this._matrixFrame = this._frame;
@@ -1233,7 +1377,9 @@ export class Character {
     };
     // Pushed backward / sideways → the authored backward fall, yawed (≤100°) to go with the hit.
     // Pushed forward (shot from behind) → knees buckle and the body pitches onto its front.
-    let mode = Math.abs(off) > 105 * DEG ? 'topple' : 'clip';
+    // Real casualties mostly collapse at the knees (REFERENCE_ENEMIES §hits: ~70% knee buckle, ~20%
+    // twisting fall, ≤10% thrown backward) — the authored backward fall is the minority case.
+    let mode = Math.abs(off) > 105 * DEG || Math.random() < 0.72 ? 'topple' : 'clip';
     if (this.forceDeathMode) mode = this.forceDeathMode; // debug / tests
     const d = {
       mode, t: 0, fadeW: 0, rate: headshot ? 1.35 : explosive ? 1.2 : 0.88 + Math.random() * 0.25,
@@ -1255,7 +1401,7 @@ export class Character {
       for (const t of [0, 0.5, -0.5, 1.0, -1.0]) if (clear(yaw + t, 1.6)) { yaw += t; break; }
       d.fallYaw = yaw; // world yaw of fall direction (vector (sin, 0, cos))
       d.angVel = explosive ? 2.5 : 0.5 + Math.random() * 0.4;
-      d.kneel = explosive ? 0.05 : 0.2 + Math.random() * 0.15; // time spent buckling before the topple
+      d.kneel = explosive ? 0.05 : headshot ? 0.08 : 0.2 + Math.random() * 0.15; // time spent buckling before the topple
       d.forward = true;
     }
     // Knockback slide distance, clipped by walls.
@@ -1271,7 +1417,7 @@ export class Character {
     // each bone's total stays 1 — no bind-pose blending).
     this.oneShot = null;
     d.w0 = new Map();
-    for (const a of [...Object.values(this.lowerActions), ...Object.values(this.upperActions)]) { d.w0.set(a, a.getEffectiveWeight()); a.timeScale = 0; }
+    for (const a of [...Object.values(this.lowerActions), ...Object.values(this.upperActions), ...this.mocapActions.map((m) => m.a)]) { d.w0.set(a, a.getEffectiveWeight()); a.timeScale = 0; }
     if (mode === 'clip') { this.deathAction.reset(); this.deathAction.timeScale = d.rate; this.deathAction.play(); this.deathAction.setEffectiveWeight(0); }
     else if (!d.forward) { this.downedAction.reset(); this.downedAction.timeScale = 1; this.downedAction.play(); this.downedAction.setEffectiveWeight(0); d.poses = [this.downedAction]; }
     else {
