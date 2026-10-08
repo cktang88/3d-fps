@@ -8,9 +8,10 @@ const scenario = process.argv[2] || 'overview';
 const out = process.argv[3] || 'tools/shots';
 fs.mkdirSync(out, { recursive: true });
 const W = +(process.env.W || 1280), H = +(process.env.H || 720);
+const PORT = process.env.PORT || '5199';
 
-const server = spawn('npx', ['vite', '--port', '5199', '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'] });
-await new Promise((res) => server.stdout.on('data', (d) => { if (String(d).includes('Local')) res(); }));
+const server = spawn('npx', ['vite', '--port', PORT, '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'] });
+await new Promise((res) => server.stdout.on('data', (d) => { if (String(d).includes('Local') || String(d).includes('ready')) res(); }));
 
 const browser = await chromium.launch({
   executablePath: '/opt/pw-browsers/chromium',
@@ -20,7 +21,7 @@ const page = await browser.newPage({ viewport: { width: W, height: H } });
 const logs = [];
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning' || process.env.VERBOSE) logs.push(`[${m.type()}] ${m.text()}`); });
 page.on('pageerror', (e) => logs.push('[pageerror] ' + e.message + '\n' + e.stack));
-await page.goto('http://localhost:5199/', { waitUntil: 'load' });
+await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
 const t0 = Date.now();
 await page.waitForFunction(() => window.__game?.menu, null, { timeout: 240000 }).catch(() => {});
 console.log('loaded in', ((Date.now() - t0) / 1000).toFixed(1), 's');
