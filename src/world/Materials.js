@@ -236,6 +236,14 @@ export class Materials {
         alpha[s] = { map, normalMap, roughnessMap };
       }),
     ]);
+    // Non-square scans cover a non-square physical area: keep texels square under world-space UVs.
+    for (const name of sets) {
+      const set = this.assets.materialsets[name];
+      const img = set?.map?.image;
+      if (!img || !img.width || !img.height || img.width === img.height) continue;
+      const k = img.width / img.height;
+      for (const t of [set.map, set.normalMap, set.roughnessMap]) if (t) { t.repeat.set(1, k); t.needsUpdate = true; }
+    }
     for (const [key, d] of Object.entries(DEFS)) {
       const set = this.assets.materialsets[d.set];
       const m = new THREE.MeshStandardMaterial({
