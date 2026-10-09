@@ -46,7 +46,8 @@ const PROPS = {
   propane: ['propane_tank/propane_tank.glb'],
   generator: ['portable_generator/portable_generator.glb'],
   hangLamp: ['hanging_industrial_lamp/hanging_industrial_lamp.glb', { emissive: /glass/, emissiveColor: 0xffa858, emissiveIntensity: 6 }],
-  fluoro: ['mounted_fluorescent_lights/mounted_fluorescent_lights.glb', { emissive: /glass/, emissiveColor: 0xe6f2ff, emissiveIntensity: 5.5 }],
+  // Bare tubes are dropped (edge-on they alias into sparkly streaks under bloom); fluoroLamp() adds an opal diffuser.
+  fluoro: ['mounted_fluorescent_lights/mounted_fluorescent_lights.glb', { skip: /glass/ }],
   pipes: ['modular_industrial_pipes_01/modular_industrial_pipes_01.glb'],
   woodCrate: ['wooden_crate_02/wooden_crate_02.glb'],
   // Same crate for rack loads under the warehouse roof: separate batch that never casts sun shadows (perf).
@@ -518,6 +519,7 @@ export class Level {
         if (!m.isMesh) return;
         const name = m.name + ' ' + (m.parent?.name ?? '');
         if (o.pick && !o.pick.test(m.name) && !o.pick.test(m.parent?.name ?? '')) return;
+        if (o.skip && o.skip.test(m.material?.name ?? '')) return;
         const geo = m.geometry.clone().applyMatrix4(m.matrixWorld);
         geo.morphAttributes = {}; geo.morphTargetsRelative = false;
         let mat = m.material;
@@ -962,6 +964,18 @@ export class Level {
     this.box('steel', x, y + 0.5, z, 0.02, 1, 0.02, { collide: false, nav: false, map: false, cast: false });
   }
 
+  /** Ceiling batten (Poly Haven housing) with an opal diffuser panel: a solid emissive rectangle that reads in bloom. */
+  fluoroLamp(x, z, rot, y) {
+    this.prop('fluoro', x, z, rot, { y, mount: true });
+    if (!this.mats.mats.lightPanel) {
+      const m = new THREE.MeshStandardMaterial({ color: 0x202224, emissive: 0xe8f1ff, emissiveIntensity: 3.0, roughness: 0.6 });
+      m.name = 'lightPanel'; m.userData.noUnify = true; this.mats.mats.lightPanel = m;
+    }
+    const g = new THREE.BoxGeometry(0.86, 0.012, 0.56);
+    g.applyMatrix4(new THREE.Matrix4().makeRotationY(rot).setPosition(x, y + 0.004, z));
+    this.mesh(this.mats.mats.lightPanel, g, { cast: false });
+  }
+
   /** Small backlit EXIT box (emissive canvas texture) over a doorway; ry = facing yaw. */
   exitSign(x, y, z, ry = 0, wallT = 0) {
     if (!this.mats.mats.exitSign) {
@@ -1115,9 +1129,9 @@ export class Level {
     this.prop('wetSign', 4.2, 37.2, 0.6, { nav: false, collide: false });
     this.prop('cardboard', -7.4, 42.7, 0.2, { y: F, nav: false });
     // Ceiling fluorescents (cool) — one flickers on each floor.
-    for (const [x, z] of [[-10, 35], [-10, 41], [-1, 35], [-1, 41], [4, 41]]) this.prop('fluoro', x, z, 0, { y: F - 0.32, mount: true });
-    for (const [x, z] of [[-9, 35], [-9, 41], [2, 35], [2, 41], [-5, 38]]) this.prop('fluoro', x, z, Math.PI / 2, { y: 2 * F - 0.07, mount: true });
-    this.interiorLight(-6, F - 0.5, 38, 0xdbe8ff, 18, 15, true);
+    for (const [x, z] of [[-10, 35], [-10, 41], [-1, 35], [-1, 41], [4, 41]]) this.fluoroLamp(x, z, 0, F - 0.32);
+    for (const [x, z] of [[-9, 35], [-9, 41], [2, 35], [2, 41], [-5, 38]]) this.fluoroLamp(x, z, Math.PI / 2, 2 * F - 0.07);
+    this.interiorLight(-6, F - 0.8, 38, 0xdbe8ff, 18, 15, true);
     // Upper floor: cool fluorescent wash in the east rooms, a warm work lamp hanging in the west room (warm/cool
     // split leads the eye down the corridor), plus the sun pouring through the south windows (shafts below).
     this.interiorLight(1.5, 2 * F - 0.55, 37.5, 0xdbe8ff, 28, 15);

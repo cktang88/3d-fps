@@ -10,6 +10,12 @@
  "h": 270,
  "views": [
   {
+   "name": "ready",
+   "shot": false,
+   "frames": 1,
+   "read": "__qa.ready().then(()=>true)"
+  },
+  {
    "name": "d_movement",
    "shot": false,
    "frames": 1,

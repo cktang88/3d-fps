@@ -35,7 +35,7 @@
    "name": "b1_spawn",
    "frames": 3,
    "eval": "const g=__game; g.menu.close(); g.startMatch('tdm'); g.paused=false;",
-   "read": "({bots: __game.bots.length, alive: __game.bots.filter(b=>b.alive).length, teams: [0,1].map(t=>__game.bots.filter(b=>b.team===t).length), playerTeam: __game.player.team, pos: __qa.p(), weapon: __game.currentWeapon.id, ammo: __game.currentWeapon.ammo, hudOverlaps: __qa.hudOverlaps(), perf: __qa.perf()})"
+   "read": "__qa.ready().then(() => ({bots: __game.bots.length, alive: __game.bots.filter(b=>b.alive).length, teams: [0,1].map(t=>__game.bots.filter(b=>b.team===t).length), playerTeam: __game.player.team, pos: __qa.p(), weapon: __game.currentWeapon.id, ammo: __game.currentWeapon.ammo, hudOverlaps: __qa.hudOverlaps(), perf: __qa.perf()}))"
   },
   {
    "name": "b2_sim",
@@ -69,7 +69,7 @@
    "name": "L4_botjank",
    "shot": false,
    "frames": 1,
-   "eval": "__game.match.start(\"tdm\");__qa.sim(3);window.__r=window.__jankTest();",
+   "eval": "window.__r=Promise.resolve(__game.match.start(\"tdm\")).then(()=>__qa.ready()).then(()=>{__qa.sim(3);return window.__jankTest();});",
    "read": "window.__r"
   },
   {

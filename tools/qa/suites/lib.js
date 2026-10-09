@@ -27,6 +27,15 @@
     return (performance.now() - t0) / n;
   };
   window.__sim = window.__sim || Q.sim;
+  // Async readiness (gun rigs stream in; startMatch / loadout changes can resolve later). Use from a view's `read`
+  // (the runner awaits promises returned by read) or inside an async script.
+  Q.waitFor = Q.waitFor || ((fn, ms = 120000) => new Promise((res, rej) => {
+    const t0 = performance.now();
+    const tick = () => { let ok = false; try { ok = fn(); } catch (e) { /* not ready */ } if (ok) res(true); else if (performance.now() - t0 > ms) rej(new Error('waitFor timeout: ' + fn)); else setTimeout(tick, 50); };
+    tick();
+  }));
+  Q.ready = () => Q.waitFor(() => G().started && G().player && G().currentWeapon && G().match?.state === 'live');
+  Q.loadoutReady = async (primary, secondary) => { Q.loadout(primary, secondary); await Q.waitFor(() => G().currentWeapon?.id === (primary || G().currentWeapon?.id) && G().inventory?.[0]?.id === (primary || G().inventory?.[0]?.id), 60000); };
   Q.down = (code, on = true) => { const i = G().input; if (on) i.down.add(code); else i.down.delete(code); };
   Q.press = (code) => { const i = G().input; i.down.add(code); i.pressed.add(code); };
   Q.tap = (code) => { const i = G().input; i.pressed.add(code); }; // press without holding

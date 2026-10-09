@@ -138,7 +138,7 @@ async function runJob(job, buildInfo, worker = 0) {
     }, !!job.lofi);
     if (job.setup) await page.evaluate(job.setup);
     if (job.match !== false) {
-      await page.evaluate((mode) => { const g = window.__game; g.menu.close(); g.startMatch(mode); g.paused = false; }, job.match || 'tdm');
+      await page.evaluate(async (mode) => { const g = window.__game; g.menu.close(); await g.startMatch(mode); g.paused = false; }, job.match || 'tdm');
       await frames(10);
     }
     for (const v of job.views || []) {

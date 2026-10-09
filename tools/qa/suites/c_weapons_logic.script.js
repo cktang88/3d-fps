@@ -1,7 +1,8 @@
 // (c) Weapon logic regression: every weapon — equip, hip fire, ADS, burst, tac/empty reload, sprint lockout,
 // effects (tracers / flashes / decals / bullets), slot switch. Pure simulation (no rendering) -> fast.
-(() => {
+(async () => {
   const g = window.__game, Q = window.__qa, out = { weapons: {}, fails: [] };
+  await Q.ready();
   const fail = (id, msg) => out.fails.push(`${id}: ${msg}`);
   Q.god(); Q.freezeBots(true);
   // Stand in the courtyard facing a wall so bullets hit something close.
@@ -9,7 +10,7 @@
   for (const id of ids) {
     const r = {}; out.weapons[id] = r;
     try {
-      Q.releaseAll(); Q.place([0, 0.1, 0], 0, 0); Q.loadout(id);
+      Q.releaseAll(); Q.place([0, 0.1, 0], 0, 0); await Q.loadoutReady(id);
       g.player.spawnProtect = 0;
       Q.sim(1.2);
       const w = g.currentWeapon, s = w.stats;
@@ -87,7 +88,7 @@
     } catch (e) { fail(id, 'EXC ' + e.message); r.exc = String(e.stack).slice(0, 300); }
   }
   // Slot switch with default loadout
-  Q.releaseAll(); Q.loadout('m4', 'p226'); Q.sim(1);
+  Q.releaseAll(); await Q.loadoutReady('m4', 'p226'); Q.sim(1);
   const t0 = performance.now();
   Q.tap('Digit2'); Q.sim(0.05); out.switchStart = g.currentWeapon.id; let tSwitch = null;
   for (let i = 0; i < 60 && tSwitch == null; i++) { Q.sim(1 / 30); if (g.currentWeapon.id === 'p226' && g.currentWeapon.state === 'idle') tSwitch = Q.r((i + 2) / 30); }

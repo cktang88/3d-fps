@@ -11,7 +11,7 @@
    "name": "e00_settle",
    "shot": false,
    "frames": 1,
-   "eval": "__qa.sim(4)"
+   "read": "__qa.ready().then(() => { __qa.sim(4); return true; })"
   },
   {
    "name": "e01_sun",
