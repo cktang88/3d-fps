@@ -120,6 +120,11 @@ How these numbers are used in the game:
 * **Pistol recoil (visual).** Separate stiff, under-damped flip springs about the grip: about 9° (P226) and 13°
   (M1911) at the hip, about half that aimed, plus a little roll into the wrist and a push back. Every shot runs a
   0.11 s slide cycle (fast back, slower return), and the slide locks back on the last round.
+* **ADS polish (QA round 2).** The red-dot/holo accent light only spills while raising (range 8 cm, zero when fully
+  aimed). Pistols use 0.5 m eye relief, and the support hand tucks about 1.5 cm lower and inboard at ADS
+  (`FP_TUNE.adsSupport`). The red dot and holo housings were smoothed: one crease-preserving Catmull-Clark level
+  (`tools/blender/smooth_optics.py`), then meshopt, so optics.glb went from 2.2 to 1.6 MB. The ACOG and riflescope were
+  left as they were, because subdividing them flattened the rolled rubber eyecup.
 * **Sight picture.** A grounded player carries a -2 m/s ground-stick vertical velocity. The sway layer used to turn it
   into a constant 4 mm lift, which put every sight 2–5% of the screen height above the crosshair. Vertical velocity
   sway now only applies in the air. Collimated reticles and the PiP scope camera follow the sight line (`rig.sightQ`),

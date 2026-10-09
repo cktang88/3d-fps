@@ -187,7 +187,7 @@ export class ViewModel {
     // Mirrors of the nearest bright scene lights (fires, lamps, explosions) — fixed count, no recompiles.
     this.vmLocal = [0, 1].map(() => { const l = new THREE.PointLight(0xffffff, 0, 0, 2); s.add(l); return l; });
     // Small emissive accents (red-dot / laser spill onto the housing).
-    this.vmAccent = new THREE.PointLight(0xff2a1a, 0, 0.25, 2);
+    this.vmAccent = new THREE.PointLight(0xff2a1a, 0, 0.08, 2);
     this.vmFill = new THREE.PointLight(0xffb070, 0, 3, 2); // muzzle flash light on the gun
     this.viewCam.add(this.vmFill, this.vmAccent);
     this.vmFill.position.set(0.2, -0.1, -0.9);
@@ -903,7 +903,10 @@ export class ViewModel {
     if (rig.fp && !(w.state === 'reload' && !s.tube)) {
       // Support hand: IK to its grip + choreography offset (WeaponRoot space); the pump rides with it.
       rig.fpLeft = rig.fpLeft || new THREE.Vector3();
-      rig.fpLeft.lerp(leftTarget || _v.set(0, 0, 0), leftTarget ? 1 : 1 - Math.exp(-20 * dt));
+      // Pistols at ADS: support hand tucked a little lower and inboard under the firing hand (compact two-hand grip
+      // that stays under the sight line; FP_TUNE adsSupport, WeaponRoot K-space).
+      const ads = !leftTarget && rig.tune.adsSupport && adsE > 0 ? _v.fromArray(rig.tune.adsSupport).multiplyScalar(adsE) : null;
+      rig.fpLeft.lerp(leftTarget || ads || _v.set(0, 0, 0), leftTarget || ads ? 1 : 1 - Math.exp(-20 * dt));
       const hp = this._hipPole(rig);
       rig.fp.setLeft(rig.root, rig.fpLeft.lengthSq() > 1e-8 ? rig.fpLeft : null, null, hp && hp.pole, hp ? hp.k : 0);
       if (rig.pump) rig.pump.position.z = rig.pumpHome.z + (w.state === 'pump' ? Math.max(0, rig.fpLeft.z) : 0);
@@ -1698,7 +1701,9 @@ export class ViewModel {
     let acc = 0;
     if (rig?.aim?.reticle?.visible && rig.aim.reticleAnchor) {
       rig.aim.reticleAnchor.getWorldPosition(this.vmAccent.position); this.viewCam.worldToLocal(this.vmAccent.position);
-      acc = 0.015 * w.adsT;
+      // Spill only while raising: fully aimed, the housing and rail fill the lower frame and an unshadowed red
+      // glow on them reads as a bug (QA round 2).
+      acc = 0.004 * Math.sin(Math.PI * clamp(w.adsT, 0, 1));
     } else if (rig?.laser && this.beam.visible) {
       rig.laser.getWorldPosition(this.vmAccent.position); this.viewCam.worldToLocal(this.vmAccent.position);
       acc = 0.03;
