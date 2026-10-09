@@ -99,10 +99,10 @@ How these numbers are used in the game:
     one from the belt (palm turned up), inserts it along the grip and palm-slaps it; on an empty reload the slide stays
     locked back until the slide release at 71%.
   - Round 1's "dark blob" at the left edge in mid-reload was the support hand and sleeve on the pouch run. The
-    template's pouch offset is in gun space, so cant on the gun swings "down-left" round to "left and up". Offsets far
-    from the gun (more than about 12 cm) now drop the reload cant (`ViewModel._bodyRel`), keeping the pouch at the
-    belt. The support elbow also follows a pole below and outside the arm (`ELBOW_POLE_L`) once the hand leaves its
-    grip.
+    template's pouch offset is in gun space, so cant on the gun swings it into the left of the frame. Far from the gun
+    (more than about 12 cm from the magazine well), the hand now blends to a body-fixed belt point (`POUCH`, view space,
+    below the bottom-left of the frame), and the magazine moves with it. The support elbow follows a pole below and
+    outside the arm (`ELBOW_POLE_L`) once the hand leaves its grip.
   - Fingers: the trigger finger indexes along the frame while sprinting, reloading, inspecting and switching. The
     support hand closes around a carried magazine or charging handle and opens flat for the palm slap
     (`FPArms.setFingers`).

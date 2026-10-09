@@ -77,6 +77,7 @@ function build() {
 
 // Warm page pool: one loaded game per worker, reused across jobs on the same build snapshot.
 const warm = new Map(); // worker -> { page, stamp, W, H, sink }
+const current = new Map(); // worker -> page currently in use (also while still loading)
 async function getPage(worker, job, buildInfo, result) {
   const W = job.w || 960, H = job.h || 540;
   let w = warm.get(worker);
@@ -101,6 +102,7 @@ async function getPage(worker, job, buildInfo, result) {
   }
   if (w) { await w.page.close().catch(() => {}); warm.delete(worker); }
   const page = await (await ensureBrowser()).newPage({ viewport: { width: W, height: H } });
+  current.set(worker, page);
   page.setDefaultTimeout(300000);
   const sink = { result };
   const CTX_LOST = /CONTEXT_LOST_WEBGL|context could not be created|Could not create a WebGL context|WebGL context was lost|caused context loss|QA: WebGL CONTEXT LOST/i;
@@ -265,12 +267,14 @@ async function worker(n) {
       new Promise((res) => { timer = setTimeout(async () => {
         log(`[w${n}] TIMEOUT`, job.id, `after ${limit / 1000}s - closing its page`);
         const w = warm.get(n); warm.delete(n); const partial = w?.sink?.result;
+        const hungPage = w?.page || current.get(n);
         // Grab the JS stack of the hung page (Debugger.pause interrupts a busy loop; if nothing is running the
         // page is idle - e.g. waiting for a frame - and we record that instead).
         let hangStack = 'no JS running (page idle: likely waiting on requestAnimationFrame / compositor)';
         let hangTrace = null;
         try {
-          const cdp = await w.page.context().newCDPSession(w.page);
+          if (!hungPage) throw new Error('no page (stuck before page creation)');
+          const cdp = await hungPage.context().newCDPSession(hungPage);
           await cdp.send('Debugger.enable');
           let frames = null;
           hangStack = await Promise.race([
@@ -288,6 +292,16 @@ async function worker(n) {
                 : await cdp.send('Runtime.evaluate', { expression: expr, returnByValue: true, silent: true, timeout: 3000 });
               hangTrace = ev?.result?.value ?? (ev?.exceptionDetails ? 'eval error: ' + JSON.stringify(ev.exceptionDetails).slice(0, 400) : null);
             } catch (e) { hangTrace = 'hangTrace eval failed: ' + e.message; }
+            // Physics replay bundle (world snapshot + per-step player pose log, see Physics.reproBundle): replay with
+            // `node tools/qa/phys_replay.mjs tools/qa/results/<id>/physRepro.json`.
+            try {
+              const rx = 'globalThis.__physRepro ? JSON.stringify(globalThis.__physRepro()) : null';
+              const ev = jsFrame
+                ? await cdp.send('Debugger.evaluateOnCallFrame', { callFrameId: jsFrame.callFrameId, expression: rx, returnByValue: true, silent: true })
+                : await cdp.send('Runtime.evaluate', { expression: rx, returnByValue: true, silent: true, timeout: 10000 });
+              const v = ev?.result?.value;
+              if (v) { fs.mkdirSync(path.join(RES, job.id), { recursive: true }); fs.writeFileSync(path.join(RES, job.id, 'physRepro.json'), v); }
+            } catch (e) { log(`[w${n}] physRepro eval failed`, e.message); }
           }
           await cdp.send('Debugger.resume').catch(() => {});
         } catch (e) { hangStack = 'stack capture failed: ' + e.message; }
@@ -299,7 +313,9 @@ async function worker(n) {
         if (partial) { partial.hangStack = hangStack; partial.hangTrace = hangTrace; }
         // Resolve BEFORE closing the page so the timeout wins the race (closing makes runJob reject with "closed").
         res({ ...(partial || {}), id: job.id, owner: job.owner, startedAt: partial?.startedAt || new Date(Date.now() - limit).toISOString(), finishedAt: new Date().toISOString(), shots: partial?.shots || [], logs: partial?.logs || [], data: partial?.data || {}, hangStack, hangTrace, timedOut: true, error: `TIMEOUT after ${limit / 1000}s (page hung - possible infinite loop in game code or job script)` });
-        w?.page?.close().catch(() => {});
+        hungPage?.close().catch(() => {});
+        // Stuck before the game even booted: the browser itself is wedged - recycle it.
+        if (!w) { log(`[w${n}] page never booted - recycling browser`); warm.clear(); browser?.close().catch(() => {}); browser = null; }
       }, limit); }),
     ]);
     clearTimeout(timer);

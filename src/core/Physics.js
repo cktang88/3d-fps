@@ -41,6 +41,7 @@ export class Physics {
     const cc = w.createCollider.bind(w), rc = w.removeCollider.bind(w);
     const cb = w.createRigidBody.bind(w), rb = w.removeRigidBody.bind(w);
     w.createCollider = (desc, parent) => {
+      self._validateDesc(desc, parent);
       const c = cc(desc, parent);
       self.nColliders++;
       if (self.stepsTotal > 0 && self.lateCreates.length < 64) self.lateCreates.push([self.traceFrame, c.handle, desc.shape?.type]);
@@ -53,6 +54,8 @@ export class Physics {
       return rc(c, wake);
     };
     w.createRigidBody = (desc) => {
+      const bad = Physics._badPose(desc.translation, desc.rotation);
+      if (bad) throw new Error(`Physics: refusing rigid body with ${bad}`);
       const b = cb(desc);
       self.nBodies++;
       if (self._cur.ev.length < 16) self._cur.ev.push(['+b', b.handle, desc.status]);
@@ -65,8 +68,69 @@ export class Physics {
     };
     if (typeof window !== 'undefined') {
       window.__physTrace = this._trace;
+      window.__physRepro = () => this.reproBundle();
       window.__physInfo = () => ({ frame: this.traceFrame, steps: this.stepsTotal, lateCreates: this.lateCreates, colliders: this.nColliders, bodies: this.nBodies, accum: this.accum, cur: this._cur });
     }
+  }
+
+  _reproOn() {
+    return typeof window !== 'undefined' && (window.__qaFixedDt !== undefined || window.__physRecord === true);
+  }
+
+  /** Replay bundle for the last ~120-240 physics frames: { checkpoints: [{ frame, snap (base64), log }] }. */
+  reproBundle() {
+    const enc = (u8) => { let b = ''; for (let i = 0; i < u8.length; i += 0x8000) b += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(b); };
+    const cks = [this._ckAll, this._ckPrev, this._ck].filter(Boolean).map((c) => ({ frame: c.frame, all: c === this._ckAll, snap: enc(c.snap), log: c.log }));
+    return { timestep: this.world.timestep, frame: this.traceFrame, checkpoints: cks };
+  }
+
+  // ---------------------------------------------------------------- input validation (defensive layer)
+  // Every collider/body goes through these checks, so no non-finite or absurd geometry can reach Rapier: a
+  // non-finite value makes Rapier panic (wasm trap; the world is then unusable) and absurd magnitudes break the
+  // broad phase's float math.
+  static LIMIT = 1e4;
+
+  static _badVec(v, lim = Physics.LIMIT) {
+    return !v || !(Math.abs(v.x) < lim && Math.abs(v.y) < lim && Math.abs(v.z) < lim);
+  }
+
+  static _badPose(t, r) {
+    if (t && Physics._badVec(t)) return `translation ${JSON.stringify(t)}`;
+    if (r && !(Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z) && Number.isFinite(r.w) &&
+      Math.abs(Math.hypot(r.x, r.y, r.z, r.w) - 1) < 1e-3)) return `rotation ${JSON.stringify(r)}`;
+    return null;
+  }
+
+  _validateDesc(desc, parent) {
+    const R = this.R, sh = desc.shape, T = R.ShapeType;
+    let bad = Physics._badPose(desc.translation, desc.rotation);
+    if (!bad && sh) {
+      if (sh.type === T.Cuboid) {
+        const h = sh.halfExtents;
+        if (Physics._badVec(h)) bad = `cuboid half-extents ${JSON.stringify(h)}`;
+        else if (!(h.x > 0 && h.y > 0 && h.z > 0)) {
+          // Zero/negative extents: clamp to a sliver (keeps the level building; reported once).
+          this._warnOnce('cuboid', `Physics: non-positive cuboid half-extents ${JSON.stringify(h)} clamped`);
+          h.x = Math.max(h.x, 1e-3); h.y = Math.max(h.y, 1e-3); h.z = Math.max(h.z, 1e-3);
+        }
+      } else if (sh.type === T.Capsule) {
+        if (!(sh.halfHeight >= 0 && sh.halfHeight < 100 && sh.radius > 0 && sh.radius < 100)) bad = `capsule ${sh.halfHeight}/${sh.radius}`;
+      } else if (sh.type === T.TriMesh) {
+        const v = sh.vertices, ix = sh.indices;
+        for (let i = 0; i < v.length && !bad; i++) if (!(Math.abs(v[i]) < Physics.LIMIT)) bad = `trimesh vertex ${i} = ${v[i]}`;
+        for (let i = 0; i < ix.length && !bad; i++) if (!(ix[i] < v.length / 3)) bad = `trimesh index ${i} = ${ix[i]}`;
+        if (!bad && ix.length % 3) bad = `trimesh index count ${ix.length}`;
+      }
+    }
+    if (bad) {
+      console.error(`Physics: refusing collider with ${bad}`, new Error().stack);
+      throw new Error(`Physics: refusing collider with ${bad}`);
+    }
+  }
+
+  _warnOnce(key, msg) {
+    (this._warned ||= new Set());
+    if (!this._warned.has(key)) { this._warned.add(key); console.warn(msg); }
   }
 
   _newTraceFrame() { return { f: this.traceFrame, dt: 0, accum: 0, steps: 0, done: false, nc: 0, nb: 0, pc: null, ev: [], kcc: [] }; }
@@ -87,6 +151,17 @@ export class Physics {
     tr.accum = this.accum;
     this._trace.push(tr);
     if (this._trace.length > 120) this._trace.shift();
+    const rec = this._reproOn();
+    if (rec && this._ck) {
+      // Exact replay log: the only world mutation between steps is the player collider's pose/height.
+      let a = this.accum, n = 0;
+      while (a >= this.world.timestep && n < 8) { a -= this.world.timestep; n++; }
+      if (n > 0) {
+        const e = tr.pc ? [...tr.pc, n] : [null, null, null, null, n];
+        this._ck.log.push(e);
+        if (this._ckAll && this._ckAll.log.length < 200000) this._ckAll.log.push(e);
+      }
+    }
     let steps = 0;
     while (this.accum >= this.world.timestep && steps < 8) {
       tr.steps = steps + 1; // written before the call: a hang shows which sub-step never returned
@@ -96,6 +171,14 @@ export class Physics {
       steps++;
     }
     tr.done = true;
+    // Checkpoint (QA only, ~1 ms): a world snapshot taken between steps, plus the log above, lets a hang be
+    // replayed deterministically offline (tools/qa/phys_replay.mjs).
+    if (rec && steps > 0 && (!this._ck || this.traceFrame - this._ck.frame >= 120)) {
+      this._ckPrev = this._ck;
+      this._ck = { frame: this.traceFrame, snap: this.world.takeSnapshot(), log: [] };
+      // window.__physRecordAll: also keep one long-lived checkpoint so a whole session can be replayed offline.
+      if (!this._ckAll && window.__physRecordAll) this._ckAll = { frame: this.traceFrame, snap: this._ck.snap, log: [] };
+    }
     this.traceFrame++;
     this._cur = this._newTraceFrame();
     for (const l of this.dynamicLinks) {

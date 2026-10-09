@@ -1424,11 +1424,12 @@ export class Character {
         f.gx = f.A.x; f.gz = f.A.z;
         T.o.set(f.A.x, rootY + 0.45, f.A.z);
         const hit = phys.raycast(T.o, T.down, 0.9, G.WORLD);
-        f.gyT = hit ? clamp(hit.point.y, rootY - 0.35, rootY + 0.35) : rootY;
+        f.gyT = hit ? clamp(hit.point.y, rootY - 0.42, rootY + 0.35) : rootY;
       } else if (!phys) f.gyT = rootY;
       f.gy = f.gy + (f.gyT - f.gy) * Math.min(1, dt * 20);
-      off = Math.min(off, f.gy - rootY);
     }
+    // A foot over a ledge / gap (ground > 30 cm below the other foot's) does not drag the body down.
+    { const hi = Math.max(FL[0].gy, FL[1].gy); for (const f of FL) { if (f.gy < hi - 0.3) f.gy = hi - 0.3; off = Math.min(off, f.gy - rootY); } }
     // Reach: a locked foot the hip has moved away from (turning over planted feet, long strides) must stay
     // inside the leg's length; drop the pelvis just enough (estimated from last frame's foot targets).
     if (!this._legL) this._legL = wpos(b.lUp, T.o).distanceTo(wpos(b.lLeg, T.d)) + T.d.distanceTo(wpos(b.lFoot, T.t));
@@ -1440,7 +1441,7 @@ export class Character {
       const maxV = Math.sqrt(Math.max(0, L * L - hz * hz)), need = T.o.y - f.fin.y;
       if (need > maxV) off = Math.min(off, -(need - maxV) * f.w);
     }
-    off = clamp(off, -0.25, 0.12);
+    off = clamp(off, -0.4, 0.12); // (the navmesh rides up to ~35 cm above stair treads)
     // Pelvis follows the lower foot's ground: drops onto steps / slopes below the navmesh root, rises a
     // little when the physical floor is above the navmesh height (both feet higher).
     this._pelvis = damp(this._pelvis || 0, off, 10, dt);

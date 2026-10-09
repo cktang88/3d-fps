@@ -19,6 +19,10 @@ const _k = new Array(6), _e = new THREE.Euler(), _pv = new THREE.Vector3(), _pol
 // Support-arm elbow pole (view-camera space): when the hand travels far from its grip (magazine pouch, belt) the
 // elbow hangs down and out instead of flaring up into the left edge of the frame.
 const ELBOW_POLE_L = [-0.5, -0.85, 0.15];
+// Template left shoulder (view space, m: docs/FP_FRAMING.md, upperarm_l (-0.29, -0.15, -0.12) canonical).
+const SHOULDER_L = [-0.29, -0.12, 0.15];
+// Magazine pouch / belt (view space, m): below the bottom-left of the frame, close to the body.
+const POUCH = [-0.12, -0.42, -0.08];
 
 function find(root, name) {
   let r = null;
@@ -989,7 +993,6 @@ export class ViewModel {
       const u = clamp(w.stateTime / w.stateDur, 0, 1), empty = w.reloadType === 'empty';
       const keys = rig.sidearm ? (empty ? PISTOL_EMPTY : PISTOL_TAC)
         : empty && this._emptyAction(rig) ? (rig._emptyKeys ||= rifleEmptyKeys(this._emptyAction(rig), rig.tune.rackRoll ?? 12)) : (window.__vmReloadKeys || RIFLE_TAC);
-      rig._reloadQ0 = (rig._reloadQ0 || new THREE.Quaternion()).copy(rig.root.quaternion); // pre-cant (see _bodyRel)
       this._pivotDelta(rig, sampleKeys(keys, u, _k));
     }
 
@@ -1100,30 +1103,28 @@ export class ViewModel {
     const parM = _m.copy(rig.root.matrixWorld).invert().multiply(par.matrixWorld);
     const well = rig.magHome.p.clone().applyMatrix4(parM);
     A.mag(t, R.m);
-    const magRoot = well.clone().addScaledVector(this._bodyRel(rig, R.m.p, K), K);
+    A.handL(t, R.h);
+    const pg = rig.fp.homeL.p.clone().addScaledVector(R.h.dg, K);
+    const pw = well.clone().addScaledVector(R.h.dw, K);
+    const p = pg.lerp(pw, R.h.w);
+    // Pouch run: far from the gun the template's gun-space path is replaced by a body-fixed belt point (view space),
+    // so the hand drops out of the bottom of the frame whatever the reload cant; the magazine moves with the hand.
+    // (Gun-space pouch offsets swung "down-left" round to "left and up" with the cant: round 1's left-edge "dark blob".)
+    const far = smoothstep(clamp((R.h.dw.length() * K - 0.12) / 0.25, 0, 1));
+    const shift = _pv.set(0, 0, 0);
+    if (far > 0) {
+      this.viewCam.updateMatrixWorld(true);
+      const belt = rig.root.worldToLocal(this.viewCam.localToWorld(new THREE.Vector3().fromArray(rig.tune.pouch || POUCH)));
+      shift.copy(belt).sub(p).multiplyScalar(far);
+      p.add(shift);
+    }
+    const magRoot = well.clone().addScaledVector(R.m.p, K).add(shift);
     rig.magazine.position.copy(magRoot.applyMatrix4(parM.clone().invert()));
     rig.magazine.quaternion.copy(R.m.q).multiply(rig.magHome.q);
     rig.magazine.visible = true;
     if (rig.spare) rig.spare.visible = false;
-    A.handL(t, R.h);
-    const pg = rig.fp.homeL.p.clone().addScaledVector(R.h.dg, K);
-    const pw = well.clone().addScaledVector(this._bodyRel(rig, R.h.dw, K), K);
-    const p = pg.lerp(pw, R.h.w);
     const q = R.h.dq.clone().multiply(rig.fp.homeL.q);
     return { p, q };
-  }
-
-  /**
-   * Template offsets are in gun space. Near the gun (magazine well) they must ride the gun, but the pouch run (~39 cm
-   * away) belongs to the body: with our 35 deg reload cant a gun-space "down-left" pouch turns into "left and up", and the
-   * hand and sleeve swung into the left edge of the frame (round 1's "dark blob"). Far offsets therefore drop the cant.
-   */
-  _bodyRel(rig, v, K) {
-    if (!rig._reloadQ0) return v;
-    const f = smoothstep(clamp((v.length() * K - 0.12) / 0.25, 0, 1));
-    if (f <= 0) return v;
-    const c = _pv.copy(v).applyQuaternion(rig._reloadQ0).applyQuaternion(_q2.copy(rig.root.quaternion).invert());
-    return c.lerp(v, 1 - f);
   }
 
   /** Empty-reload bolt action for this rifle: 'release' (bolt catch), 'rack' (charging handle) or null. */
@@ -1158,9 +1159,11 @@ export class ViewModel {
     const k = smoothstep(clamp((p.distanceTo(home) - 0.06) / 0.2, 0, 1));
     this.viewCam.updateMatrixWorld(true);
     const far = this.viewCam.localToWorld(_pole.fromArray(ELBOW_POLE_L));
+    // Shoulder back at the body (template shoulder) while the hand is away from its grip.
+    const sh = k > 0 ? { p: this.viewCam.localToWorld(new THREE.Vector3().fromArray(SHOULDER_L)), k } : null;
     const hip = this._hipPole(rig);
-    if (hip) { rig.fp.setLeftAbs(rig.root, p, q, hip.pole.lerp(far, k), hip.k + (1 - hip.k) * k); return; }
-    rig.fp.setLeftAbs(rig.root, p, q, k > 0 ? far : null, k);
+    if (hip) { rig.fp.setLeftAbs(rig.root, p, q, hip.pole.lerp(far, k), hip.k + (1 - hip.k) * k, sh); return; }
+    rig.fp.setLeftAbs(rig.root, p, q, k > 0 ? far : null, k, sh);
   }
 
   /**

@@ -94,11 +94,14 @@ class ArmIK {
    * pole (optional, world space): point the elbow bends toward, blended over the authored bend plane by poleK
    * (keeps the elbow / upper arm hanging below the frame when the hand travels far from its grip).
    */
-  solve(pos, quat, pole = null, poleK = 0) {
+  solve(pos, quat, pole = null, poleK = 0, shoulder = null) {
     if (!this.ok) return;
     this.reset();
     const top = this.up.parent;
     top.updateMatrixWorld(true);
+    // Optional shoulder override (world point + weight): rigs built with the shoulder slid forward toward a far
+    // handguard (AK) would otherwise swing the upper arm into frame when the hand comes back to the body.
+    if (shoulder && shoulder.k > 0) { this.up.position.lerp(top.worldToLocal(shoulder.p.clone()), shoulder.k); this.up.updateMatrixWorld(true); }
     const S = this.up.getWorldPosition(new THREE.Vector3());
     const E0 = this.fo.getWorldPosition(new THREE.Vector3());
     const W0 = this.end.getWorldPosition(new THREE.Vector3());
@@ -223,10 +226,10 @@ export class FPArms {
    * Left hand control to an absolute WeaponRoot-space transform. poleWorld (optional): world-space point the
    * elbow bends toward, blended over the authored bend plane by poleK.
    */
-  setLeftAbs(weaponRoot, p, q, poleWorld = null, poleK = 0) {
+  setLeftAbs(weaponRoot, p, q, poleWorld = null, poleK = 0, shoulder = null) {
     const ik = this.ik.L; if (!ik.ok) return;
     weaponRoot.updateMatrixWorld(true);
-    ik.solve(p.clone().applyMatrix4(weaponRoot.matrixWorld), q.clone().premultiply(weaponRoot.getWorldQuaternion(_q)), poleWorld, poleK);
+    ik.solve(p.clone().applyMatrix4(weaponRoot.matrixWorld), q.clone().premultiply(weaponRoot.getWorldQuaternion(_q)), poleWorld, poleK, shoulder);
   }
 
   get leftHand() { return this.ik.L.hand; }
