@@ -2,13 +2,13 @@
 
 Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Results: `tools/qa/results/<id>/`.
 
-**Last run:** 2026-10-09 02:27 UTC: `core` 1791510187148 (snapshot 02:02), `e_keyart` 1791509573464 (01:54). Re-runs of the hung fprig/bots jobs are queued to catch the NaN origin. Perf budget: ≤400 calls, ≤1.2M tris per view, ≤20 s fresh load (owner: perf a06576c27e6a80553).
+**Last run:** 2026-10-09 03:25 UTC: `core` 1791514719140 (snapshot 03:07). `e_keyart` and `w_spray` queued. Perf budget: ≤400 calls, ≤1.2M tris per view, ≤20 s fresh load (owner: perf a06576c27e6a80553).
 
 ## Pass / fail by area
 
 | Area | Suite | Status | Notes |
 | --- | --- | --- | --- |
-| Boot + menu, console errors | `core.json` | FAIL | 404 ×2 + "PVS: no baked data" on every fresh boot (perf, #25). Fresh load 20.7 s idle, 320 s under contention |
+| Boot + menu, console errors | `core.json` | PASS | 03:07: zero console errors/warnings on fresh boot; load 20.6 s |
 | TDM: spawn, bots, kills/score, NaNs | `core.json` | PASS | 120 s sim, kills and score progress, no NaN/stuck/fallen |
 | Weapons logic (fire modes, burst, tac +1, empty reload, ADS, sprint lockout, switch, tracers/decals) | `core.json` | PASS | 11/11. Decal check now counts add() calls (pools saturate after long sims) |
 | Weapons visual (hip / ADS / fire / reload / sprint x 11) | `c_weapons_visual_{a,b}.json` | FAIL (batch A) | gunmetal colour OK, red dot + holo reticles OK; AK irons no sight picture; optic housings low-poly octagons; ACOG lens washed; AK reload unreadable; RPK = AK (no drum) |
@@ -16,7 +16,7 @@ Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Resu
 | Key art per area + perf | `e_keyart.json` | FAIL | 01:54: hook/balloon gone, tower wood fixed, warehouse shelves dressed, office tiled ceiling. Open: office ceiling rays (e07), debug FPS overlay visible by default, FP gun looks LOD-simplified. Perf: tris 0.46–0.89M (OK) but calls 457–777 (regressed, geos 186→633). Boot 404 from missing PVS bake |
 | FFA | `f_ffa_hang.json` | PASS (00:19) | 120 s FFA with and without ambience: 28 kills, no NaN, no hang, no throw after the dt fix. The 21:51 hang did not reproduce |
 | HUD / menus / UI flow | `core.json` | PASS | kills/medals/tally, low ammo, cook + drop on death, death card, respawn 1.6/4.5 s, damage arcs, pause opens on home, bullets hit bot, end screen |
-| Bot animation jank metrics | `core.json` L4 | FAIL (3 bots) | 02:02: pops 0–6/min OK, death ground 0.53–0.93 s OK, yaw ≤350°/s OK, 8/11 bots aim ≤4.5° / moving ≤1° OK, palm 5.8 cm; bots 1–3 (team 0, after respawn?) gun 12–36° off aim; 25% of deaths displace > 0.45 m |
+| Bot animation jank metrics | `core.json` L4 | FAIL (3 bots) | 03:07: palm 1.1–2.6 cm, pops ≤6/min, yaw ≤401°/s, deaths 0.53–0.97 s and 3/18 > 0.45 m, all OK; bots 0–2 hold the gun 12–30° off the aim ray after a second Match.start (rematch path suspected). Foot-slide metric still unvalidated |
 
 ## Open issues
 
@@ -39,11 +39,11 @@ Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Resu
 | 16 | Weapons | weapons | ACOG PiP lens washed out; AK tac reload hands cluster + grey unlit polygon; RPK has no drum | c_wvis_a | reported |
 | 19 | Core loop | coordinator / gameplay | src/main.js dt has no lower bound: first rAF can give dt of -1 to -3 s, so physics and the KCC step backwards (player falls through the world, y=-44, "Fall damage" death after load), game.time goes negative, and HUD.drawMinimap throws "arc radius negative" every frame, skipping render | fallprobe 1791500269172 fp1; ffa_hang 1791500388869 | VERIFIED fixed 00:19 (fall probe: y=0.004 after teleport, no falls at 37 points x 2 dt) |
 | 20 | Render | perf / level | 48x WebGL "GL_INVALID_OPERATION: Mismatch between texture format and sampler type" during key-art renders | e_keyart 1791493511219 logs | VERIFIED fixed 01:54 (0 warnings at full quality) |
-| 21 | Bots | bots a77d0883019b11e4c | Jank: 3/11 bots hold the gun 12–36° off the aim ray (respawn/model-swap suspected); palm 5.8 cm off grip; 25% deaths displace > 0.45 m | core 1791510187148 L4 | reported |
+| 21 | Bots | bots a77d0883019b11e4c | After Match.start runs a second time (rematch), bots 0–2 hold the gun 12–30° off the aim ray and never set lGripWorld | core 1791514719140 L4 | reported |
 | 22 | Ambience | QA (applied at coordinator's request) | Unbounded per-frame accumulator loops could spin forever on non-finite input (DistantBattle, Fires, Weather bolt, AmbAudio) | code review after worker hangs | FIXED 01:10 (clamped + capped), no hang in 1028 s core run |
 | 23 | Runner/game | QA / coordinator | Intermittent page hangs (900 s timeouts: fprig film 23:30, bots film 00:52) | runner log | watchdog now captures JS stack on hang, none since 01:00 |
 | 24 | Physics hang | coordinator (Player.js) | Page hang inside Rapier world.step() (captured stack), likely NaN player collider translation via Player._syncBody; proposed 8-line finite guard (QA edit blocked by permissions) | runner log 01:50 fprig_cov | guard applied by coordinator 02:15; origin hunt re-runs queued |
-| 25 | Perf | perf a06576c27e6a80553 | Draw calls regressed 218–678 → 457–777; boot 404 (PVS bake missing); debug FPS overlay on by default; FP gun appears LOD'd | e_keyart 1791509573464 | reported |
+| 25 | Perf | perf a06576c27e6a80553 | Draw calls regressed (transmission glass + zoning, fixed by owner); PVS 404 (VERIFIED gone 03:07); FPS overlay intentional (user); chunky FP gun = dynamic res at 85% (disabled under QA) | e_keyart 1791509573464 | re-verify in e_keyart |
 | 6 | Perf | perf a06576c27e6a80553 | ~1600 calls / 3.5M tris, 75 s load vs budget 400 / 1.2M / 20 s | coordinator | open |
 | 17 | UI | gameplay a9c1ad23de29b1b81 | Pause menu opened on last-visited page (Credits) | g_hud_ui g12b_pause | VERIFIED fixed 01:31 |
 | 18 | Weapons/FP art | art lead a03eed672de8192c8 | AK irons still no front post at ADS on fresh build | c_optics o3_ak_irons_ads | open |

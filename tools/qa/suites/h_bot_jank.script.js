@@ -20,6 +20,8 @@
   const angDiff = (a, b) => Math.abs(((a - b + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
   const DIRS = [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]].map((a) => new V(...a));
   let botBot = 0, botBotPairs = new Set();
+  const dumps = bots.map(() => []), excs = bots.map(() => []); let tick = 0;
+  for (const b of bots) { if (!b._qaUpd) { b._qaUpd = b.update; const i = bots.indexOf(b); b.update = function (d) { try { return b._qaUpd.call(this, d); } catch (e) { if (excs[i].length < 3) excs[i].push(String(e.stack || e).slice(0, 300)); } }; } }
   Q.sim(SIM, dt, () => {
     g.player.position.set(...park); g.player.velocity.set(0, 0, 0);
     bots.forEach((b, i) => {
@@ -50,14 +52,16 @@
       // Planted-foot slide: only the LOWER foot, and only while it sits within 3 cm of its rolling 1 s minimum
       // height and isn't rising - i.e. the stance foot. Slide = horizontal travel per contact.
       const feet = [wp(B.lFoot), wp(B.rFoot)];
-      const lo = feet[0].y <= feet[1].y ? 0 : 1;
-      s.minHist = s.minHist || []; s.minHist.push(feet[lo].y - groundY); if (s.minHist.length > 30) s.minHist.shift();
-      const floorH = Math.min(...s.minHist);
+      // Bots-engineer contact definition: per foot, ankle within 3.5 cm of its own 1 s minimum height, |vy| < 0.15,
+      // body speed < 2.2 m/s (the run clip has a flight phase).
+      s.fh = s.fh || [[], []];
+      const bodyV = Math.hypot(b.velocity.x, b.velocity.z);
       if (s.lastToe) for (let k = 0; k < 2; k++) {
-        const h = feet[k].y - groundY, vy = (feet[k].y - s.lastToe[k].y) / dt;
-        const planted = k === lo && h - floorH < 0.03 && Math.abs(vy) < 0.3;
+        const h = feet[k].y - groundY; s.fh[k].push(h); if (s.fh[k].length > 30) s.fh[k].shift();
+        const vy = (feet[k].y - s.lastToe[k].y) / dt, floorK = Math.min(...s.fh[k]);
+        const planted = bodyV < 2.2 && h < floorK + 0.035 && Math.abs(vy) < 0.15;
         const dxz = Math.hypot(feet[k].x - s.lastToe[k].x, feet[k].z - s.lastToe[k].z);
-        if (planted) { s.slide.push(dxz / dt); s.stanceAcc[k] += dxz; s.stanceN = (s.stanceN || 0) + 1; s.stanceOn[k] = true; }
+        if (planted) { s.slide.push(dxz / dt); s.stanceAcc[k] += dxz; s.stanceOn[k] = true; }
         else if (s.stanceOn[k]) { s.stance[k].push(s.stanceAcc[k]); s.stanceAcc[k] = 0; s.stanceOn[k] = false; }
       }
       s.lastToe = feet;
@@ -104,6 +108,7 @@
       const c = new V(b.position.x, b.position.y + 1.0, b.position.z);
       for (const d of DIRS) { const h = g.physics.raycast(c, d, 0.2); if (h && h.distance < 0.005) { s.inside++; break; } }
     });
+    if (tick++ % 30 === 0) bots.forEach((b, i) => { const c = b.model; if (!c || dumps[i].length > 70) return; dumps[i].push({ t: +g.time.toFixed(0), same: c === b.spareModel, hasWrap: !!c.weaponObj, wrapParentIsRoot: c.weaponObj?.parent === c.root, rootInScene: !!c.root?.parent, hidden: c._hidden, osw: c.oneShotW, oneShot: c.oneShot?.name, reloadW: c.reloadW, wstate: b.weapon?.state, alive: b.alive, lodAcc: c._lodAcc, animDt: c._animDt, frame: c._frame, matrixFrame: c._matrixFrame, deadTime: c.deadTime, dying: !!c.dying, grip: !!c.lGripWorld }); });
     // Bot-bot interpenetration
     for (let i = 0; i < bots.length; i++) for (let j = i + 1; j < bots.length; j++) {
       const a = bots[i], b = bots[j]; if (!a.alive || !b.alive) continue;
@@ -141,6 +146,9 @@
   const far = D.filter((d) => d.disp > TH.deathDisp + 0.15).length;
   out.deathSummary = { n: D.length, dispOver045: far, groundTimes: D.map((d) => d.ground) };
   if (D.length >= 5 && far / D.length > 0.3) out.fails.push(`deaths: ${far}/${D.length} displace hips > ${TH.deathDisp + 0.15} m (spec ≤0.3; allowance 30% for backward-fall variant + shotgun/grenade knockback)`);
+  for (const b of bots) if (b._qaUpd) { b.update = b._qaUpd; delete b._qaUpd; }
+  out.updateExceptions = excs.map((e, i) => e.length ? { i, e } : null).filter(Boolean);
+  out.dumps = out.bots.map((r, i) => (r.aimP90 > 8 || r.moveAimP95 > 4 || r.supportP95 > 1) ? { i, dump: dumps[i] } : null).filter(Boolean);
   out.botBotFrames = botBot; out.botBotPairs = [...botBotPairs].slice(0, 10);
   if (botBot > 30) out.fails.push(`bot-bot interpenetration ${botBot} pair-frames (${out.botBotPairs.join(',')})`);
   out.kills = g.mode.score; out.nan = Q.nanScan(); if (out.nan.length) out.fails.push('NaN ' + out.nan);

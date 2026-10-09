@@ -82,8 +82,10 @@ class ArmIK {
   /**
    * Place the hand control at a world transform and re-solve upper arm + forearm so the wrist meets it.
    * pos/quat: world space. Call reset() first each frame (solve() does).
+   * pole (optional, world space): point the elbow bends toward, blended over the authored bend plane by poleK
+   * (keeps the elbow / upper arm hanging below the frame when the hand travels far from its grip).
    */
-  solve(pos, quat) {
+  solve(pos, quat, pole = null, poleK = 0) {
     if (!this.ok) return;
     this.reset();
     const top = this.up.parent;
@@ -109,6 +111,10 @@ class ArmIK {
     u0.addScaledVector(x0, -u0.dot(x0));
     const rot = new THREE.Quaternion().setFromUnitVectors(x0, x);
     const u = u0.applyQuaternion(rot); u.addScaledVector(x, -u.dot(x)).normalize();
+    if (pole && poleK > 0) {
+      const up = pole.clone().sub(S); up.addScaledVector(x, -up.dot(x));
+      if (up.lengthSq() > 1e-8) { u.lerp(up.normalize(), poleK); u.addScaledVector(x, -u.dot(x)).normalize(); }
+    }
     const cosA = (a * a + d * d - b * b) / (2 * a * d);
     const sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
     const E = S.clone().addScaledVector(x, a * cosA).addScaledVector(u, a * sinA);
@@ -156,6 +162,28 @@ export class FPArms {
     }
     this.ik = { L: new ArmIK(root, 'L'), R: new ArmIK(root, 'R') };
     this.homeL = null;
+    // Finger chains (ccransh rig): index .005-.007, middle .009-.011, ring .013-.015, pinky .017-.019, thumb .021-.022.
+    // Curl is mostly about each bone's local z (negative = curl in).
+    this.fingers = {};
+    for (const side of ['L', 'R']) {
+      const g = (i) => root.getObjectByName(`Bone_${side}.${String(i).padStart(3, '0')}`);
+      const chain = (a) => [g(a), g(a + 1), g(a + 2)].filter(Boolean).map((b) => ({ b, q: b.quaternion.clone() }));
+      this.fingers[side] = { index: chain(5), others: [...chain(9), ...chain(13), ...chain(17)], thumb: chain(21) };
+    }
+  }
+
+  /**
+   * Finger layer over the authored hold (radians): index > 0 lifts the index finger straight (trigger discipline),
+   * curl > 0 closes the other fingers (grabbing a magazine), < 0 opens them; thumb > 0 closes the thumb.
+   */
+  setFingers(side, index = 0, curl = 0, thumb = 0) {
+    const f = this.fingers[side]; if (!f) return;
+    const key = `${index.toFixed(3)},${curl.toFixed(3)},${thumb.toFixed(3)}`;
+    if (f.key === key) return; f.key = key;
+    const apply = (list, w) => list.forEach((e, i) => e.b.quaternion.copy(e.q).multiply(_q.setFromAxisAngle(_v.set(0, 0, 1), w[i % w.length])));
+    apply(f.index, [index * 0.9, index * 0.35, index * 0.8]);
+    apply(f.others, [-curl * 0.8, -curl, -curl * 0.7]);
+    apply(f.thumb, [-thumb, -thumb * 0.8]);
   }
 
   /** Cache the left hand control's authored transform in WeaponRoot space. */
@@ -170,23 +198,26 @@ export class FPArms {
   }
 
   /** Left hand at home + offset (WeaponRoot space) with optional extra rotation; null = authored pose. */
-  setLeft(weaponRoot, offset, rotQ = null) {
+  setLeft(weaponRoot, offset, rotQ = null, poleWorld = null, poleK = 0) {
     const ik = this.ik.L; if (!ik.ok) return;
-    if (!offset && !rotQ) { ik.reset(); return; }
+    if (!offset && !rotQ && !(poleWorld && poleK > 0)) { ik.reset(); return; }
     if (!this.homeL) this.captureHome(weaponRoot);
     weaponRoot.updateMatrixWorld(true);
     const p = this.homeL.p.clone(); if (offset) p.add(offset);
     const q = this.homeL.q.clone(); if (rotQ) q.premultiply(rotQ);
     p.applyMatrix4(weaponRoot.matrixWorld);
     q.premultiply(weaponRoot.getWorldQuaternion(_q));
-    ik.solve(p, q);
+    ik.solve(p, q, poleWorld, poleK);
   }
 
-  /** Left hand control to an absolute WeaponRoot-space transform. */
-  setLeftAbs(weaponRoot, p, q) {
+  /**
+   * Left hand control to an absolute WeaponRoot-space transform. poleWorld (optional): world-space point the
+   * elbow bends toward, blended over the authored bend plane by poleK.
+   */
+  setLeftAbs(weaponRoot, p, q, poleWorld = null, poleK = 0) {
     const ik = this.ik.L; if (!ik.ok) return;
     weaponRoot.updateMatrixWorld(true);
-    ik.solve(p.clone().applyMatrix4(weaponRoot.matrixWorld), q.clone().premultiply(weaponRoot.getWorldQuaternion(_q)));
+    ik.solve(p.clone().applyMatrix4(weaponRoot.matrixWorld), q.clone().premultiply(weaponRoot.getWorldQuaternion(_q)), poleWorld, poleK);
   }
 
   get leftHand() { return this.ik.L.hand; }
