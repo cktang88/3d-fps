@@ -38,7 +38,7 @@ forward, z up) plus the screen positions they produce at vFOV 52°.
 of the screen width (R6: 17%). A magnified scope ring spans 28–40% of the width (Squad: 28%). Irons put the rear
 aperture or notch 0.26–0.34 m from the eye.
 
-**Sprint:** the gun is lowered and canted 30–60°, muzzle down-left, and mostly leaves frame through the bottom-right.
+**Sprint:** the gun is lowered and canted 30–45°, muzzle down-left, and stays partly in frame in the lower right (CoD/BF tactical carry; round 2 user feedback: it must not leave the frame entirely).
 Pistols tip up and in toward the chest.
 
 **Reload:** the gun rolls 15–25° toward the support hand and rises slightly, so the magazine well comes into frame
