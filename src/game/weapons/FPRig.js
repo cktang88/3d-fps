@@ -210,6 +210,7 @@ export class FPArms {
     const m = new THREE.Matrix4().multiplyMatrices(inv, ik.ctrl.matrixWorld);
     this.homeL = { p: new THREE.Vector3(), q: new THREE.Quaternion(), s: new THREE.Vector3() };
     m.decompose(this.homeL.p, this.homeL.q, this.homeL.s);
+    this.homeL.p.sub(this.object.position); // stored relative to the arms' own offset (ViewModel adsHandsDrop)
   }
 
   /** Left hand at home + offset (WeaponRoot space) with optional extra rotation; null = authored pose. */
@@ -218,7 +219,7 @@ export class FPArms {
     if (!offset && !rotQ && !(poleWorld && poleK > 0)) { ik.reset(); return; }
     if (!this.homeL) this.captureHome(weaponRoot);
     weaponRoot.updateMatrixWorld(true);
-    const p = this.homeL.p.clone(); if (offset) p.add(offset);
+    const p = this.homeL.p.clone().add(this.object.position); if (offset) p.add(offset);
     const q = this.homeL.q.clone(); if (rotQ) q.premultiply(rotQ);
     p.applyMatrix4(weaponRoot.matrixWorld);
     q.premultiply(weaponRoot.getWorldQuaternion(_q));

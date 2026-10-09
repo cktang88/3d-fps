@@ -867,7 +867,8 @@ export class ViewModel {
       rig.hipRot.z + (rig.adsRot.z - rig.hipRot.z) * adsE);
     // Sprint pose: lower, tilt, canted (CoD/Apex style).
     const sb = smoothstep(this.sprintBlend);
-    if (tpl) { /* Run clip carries the sprint pose */ } else if (rig.sidearm) { pos.add(new THREE.Vector3(-0.04, -0.12, 0.05).multiplyScalar(sb)); rot.x += -0.55 * sb; rot.z += 0.15 * sb; }
+    if (tpl) { /* Run clip carries the sprint pose */ } else if (rig.sidearm && (window.__vmPistolSprint || rig.tune.sprintPose)) { /* pistol carry: _pivotDelta below */ }
+    else if (rig.sidearm) { pos.add(new THREE.Vector3(-0.04, -0.12, 0.05).multiplyScalar(sb)); rot.x += -0.55 * sb; rot.z += 0.15 * sb; }
     else { pos.add(new THREE.Vector3(-0.05, -0.08, 0.08).multiplyScalar(sb)); rot.x += -0.12 * sb; rot.y += 0.55 * sb; rot.z += 0.35 * sb; }
     // Tactical sprint: weapon lifted higher.
     if (p.tacSprint) { rot.x += -0.25 * sb * (tpl ? 0.4 : 1); pos.y += 0.04 * sb; }
@@ -901,15 +902,27 @@ export class ViewModel {
     const leftTarget = this._supportArmOffset(rig, w, dt, reloading);
     if (rig.leftArm && leftTarget) rig.leftArm.position.copy(rig.leftArmHome).add(leftTarget);
     else if (rig.leftArm && w.state !== 'reload') rig.leftArm.position.lerp(rig.leftArmHome, 1 - Math.exp(-20 * dt));
+    // Pistols at ADS: both hands drop a little under the frame (the template's thumbs-forward hold rides high and the
+    // firing hand's knuckles covered the slide at the sight line). FP_TUNE adsHandsDrop: WeaponRoot K-space offset.
+    if (rig.fp) {
+      const hd = window.__vmHandsDrop || rig.tune.adsHandsDrop;
+      if (hd) rig.fp.object.position.set(hd[0], hd[1], hd[2]).multiplyScalar(adsE);
+    }
     if (rig.fp && !(w.state === 'reload' && !s.tube)) {
       // Support hand: IK to its grip + choreography offset (WeaponRoot space); the pump rides with it.
       rig.fpLeft = rig.fpLeft || new THREE.Vector3();
       // Pistols at ADS: support hand tucked a little lower and inboard under the firing hand (compact two-hand grip
       // that stays under the sight line; FP_TUNE adsSupport, WeaponRoot K-space).
       const ads = !leftTarget && rig.tune.adsSupport && adsE > 0 ? _v.fromArray(rig.tune.adsSupport).multiplyScalar(adsE) : null;
-      rig.fpLeft.lerp(leftTarget || ads || _v.set(0, 0, 0), leftTarget || ads ? 1 : 1 - Math.exp(-20 * dt));
+      // Support-hand regrip (FP_TUNE supportGrip {off, rot}: WeaponRoot K-space offset + XYZ deg), applied at hip and
+      // ADS: pistols re-seat the authored template hand (thumb up beside the slide) into a cupped grip under the firing hand.
+      const sg = window.__vmSupGrip || rig.tune.supportGrip;
+      const base = sg && !leftTarget ? _pv.fromArray(sg.off) : null;
+      const tgt = leftTarget || (base ? base.clone().add(ads || _v.set(0, 0, 0)) : ads);
+      rig.fpLeft.lerp(tgt || _v.set(0, 0, 0), tgt ? 1 : 1 - Math.exp(-20 * dt));
+      const rq = sg && !leftTarget ? _q2.setFromEuler(_e.set(sg.rot[0] * DEG, sg.rot[1] * DEG, sg.rot[2] * DEG)) : null;
       const hp = this._hipPole(rig);
-      rig.fp.setLeft(rig.root, rig.fpLeft.lengthSq() > 1e-8 ? rig.fpLeft : null, null, hp && hp.pole, hp ? hp.k : 0);
+      rig.fp.setLeft(rig.root, rig.fpLeft.lengthSq() > 1e-8 || rq ? rig.fpLeft : null, rq, hp && hp.pole, hp ? hp.k : 0);
       if (rig.pump) rig.pump.position.z = rig.pumpHome.z + (w.state === 'pump' ? Math.max(0, rig.fpLeft.z) : 0);
     }
     if (w.state === 'pump') {
@@ -971,6 +984,10 @@ export class ViewModel {
     if (tpl) this._applyTemplate(rig, tpl, w, ctx, dt, adsE, sb, tplReload);
     // Sprint carry (rifle family): canted low-ready in the lower right, muzzle down-left, rotating about the receiver
     // (sight) so the stock never swings up into the face (FP_TUNE sprintPose: cm / deg, as ReloadChoreo keys).
+    if (rig.sidearm && rig.fp && sb > 0.001) {
+      const sp = window.__vmPistolSprint || rig.tune.sprintPose;
+      if (sp) { const k = smoothstep(sb) * (1 - adsE); for (let i = 0; i < 6; i++) _k[i] = sp[i] * k; this._pivotDelta(rig, _k); }
+    }
     if (tpl && sb > 0.001) {
       const sp = window.__vmRunAdj || rig.tune.sprintPose;
       if (sp) { const k = smoothstep(sb) * (1 - adsE); for (let i = 0; i < 6; i++) _k[i] = sp[i] * k; this._pivotDelta(rig, _k, rig.aim.point); }
@@ -1022,10 +1039,13 @@ export class ViewModel {
     if (rig.fp?.setFingers) {
       const idx = Math.max(sb * (1 - adsE), reloading && !s.tube ? smoothstep(this.reloadBlend) : 0, this.inspK || 0, this.holsterK || 0, 1 - smoothstep(clamp(this.equipT * 1.4, 0, 1)));
       this._idxK = damp(this._idxK ?? 0, idx, 14, dt);
-      rig.fp.setFingers('R', 0.55 * this._idxK);
-      const fl = this._fingerL;
+      const rth = window.__vmThumbR ?? rig.tune.thumbR ?? 0; // firing-hand thumb tuck (pistols: keep it below the slide)
+      rig.fp.setFingers('R', 0.55 * this._idxK, 0, rth);
+      // Resting support-hand fingers (FP_TUNE supportFingers [curl, thumb]; pistols: wrap the firing hand).
+      const rest = window.__vmSupFingers || rig.tune.supportFingers;
+      const fl = this._fingerL || (rest ? { curl: rest[0], thumb: rest[1], idx: true } : null);
       this._flC = damp(this._flC ?? 0, fl ? fl.curl : 0, 16, dt); this._flT = damp(this._flT ?? 0, fl ? fl.thumb : 0, 16, dt);
-      rig.fp.setFingers('L', -this._flC * 0.6, this._flC, this._flT);
+      rig.fp.setFingers('L', fl?.idx ? this._flC : -this._flC * 0.6, this._flC, this._flT);
     }
 
     // ---- Muzzle flash ----
