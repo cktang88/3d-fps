@@ -131,7 +131,16 @@ export class Player {
   }
 
   _syncBody() {
-    this.collider.setTranslation({ x: this.position.x, y: this.position.y + this.height / 2, z: this.position.z });
+    const p = this.position, v = this.velocity;
+    // A non-finite translation makes Rapier's broad phase spin forever (seen as a hard page hang).
+    // Recover to the last good position and report the source once.
+    if (!(Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z))) {
+      if (!this._nanReported) { this._nanReported = true; console.error('Player position non-finite; restored', new Error().stack); }
+      if (this._goodPos) p.copy(this._goodPos); else p.set(0, 0, 0);
+      v.set(0, 0, 0);
+    } else (this._goodPos ||= p.clone()).copy(p);
+    if (!(Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z))) v.set(0, 0, 0);
+    this.collider.setTranslation({ x: p.x, y: p.y + this.height / 2, z: p.z });
   }
 
   canStand() {
@@ -396,6 +405,7 @@ export class Player {
     k.computeColliderMovement(c, { x: desired.x * sc, y: 0, z: desired.z * sc }, flags, filter);
     const a = k.computedMovement();
     const ax = a.x / sc, az = a.z / sc;
+    if (!Number.isFinite(ax) || !Number.isFinite(az)) { this._syncBody(); return null; }
     if (Math.hypot(ax, az) <= Math.hypot(base.x, base.z) + 1e-3) { this._syncBody(); return null; }
     // Down.
     c.setTranslation({ x: p0.x + ax, y: cy + up, z: p0.z + az });

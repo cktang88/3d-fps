@@ -50,7 +50,7 @@ const PROPS = {
   pipes: ['modular_industrial_pipes_01/modular_industrial_pipes_01.glb'],
   woodCrate: ['wooden_crate_02/wooden_crate_02.glb'],
   // Same crate for rack loads under the warehouse roof: separate batch that never casts sun shadows (perf).
-  rackCrate: [null, { alias: 'woodCrate', noShadow: true }],
+  rackCrate: [null, { alias: 'woodCrate', noShadow: true, simplify: 0.2 }],
   cementBag: ['cement_bag/cement_bag.glb'],
   wheelRim: ['rusted_wheel_rim_01/rusted_wheel_rim_01.glb'],
   wetSign: ['WetFloorSign_01/WetFloorSign_01.glb'],
@@ -547,7 +547,12 @@ export class Level {
     for (const [k, [, o = {}]] of Object.entries(PROPS)) {
       const src = o.alias && this.props[o.alias];
       if (!src) continue;
-      this.props[k] = { ...src, parts: src.parts.map((q) => ({ geo: q.geo, mat: q.mat })), noShadow: !!o.noShadow };
+      const simp = (g) => {
+        if (!o.simplify) return g;
+        const gi = g.index ? g : mergeVertices(g);
+        return simplifiedGeometry(gi, Math.max(60, Math.round(triCount(gi) * o.simplify)), 0.01);
+      };
+      this.props[k] = { ...src, parts: src.parts.map((q) => ({ geo: simp(q.geo), mat: q.mat })), noShadow: !!o.noShadow };
       this.propInst[k] = [];
     }
   }
