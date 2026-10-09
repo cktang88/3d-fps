@@ -392,7 +392,9 @@ async function worker(n) {
     }
     fs.mkdirSync(path.join(RES, job.id), { recursive: true });
     fs.writeFileSync(path.join(RES, job.id, 'job.json'), JSON.stringify(job)); // lets anyone re-submit it
-    // Context loss can poison the whole browser (Chrome blocks 3D APIs per origin): recycle it.
+    // Context loss can poison the whole browser (Chrome blocks 3D APIs per origin), and a boot that never reaches the
+    // menu means the browser/GPU process is wedged: recycle it in both cases.
+    if (!r.contextLost && !r.loadMs && /waitForFunction: Timeout/.test(r.error || '')) r.contextLost = 'boot timeout (browser wedged?)';
     if (r.contextLost) { log(`[w${n}] WebGL context lost in`, job.id, '- recycling browser'); warm.clear(); await browser?.close().catch(() => {}); browser = null; }
     fs.writeFileSync(path.join(RES, job.id, 'result.json'), JSON.stringify(r, null, 2));
     fs.unlinkSync(fp);
