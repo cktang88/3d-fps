@@ -319,7 +319,7 @@ export class CharacterTemplate {
       const leg = bn.Hips && bn.LeftFoot ? (bn.Hips.getWorldPosition(new THREE.Vector3()).y - bn.LeftFoot.getWorldPosition(new THREE.Vector3()).y) * this.scale : 0.9;
       const mc = {};
       for (const [name, clip] of this.clips) {
-        const m = /^mocap_(\w+)_([FBLR])@([\d.]+)$/.exec(name);
+        const m = /^mocap_([a-z0-9]+)_([FBLR])@([\d.]+)$/.exec(name);
         if (!m) continue;
         (mc[m[1]] ||= {})[m[2]] = { clip: splitClip(clip, false), speed: +m[3] * leg, dur: clip.duration };
       }
@@ -910,7 +910,14 @@ export class Character {
       {
         const mv = W.walk + W.run + W.sprint;
         const legacyMove = (1 - c) * moveK * (1 - mocapK);
-        if (mv > 1e-4) { const f = legacyMove / mv; W.walk *= f; W.run *= f; W.sprint *= f; }
+        const runs = tpl.mocap.run2?.F && tpl.mocap.run?.F;
+        if (runs) {
+          // Running uses mocap runs (realistic ~8 cm hip bob, short flight) instead of the cartoon
+          // bounding UAL jog/sprint: Neutral FR → Rushed FR by speed, played at stride-matched rate.
+          W.walk = W.run = W.sprint = 0;
+          const kr = clamp((sp - tpl.mocap.run2.F.speed) / Math.max(0.1, tpl.mocap.run.F.speed - tpl.mocap.run2.F.speed), 0, 1);
+          if (legacyMove > 0) { MW.set(tpl.mocap.run2.F, legacyMove * (1 - kr)); MW.set(tpl.mocap.run.F, legacyMove * kr); }
+        } else if (mv > 1e-4) { const f = legacyMove / mv; W.walk *= f; W.run *= f; W.sprint *= f; }
         else { W.walk = W.run = W.sprint = 0; W.run = legacyMove; }
         W.idle = (1 - c) * (1 - moveK);
         W.crouchIdle = c * (1 - moveK); W.crouchWalk = 0;

@@ -333,7 +333,7 @@ export class Bot {
 
     // ---- Movement intent per goal ----
     let desiredVel = null; // direct velocity (strafe) when set
-    const runSpeed = 4.4 * this.weapon.stats.mobility;
+    const runSpeed = 3.3 * this.weapon.stats.mobility; // combat run (mocap run cycles are authored ~1.9–2.6 m/s; keep cadence human)
     switch (this.goal) {
       case 'patrol': {
         if (!this.moveTarget || this.position.distanceTo(this.moveTarget) < 2 || this.goalTimer > 25) {
@@ -495,7 +495,7 @@ export class Bot {
     // ---- Move ----
     this.crouch = damp(this.crouch, crouchT, 8, dt);
     if (this.agent) {
-      let maxSpeed = this.goal === 'engage' ? 3.2 : this.goal === 'cover' ? 5.2 : runSpeed;
+      let maxSpeed = this.goal === 'engage' ? 3.2 : this.goal === 'cover' ? 3.8 : runSpeed;
       if (this.crouch > 0.5) maxSpeed = Math.min(maxSpeed, 1.5); // crouch-walk pace
       if (Math.abs(this.agent.maxSpeed - maxSpeed) > 0.1) this.agent.updateParameters({ maxSpeed });
       if (desiredVel) {
