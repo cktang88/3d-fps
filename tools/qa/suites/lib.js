@@ -160,3 +160,20 @@
 })();
 
 ;(() => { try { window.__qa.cleanup(); } catch (e) { console.warn('qa sanitize', e); } })();
+;(() => {
+  const Q = window.__qa, G = () => window.__game;
+  // Support (left) forearm vs the central 20% screen box, projected through the viewmodel camera.
+  // Returns { frac: share of 12 samples along Forearm_L→Hand_L inside the box, any }. The gun and right hand are allowed there.
+  Q.forearmCentre = () => {
+    const g = G(), vm = g.viewmodel, cam = g.renderer.viewCamera || g.renderer.camera;
+    const root = vm.rig?.fp?.object || vm.rig?.root || vm.holder;
+    const find = (names) => { for (const n of names) { const o = root?.getObjectByName?.(n); if (o) return o; } return null; };
+    const fo = find(['Forearm_L', 'Forearm.L', 'LowerArm_L']), hand = find(['Hand_L', 'Hand.L']);
+    if (!fo || !hand) return { error: 'no Forearm_L/Hand_L in rig' };
+    root.updateMatrixWorld(true); cam.updateMatrixWorld();
+    const a = fo.getWorldPosition(new g.player.position.constructor()), b = hand.getWorldPosition(new g.player.position.constructor());
+    let inside = 0; const N = 12;
+    for (let i = 0; i <= N; i++) { const p = a.clone().lerp(b, i / N).project(cam); if (p.z < 1 && Math.abs(p.x) < 0.2 && Math.abs(p.y) < 0.2) inside++; }
+    return { frac: +(inside / (N + 1)).toFixed(2), any: inside > 0 };
+  };
+})();

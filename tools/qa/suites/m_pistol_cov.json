@@ -24,108 +24,110 @@
   {
    "name": "p226_T_00",
    "frames": 1,
-   "eval": "__qa.sim(2);__qa.god();__qa.freezeBots(true);__qa.releaseAll();__qa.place([0,0.1,10],0.15,0.02);__qa.loadout('p226');__qa.sim(1.6);__game.player.spawnProtect=0;(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;"
+   "eval": "__qa.sim(2);__qa.god();__qa.freezeBots(true);__qa.releaseAll();__qa.place([0,0.1,10],0.15,0.02);__qa.loadout('p226');__qa.sim(1.6);__game.player.spawnProtect=0;(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;",
+   "read": "({frame:null, forearm:__qa.forearmCentre()})"
   },
   {
    "name": "p226_T_01_6",
    "frames": 1,
    "eval": "const w=__game.currentWeapon;w.ammo=Math.max(1,w.stats.mag-3);__qa.tap('KeyR');__qa.sim(0.02);__qa.sim(__game.currentWeapon.stateDur*0.06);(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;",
-   "read": "({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType})"
+   "read": "({frame:({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType}), forearm:__qa.forearmCentre()})"
   },
   {
    "name": "p226_T_02_18",
    "frames": 1,
    "eval": "__qa.sim(__game.currentWeapon.stateDur*0.12);(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;",
-   "read": "({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType})"
+   "read": "({frame:({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType}), forearm:__qa.forearmCentre()})"
   },
   {
    "name": "p226_T_03_30",
    "frames": 1,
    "eval": "__qa.sim(__game.currentWeapon.stateDur*0.12);(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;",
-   "read": "({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType})"
+   "read": "({frame:({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType}), forearm:__qa.forearmCentre()})"
   },
   {
    "name": "p226_T_04_42",
    "frames": 1,
    "eval": "__qa.sim(__game.currentWeapon.stateDur*0.12);(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;",
-   "read": "({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType})"
+   "read": "({frame:({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType}), forearm:__qa.forearmCentre()})"
   },
   {
    "name": "p226_T_05_54",
    "frames": 1,
    "eval": "__qa.sim(__game.currentWeapon.stateDur*0.12000000000000005);(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;",
-   "read": "({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType})"
+   "read": "({frame:({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType}), forearm:__qa.forearmCentre()})"
   },
   {
    "name": "p226_T_06_66",
    "frames": 1,
    "eval": "__qa.sim(__game.currentWeapon.stateDur*0.12);(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;",
-   "read": "({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType})"
+   "read": "({frame:({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType}), forearm:__qa.forearmCentre()})"
   },
   {
    "name": "p226_T_07_78",
    "frames": 1,
    "eval": "__qa.sim(__game.currentWeapon.stateDur*0.12);(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;",
-   "read": "({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType})"
+   "read": "({frame:({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType}), forearm:__qa.forearmCentre()})"
   },
   {
    "name": "p226_T_08_92",
    "frames": 1,
    "eval": "__qa.sim(__game.currentWeapon.stateDur*0.14);(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;",
-   "read": "({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType})"
+   "read": "({frame:({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType}), forearm:__qa.forearmCentre()})"
   },
   {
    "name": "p226_E_00",
    "frames": 1,
-   "eval": "__qa.sim(2);__qa.god();__qa.freezeBots(true);__qa.releaseAll();__qa.place([0,0.1,10],0.15,0.02);__qa.loadout('p226');__qa.sim(1.6);__game.player.spawnProtect=0;(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;"
+   "eval": "__qa.sim(2);__qa.god();__qa.freezeBots(true);__qa.releaseAll();__qa.place([0,0.1,10],0.15,0.02);__qa.loadout('p226');__qa.sim(1.6);__game.player.spawnProtect=0;(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;",
+   "read": "({frame:null, forearm:__qa.forearmCentre()})"
   },
   {
    "name": "p226_E_01_6",
    "frames": 1,
    "eval": "const w=__game.currentWeapon;w.ammo=0;__qa.tap('KeyR');__qa.sim(0.02);__qa.sim(__game.currentWeapon.stateDur*0.06);(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;",
-   "read": "({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType})"
+   "read": "({frame:({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType}), forearm:__qa.forearmCentre()})"
   },
   {
    "name": "p226_E_02_18",
    "frames": 1,
    "eval": "__qa.sim(__game.currentWeapon.stateDur*0.12);(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;",
-   "read": "({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType})"
+   "read": "({frame:({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType}), forearm:__qa.forearmCentre()})"
   },
   {
    "name": "p226_E_03_30",
    "frames": 1,
    "eval": "__qa.sim(__game.currentWeapon.stateDur*0.12);(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;",
-   "read": "({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType})"
+   "read": "({frame:({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType}), forearm:__qa.forearmCentre()})"
   },
   {
    "name": "p226_E_04_42",
    "frames": 1,
    "eval": "__qa.sim(__game.currentWeapon.stateDur*0.12);(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;",
-   "read": "({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType})"
+   "read": "({frame:({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType}), forearm:__qa.forearmCentre()})"
   },
   {
    "name": "p226_E_05_54",
    "frames": 1,
    "eval": "__qa.sim(__game.currentWeapon.stateDur*0.12000000000000005);(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;",
-   "read": "({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType})"
+   "read": "({frame:({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType}), forearm:__qa.forearmCentre()})"
   },
   {
    "name": "p226_E_06_66",
    "frames": 1,
    "eval": "__qa.sim(__game.currentWeapon.stateDur*0.12);(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;",
-   "read": "({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType})"
+   "read": "({frame:({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType}), forearm:__qa.forearmCentre()})"
   },
   {
    "name": "p226_E_07_78",
    "frames": 1,
    "eval": "__qa.sim(__game.currentWeapon.stateDur*0.12);(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;",
-   "read": "({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType})"
+   "read": "({frame:({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType}), forearm:__qa.forearmCentre()})"
   },
   {
    "name": "p226_E_08_92",
    "frames": 1,
    "eval": "__qa.sim(__game.currentWeapon.stateDur*0.14);(()=>{const vm=__game.viewmodel,r=vm.rig;const ms=[];(r.fp?r.fp.object:r.root).traverse(o=>{if(o.isSkinnedMesh||(o.isMesh&&/Arm/i.test(o.name)))ms.push(o)});if(vm.reloadArms)vm.reloadArms.traverse(o=>{if(o.isMesh)ms.push(o)});for(const m of ms){if(m.userData._qaM)continue;m.userData._qaM=1;const c=m.material.clone();c.map=null;c.normalMap=null;c.aoMap=null;c.roughnessMap=null;c.metalnessMap=null;c.color.setRGB(0,0,0);c.emissive.setRGB(1,0,1);c.emissiveIntensity=3;c.emissiveMap=null;c.envMapIntensity=0;c.needsUpdate=true;m.material=c;}})();__game.paused=true;",
-   "read": "({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType})"
+   "read": "({frame:({st:__game.currentWeapon.state,t:+(__game.currentWeapon.stateTime/__game.currentWeapon.stateDur).toFixed(2),rt:__game.currentWeapon.reloadType}), forearm:__qa.forearmCentre()})"
   }
  ]
 }

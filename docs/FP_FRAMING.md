@@ -107,7 +107,10 @@ How these numbers are used in the game:
     support hand closes around a carried magazine or charging handle and opens flat for the palm slap
     (`FPArms.setFingers`).
   Target: arm and hand pixels under 25% of the screen at peak, and the arm mostly out of the central 20% box
-  (`tools/qa/arm_coverage.py` on mask shots). `window.__vmProcAnims = true` restores the old procedural set for A/B.
+  (`tools/qa/arm_coverage.py` on mask shots). Pistol reloads are an exception, agreed with the user: the pistol tilts
+  up into view so the magazine swap reads, so the gun and right hand may cover up to about 25% of the centre box during
+  the swap. The hard rule there is the support forearm and sleeve: they must stay out of the centre box. QA checks this
+  with `__qa.forearmCentre()`, which projects Forearm_L→Hand_L through the view camera (`tools/qa/suites/m_pistol_cov.json`). `window.__vmProcAnims = true` restores the old procedural set for A/B.
 * **Sprint carry.** Only the bounce of the template Run loop is kept (its pose relative to frame 0). The carry pose is
   ours: `FP_TUNE.sprintPose`, rotating about the sight/receiver point so the stock never swings into the face. The
   rifle sits low in the lower right, canted, muzzle down-left, and stays partly in frame.
