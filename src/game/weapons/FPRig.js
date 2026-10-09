@@ -30,7 +30,8 @@ export const FP_TUNE = {
   // AK: notch bottom of the rear leaf / post tip inside the front sight ears (zoomed side renders); the dust
   // cover top sits 1.5 mm (K-space) under this line, as on the real rifle.
   // Empty reloads: 'rack' (charging handle, rackRoll = cant while racking, deg) or 'release' (bolt catch, default).
-  ak47: { ironRear: [0, 0.1005, -0.645], ironFront: [0, 0.1005, -1.375], rail: [0, 0.0956, -0.492], emptyAction: 'rack', rackRoll: 14, boltTravel: 0.13 },
+  ak47: { ironRear: [0, 0.1005, -0.645], ironFront: [0, 0.1005, -1.375], rail: [0, 0.0956, -0.492], emptyAction: 'rack', rackRoll: 14, boltTravel: 0.13,
+    sprintPose: [1, -0.5, -2, -15, 22, 35] }, // low iron sights: carry pivot sits lower, so lift it
   scarl: { ironRear: [0, 0.2655, 0.2311], ironFront: [0, 0.2777, -0.514], rail: [0, 0.1879, -0.058], emptyAction: 'rack', rackRoll: -24, boltTravel: 0.12, boltHand: [-0.06, -0.06, 0.08] },
   // MP5: diopter drum aperture centre / front post tip inside the hood.
   mp5a5: { ironRear: [0, 0.238, 0.0978], ironFront: [0, 0.254, -0.5722], rail: [0, 0.2286, -0.21], emptyAction: 'rack', rackRoll: -24, boltTravel: 0.12, boltHand: [-0.05, -0.06, 0.08] },
@@ -38,7 +39,7 @@ export const FP_TUNE = {
   // Shell loading: canted top-right so the loading port (receiver underside) faces the eye, barely lowered; the palm
   // brings each shell up under the port and thumbs it in (ViewModel._supportArmOffset).
   shotgun: { reloadPos: [-0.02, 0.006, -0.01], reloadRot: [0.09, 0.06, -0.48], ironRear: [0, 0.16, 0.0], ironFront: [0, 0.157, -0.984], rail: [0, 0.1314, 0.0], pumpStroke: 0.16,
-    shellPort: [0.0, 0.0, 0.28], shellBelt: [-0.1, -0.5, 0.3] },
+    shellPort: [0.0, 0.0, 0.28], shellBelt: [-0.1, -0.5, 0.3], sprintPose: [1, -0.5, -2, -15, 22, 35] },
   // Pistols: longer eye relief at ADS (arms extended), so the two-hand grip stays compact under the sights.
   p226: { ironRelief: 0.42, dotRelief: 0.42, reloadPos: [-0.02, -0.045, 0.0], reloadRot: [-0.05, 0.06, 0.3], ironRear: [0, 0.1352, 0.1435], ironFront: [0, 0.1359, -0.1692], rail: [0, 0.131, 0.04] },
   m1911: { ironRelief: 0.42, dotRelief: 0.42, reloadPos: [-0.02, -0.045, 0.0], reloadRot: [-0.05, 0.06, 0.3], ironRear: [0, 0.1297, 0.1299], ironFront: [0, 0.1287, -0.1954], rail: [0, 0.1281, 0.045] },

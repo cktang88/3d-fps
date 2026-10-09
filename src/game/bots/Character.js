@@ -529,6 +529,7 @@ function springDamperExact(s, goal, halflife, dt) {
 }
 // Hot-path world transforms read straight from matrixWorld (callers keep matrices current).
 const _wv = new THREE.Vector3(), _ws = new THREE.Vector3();
+const _fk = { o: new THREE.Vector3(), down: new THREE.Vector3(0, -1, 0), d: new THREE.Vector3(), t: new THREE.Vector3(), f: new THREE.Vector3(), q: new THREE.Quaternion(), q2: new THREE.Quaternion(), m: new THREE.Matrix4(), n: new THREE.Matrix3() };
 const _cl = { lp: new THREE.Vector3(), rp: new THREE.Vector3(), d: new THREE.Vector3(), pole: new THREE.Vector3(), lq: new THREE.Quaternion(), rq: new THREE.Quaternion(), q: new THREE.Quaternion(), m: new THREE.Matrix4(), n: new THREE.Matrix3() };
 const wpos = (o, out) => out.setFromMatrixPosition(o.matrixWorld);
 const wquat = (o, out) => { o.matrixWorld.decompose(_wv, out, _ws); return out; };
@@ -622,6 +623,8 @@ export class Character {
     this.fireKick = 0;
     this.kickRoll = 0;
     this.oneShot = null; // { name, t, dur, rate }
+    this._fl = [0, 1].map(() => ({ A: new THREE.Vector3(), AQ: new THREE.Quaternion(), P: new THREE.Vector3(), TA: new THREE.Vector3(), hT: 0, minT: 0, anchor: 0, yaw: 0, ay: 0, w: 0, locked: false, step: null, init: false, minH: 0, h: 0, gy: 0, gyT: 0, gx: 1e9, gz: 0 }));
+    this._pelvis = 0;
     this.oneShotW = 0;
     this.deadTime = 0;
     this.dying = null;
@@ -747,7 +750,7 @@ export class Character {
 
   // ---------------- events ----------------
   onSpawn(bot) {
-    this.deadTime = 0; this._hidden = false; this._lodAcc = 1; // first update after spawn: full pose + aim/IK pass
+    this.deadTime = 0; this._hidden = false; this._lodAcc = 1; this._pelvis = 0; for (const f of this._fl) { f.w = 0; f.locked = false; f.step = null; f.init = false; } // first update after spawn: full pose + aim/IK pass
     this.dying = null;
     this.mixer.stopAllAction();
     for (const [k, a] of Object.entries(this.lowerActions)) { a.reset().play(); a.setEffectiveWeight(k === 'idle' ? 1 : 0); if (GAIT_KEYS.includes(k)) a.timeScale = 0; }
@@ -858,7 +861,8 @@ export class Character {
     }
     const prevBody = this.bodyYaw;
     const dy = wrapPi(targetBody - this.bodyYaw);
-    const turn = clamp(dy * Math.min(1, dt * (sp > 0.25 ? 9 : 6)), -9 * dt, 9 * dt); // hips pivot ≤ ~515°/s
+    const maxTurn = sp < 0.3 && this._footLockOn ? 5 : 9; // hips pivot ≤ ~515°/s (≤ ~290°/s stepping in place)
+    const turn = clamp(dy * Math.min(1, dt * (sp > 0.25 ? 9 : 6)), -maxTurn * dt, maxTurn * dt);
     this.bodyYaw = wrapPi(this.bodyYaw + turn);
     this.yawRate = damp(this.yawRate, turn / Math.max(dt, 1e-4), 8, dt);
     // Chest follows the aim with a human turn-rate cap (≤ ~500°/s), legs absorb the rest.
@@ -926,6 +930,7 @@ export class Character {
     const bs = this._procBones || (this._procBones = ['hips', 'lUp', 'lLeg', 'lFoot', 'rUp', 'rLeg', 'rFoot', 'spine', 'spine1', 'spine2', 'neck', 'head', 'lSh', 'rSh', 'lArm', 'lFore', 'lHand', 'rArm', 'rFore', 'rHand'].map((k) => this.bones[k]).filter(Boolean));
     const sv = this._procSave || (this._procSave = bs.map(() => new THREE.Quaternion()));
     for (let i = 0; i < bs.length; i++) sv[i].copy(bs[i].quaternion);
+    if (this.bones.hips) (this._hipsSave ||= new THREE.Vector3()).copy(this.bones.hips.position); // pelvis drops move it
     this._procSaved = true;
   }
 
@@ -933,6 +938,7 @@ export class Character {
     if (!this._procSaved) return;
     const bs = this._procBones, sv = this._procSave;
     for (let i = 0; i < bs.length; i++) bs[i].quaternion.copy(sv[i]);
+    if (this._hipsSave) this.bones.hips.position.copy(this._hipsSave);
     this._procSaved = false;
   }
 
@@ -942,7 +948,7 @@ export class Character {
     // Turning on the spot: shuffle the feet (drive the walk cycle from the turn rate) instead of
     // pivoting on planted soles.
     const sp0 = sp;
-    if (sp < 0.3) sp = Math.max(sp, clamp(Math.abs(this.yawRate) * 0.32 - 0.15, 0, 1.1));
+    if (sp < 0.3 && !this._footLockOn) sp = Math.max(sp, clamp(Math.abs(this.yawRate) * 0.32 - 0.15, 0, 1.1)); // (foot lock steps instead)
     const travel = this._travel + (sp - sp0) * dt; // real ground travel + the turn shuffle's virtual steps
     this._travel = 0;
     const c = clamp(bot.crouch, 0, 1);
@@ -1085,6 +1091,9 @@ export class Character {
     for (const m of this.mocapActions) if (m.kind === 'crouch') cw += m.w;
     this.crouchMove = cw;
     if (cw > 0.01) this._crouchLegs(cw);
+    // Foot locking: planted feet stay put in the world (no skating), follow stairs/slopes, and re-step
+    // when the body turns in place. Near, on-screen bots only.
+    this._footLock(bot);
     const pitch = clamp(bot.pitch, -70 * DEG, 70 * DEG);
     const aimYaw = bot.yaw;
     this.leanIn = damp(this.leanIn || 0, Character.LEAN_IN * (1 - clamp(this.speedS / 2, 0, 1)) * (1 - bot.crouch), 6, this._animDt || 0.016);
@@ -1329,6 +1338,113 @@ export class Character {
   }
 
   /** Swing the elbow about the shoulder→wrist axis toward `poleDir` (world), keeping the wrist fixed. */
+  /**
+   * Runtime foot locking. Per foot: the animated ankle is "planted" while it is within a couple of cm of
+   * its recent lowest height (adaptive contact height, works for walk / run / crouch / kneel); at touch-down
+   * its world position and yaw are captured and held with leg IK until lift-off (blend in 60 ms, out
+   * 120 ms). A downward ray per foot puts the sole on the real ground (stairs, slopes) and drops the
+   * pelvis when a foot needs to reach lower. Standing still, a foot whose lock drifted too far from where
+   * the pose wants it (turning in place, small shuffles) takes a procedural step instead of skating.
+   */
+  _footLock(bot) {
+    const b = this.bones, FL = this._fl;
+    const dt = Math.min(0.1, Math.max(1e-3, this._animDt || 1 / 60));
+    const cam = bot.game?.renderer?.camera;
+    let near = true;
+    if (cam && !this.tpl.forceFullRate) { const dx = bot.position.x - cam.position.x, dz = bot.position.z - cam.position.z; near = dx * dx + dz * dz < 25 * 25; }
+    const air = (bot.jumpY || 0) > 0.02;
+    this._footLockOn = near && !air;
+    if (!b.hips?.parent || !b.lUp || !b.rUp || !b.lLeg || !b.rLeg || !b.lFoot || !b.rFoot) return;
+    if (!near || air) { for (const f of FL) { f.w = 0; f.locked = false; f.step = null; f.init = false; } this._pelvis = 0; return; }
+    const T = _fk, rootY = bot.position.y + (bot.jumpY || 0);
+    const sp = this.speedS, idle = sp < 0.3;
+    const phys = bot.game?.physics;
+    const legs = [[b.lUp, b.lLeg, b.lFoot], [b.rUp, b.rLeg, b.rFoot]];
+    // Pass 1: animated targets + ground heights.
+    let off = 0;
+    for (let i = 0; i < 2; i++) {
+      const f = FL[i], foot = legs[i][2];
+      wpos(foot, f.A); wquat(foot, f.AQ);
+      const toe = i ? b.rToe : b.lToe;
+      if (toe) wpos(toe, f.TA); else f.TA.copy(f.A).add(T.o.set(0, -0.08, 0));
+      f.ay = Math.atan2(f.TA.x - f.A.x, f.TA.z - f.A.z); // foot heading
+      f.hT = f.TA.y - rootY;
+      const h = f.A.y - rootY;
+      if (!f.init) { f.minH = h; f.minT = f.hT; f.init = true; f.gy = rootY; f.gx = 1e9; f.anchor = 0; }
+      f.minH = Math.min(h, f.minH + 0.04 * dt); // recent contact heights (rise slowly)
+      f.minT = Math.min(f.hT, f.minT + 0.04 * dt);
+      f.h = h;
+      if (phys && (Math.abs(f.A.x - f.gx) + Math.abs(f.A.z - f.gz) > 0.04 || ((this._frame + i) & 3) === 0)) {
+        f.gx = f.A.x; f.gz = f.A.z;
+        T.o.set(f.A.x, rootY + 0.45, f.A.z);
+        const hit = phys.raycast(T.o, T.down, 0.9, G.WORLD);
+        f.gyT = hit ? clamp(hit.point.y, rootY - 0.35, rootY + 0.35) : rootY;
+      } else if (!phys) f.gyT = rootY;
+      f.gy = f.gy + (f.gyT - f.gy) * Math.min(1, dt * 20);
+      off = Math.min(off, f.gy - rootY);
+    }
+    // Pelvis: drop so the lower foot can reach its ground (never raised; the navmesh carries the root).
+    this._pelvis = damp(this._pelvis || 0, off, 10, dt);
+    if (this._pelvis < -0.002) {
+      T.n.setFromMatrix4(T.m.copy(b.hips.parent.matrixWorld).invert());
+      b.hips.position.add(T.d.set(0, this._pelvis, 0).applyMatrix3(T.n));
+      b.hips.updateMatrixWorld(true);
+    }
+    // Pass 2: plant / roll / step state machine, then IK. Anchor 0 = heel (ankle) pinned (heel strike,
+    // stance, idle), anchor 1 = toe pinned (foot flat → toe-off roll; forefoot strikes when running).
+    for (let i = 0; i < 2; i++) {
+      const f = FL[i], o = FL[1 - i], [up, leg, foot] = legs[i];
+      const gyo = f.gy - rootY;
+      const tgt = T.t.copy(f.A); tgt.y += gyo; // animated ankle, on this foot's ground
+      const ox = f.TA.x - f.A.x, oy = f.TA.y - f.A.y, oz = f.TA.z - f.A.z; // ankle → toe (animated)
+      const heelDown = f.h < f.minH + (f.locked ? 0.045 : 0.022);
+      const toeDown = f.hT < f.minT + (f.locked ? 0.035 : 0.018);
+      // ankle position implied by the current lock (toe anchor: keep the toe point, roll the foot)
+      const lockAnkle = (out) => {
+        if (!f.anchor) return out.copy(f.P);
+        const a = wrapPi(f.yaw - f.ay), ca = Math.cos(a), sa = Math.sin(a);
+        return out.set(f.P.x - (ox * ca + oz * sa), f.P.y - oy, f.P.z - (-ox * sa + oz * ca));
+      };
+      if (f.step) {
+        f.step.u += dt / 0.24;
+        const u = Math.min(1, f.step.u), e = u * u * (3 - 2 * u);
+        f.P.copy(f.step.p).lerp(tgt, e); f.P.y += Math.sin(u * Math.PI) * 0.07;
+        f.yaw = f.step.yaw + wrapPi(f.ay - f.step.yaw) * e;
+        if (u >= 1) { f.step = null; f.P.copy(tgt); f.yaw = f.ay; }
+      } else if (f.locked) {
+        if (!idle) {
+          if (!heelDown && !toeDown) f.locked = false; // lift-off
+          else {
+            if (!f.anchor && toeDown && f.h > f.minH + 0.012) { lockAnkle(T.d); const a = wrapPi(f.yaw - f.ay), ca = Math.cos(a), sa = Math.sin(a); f.P.set(T.d.x + ox * ca + oz * sa, T.d.y + oy, T.d.z - ox * sa + oz * ca); f.anchor = 1; }
+            lockAnkle(T.d);
+            if (Math.hypot(T.d.x - tgt.x, T.d.z - tgt.z) > 0.35) f.locked = false; // the leg cannot keep it
+          }
+        } else {
+          if (f.anchor) { lockAnkle(T.d); f.P.copy(T.d); f.anchor = 0; } // standing: pin the heel
+          const drift = Math.hypot(f.P.x - tgt.x, f.P.z - tgt.z);
+          if (!o.step && o.w > 0.9 && (drift > 0.11 || Math.abs(wrapPi(f.yaw - f.ay)) > 0.42)) {
+            f.step = { u: 0, p: (f.step0 ||= new THREE.Vector3()).copy(f.P), yaw: f.yaw };
+          } else if (drift > 0.45) f.locked = false;
+        }
+      } else if (heelDown || toeDown) {
+        f.locked = true; f.yaw = f.ay;
+        f.anchor = heelDown ? 0 : 1;
+        if (f.anchor) f.P.set(f.TA.x, f.TA.y + gyo, f.TA.z); else f.P.copy(tgt);
+      }
+      const want = f.locked || f.step ? 1 : 0;
+      f.w = want ? Math.min(1, f.w + dt / 0.05) : Math.max(0, f.w - dt / 0.09);
+      const fin = T.f.copy(tgt).lerp(f.step ? f.P : lockAnkle(T.d), f.w);
+      if (!f.step) fin.y = Math.max(fin.y, f.gy + f.minH - 0.005); // never through the ground
+      // Locked heading only (yaw about world up); heel-strike → flat → toe-off roll stays animated.
+      T.q.setFromAxisAngle(UP, wrapPi(f.yaw - f.ay) * f.w).multiply(f.AQ);
+      if (fin.distanceToSquared(f.A) > 1e-8 || this._pelvis < -0.002) {
+        this._twoBoneIK(up, leg, foot, fin, 1);
+        foot.quaternion.copy(wquat(foot.parent, T.q2).invert().multiply(T.q));
+        foot.updateMatrixWorld(true);
+      }
+    }
+  }
+
   /** Pelvis drop + two-bone leg IK keeping each foot's animated world position and orientation. */
   _crouchLegs(w) {
     const b = this.bones, T = _cl;

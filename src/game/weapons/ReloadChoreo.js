@@ -107,9 +107,9 @@ export function phase(u, ab) { return ease(Math.min(1, Math.max(0, (u - ab[0]) /
  */
 export const INSPECT_RIFLE = [
   [0.00, 0, 0, 0, 0, 0, 0],
-  [0.16, -2.0, 2.0, -8, 8, -35, 8], // out in front, muzzle swung right: left side to the eye
-  [0.24, -2.2, 1.8, -8, 7, -38, 6], // settle into the hold (weight)
-  [0.44, -2.5, 2.2, -8.5, 9, -40, 5],
+  [0.16, -2.0, 2.0, -10, 8, -28, 8], // out in front, muzzle swung right: left side to the eye
+  [0.24, -2.2, 1.8, -10, 7, -30, 6], // settle into the hold (weight)
+  [0.44, -2.5, 2.2, -10.5, 9, -32, 5],
   [0.60, -1.0, 1.5, -7, 6, 15, 55], // roll the top away: ejection-port side up to the eye
   [0.66, -1.2, 1.3, -7, 5, 17, 60],
   [0.84, -1.5, 1.7, -7.5, 7, 18, 62],

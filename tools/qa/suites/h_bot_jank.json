@@ -1,1 +1,2 @@
-{"tag":"h_jank","setupFiles":["tools/qa/suites/lib.js"],"scriptFile":"tools/qa/suites/h_bot_jank.script.js","match":"tdm","lofi":true,"w":480,"h":270,"views":[{"name":"warm","shot":false,"frames":1,"eval":"__qa.sim(3)"}]}
+{"tag":"h_jank","setupFiles":["tools/qa/suites/lib.js","tools/qa/suites/h_bot_jank.script.js:window.__jankTest"],"match":"tdm","lofi":true,"w":480,"h":270,"timeoutS":900,
+ "views":[{"name":"jank","shot":false,"frames":1,"read":"__qa.ready().then(()=>{__qa.sim(3);return window.__jankTest();})"}]}

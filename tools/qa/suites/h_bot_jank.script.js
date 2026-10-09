@@ -73,9 +73,19 @@
       if (s.lastToes) for (let k = 0; k < 2; k++) {
         const h = toesNow[k].y - groundY; s.th[k].push(h); if (s.th[k].length > 60) s.th[k].shift();
         const vy = (toesNow[k].y - s.lastToes[k].y) / dt;
-        if (bodyV < 2.2 && h < Math.min(...s.th[k]) + 0.02 && Math.abs(vy) < 0.1) s.toeSlip.push(Math.hypot(toesNow[k].x - s.lastToes[k].x, toesNow[k].z - s.lastToes[k].z) / dt);
+        if (bodyV < 2.2 && h < Math.min(...s.th[k]) + 0.02 && Math.abs(vy) < 0.1) {
+          const slip = Math.hypot(toesNow[k].x - s.lastToes[k].x, toesNow[k].z - s.lastToes[k].z) / dt;
+          s.toeSlip.push(slip);
+          // Locomotion class for the per-class split (bots engineer request).
+          const by = m.bodyYaw ?? b.yaw, sp = m.speedS ?? bodyV;
+          const yr = s.lastBY == null ? 0 : angDiff(by, s.lastBY) / dt;
+          let cls = 'idle';
+          if (sp < 0.3) cls = yr > 1 ? 'turn' : 'idle';
+          else { const vAng = Math.atan2(-b.velocity.x, -b.velocity.z); const rel = angDiff(vAng, by) * 57.3; cls = rel < 45 ? 'fwd' : rel <= 135 ? 'strafe' : 'back'; }
+          (s.cls = s.cls || {}); (s.cls[cls] = s.cls[cls] || []).push(slip);
+        }
       }
-      s.lastToes = toesNow;
+      s.lastToes = toesNow; s.lastBY = m.bodyYaw ?? b.yaw;
       s.lastToe = feet;
       // Floating / sinking: lowest toe vs the raycast ground while not jumping.
       const low = Math.min(wp(B.lToe).y, wp(B.rToe).y) - groundY;
@@ -132,7 +142,8 @@
   const pct = (arr, p) => { if (!arr.length) return 0; const a = arr.slice().sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(p * a.length))]; };
   out.bots = S.map((s, i) => {
     const stance = s.stance[0].concat(s.stance[1]);
-    const r = { i, toeSlipP50: Q.r(pct(s.toeSlip || [], 0.5)), toeSlipP90: Q.r(pct(s.toeSlip || [], 0.9)), toeN: (s.toeSlip || []).length, hiddenFrames: s.hiddenF || 0, team: bots[i].team, weapon: bots[i].weapon?.id, stanceSlideP95: Q.r(pct(stance, 0.95), 3), stanceN: stance.length, supportP95: Q.r(pct(s.support, 0.95), 3), supportN: s.support.length, yawRateP99: Q.r(pct(s.yawRate, 0.99), 0), moveAimP95: Q.r(pct(s.moveAim, 0.95), 1), moveAimN: s.moveAim.length, deaths: s.deaths, ratioP5: Q.r(pct(s.ratio, 0.05)), ratioP95: Q.r(pct(s.ratio, 0.95)), ratioN: s.ratio.length, aliveS: Q.r(s.aliveT, 1), slideP95: Q.r(pct(s.slide, 0.95)), slideN: s.slide.length, popsPerMin: Q.r(s.pops / Math.max(1e-3, s.aliveT) * 60, 1), pops: s.popList, twistMax: Q.r(s.twistMax, 0), aimP90: Q.r(pct(s.aimErr, 0.9), 1), aimN: s.aimErr.length, handsApartMax: Q.r(s.apartMax), tposeEvents: s.tpose, floatMax: Q.r(s.floatMax), sinkMin: Q.r(s.sinkMin), floatEvents: s.floatEv, insideFrames: s.inside, corpseMaxS: Q.r(s.corpseMax, 1) };
+    const byCls = {}; for (const [c, a] of Object.entries(s.cls || {})) byCls[c] = { n: a.length, p50: Q.r(pct(a, 0.5)), p90: Q.r(pct(a, 0.9)) };
+    const r = { i, toeByClass: byCls, toeSlipP50: Q.r(pct(s.toeSlip || [], 0.5)), toeSlipP90: Q.r(pct(s.toeSlip || [], 0.9)), toeN: (s.toeSlip || []).length, hiddenFrames: s.hiddenF || 0, team: bots[i].team, weapon: bots[i].weapon?.id, stanceSlideP95: Q.r(pct(stance, 0.95), 3), stanceN: stance.length, supportP95: Q.r(pct(s.support, 0.95), 3), supportN: s.support.length, yawRateP99: Q.r(pct(s.yawRate, 0.99), 0), moveAimP95: Q.r(pct(s.moveAim, 0.95), 1), moveAimN: s.moveAim.length, deaths: s.deaths, ratioP5: Q.r(pct(s.ratio, 0.05)), ratioP95: Q.r(pct(s.ratio, 0.95)), ratioN: s.ratio.length, aliveS: Q.r(s.aliveT, 1), slideP95: Q.r(pct(s.slide, 0.95)), slideN: s.slide.length, popsPerMin: Q.r(s.pops / Math.max(1e-3, s.aliveT) * 60, 1), pops: s.popList, twistMax: Q.r(s.twistMax, 0), aimP90: Q.r(pct(s.aimErr, 0.9), 1), aimN: s.aimErr.length, handsApartMax: Q.r(s.apartMax), tposeEvents: s.tpose, floatMax: Q.r(s.floatMax), sinkMin: Q.r(s.sinkMin), floatEvents: s.floatEv, insideFrames: s.inside, corpseMaxS: Q.r(s.corpseMax, 1) };
     const F = (m) => out.fails.push(`bot${i}: ${m}`);
     if (r.toeN > 60 && r.toeSlipP90 > 0.7) F(`planted toe slip p90 ${r.toeSlipP90} m/s > 0.7 (p50 ${r.toeSlipP50})`); else if (r.toeN > 60 && r.toeSlipP50 > 0.25) out.warn.push(`bot${i}: toe slip p50 ${r.toeSlipP50}`);
     if (r.stanceN > 10 && r.stanceSlideP95 > TH.stanceSlideP95) out.warn.push(`bot${i}: [unvalidated] stance foot slide p95 ${r.stanceSlideP95} m per contact > ${TH.stanceSlideP95} (spec ≤0.02)`); else if (r.stanceN > 10 && r.stanceSlideP95 > TH.stanceSlideWarn) out.warn.push(`bot${i}: stance slide p95 ${r.stanceSlideP95} m`);
@@ -163,6 +174,9 @@
   for (const b of bots) if (b._qaUpd) { b.update = b._qaUpd; delete b._qaUpd; }
   out.updateExceptions = excs.map((e, i) => e.length ? { i, e } : null).filter(Boolean);
   out.dumps = out.bots.map((r, i) => (r.aimP90 > 8 || r.moveAimP95 > 4 || r.supportP95 > 1) ? { i, dump: dumps[i] } : null).filter(Boolean);
+  const agg = {}; S.forEach((s) => { for (const [c, a] of Object.entries(s.cls || {})) (agg[c] = agg[c] || []).push(...a); });
+  const tot = Object.values(agg).reduce((t, a) => t + a.length, 0) || 1;
+  out.toeSlipByClass = Object.fromEntries(Object.entries(agg).map(([c, a]) => [c, { share: Q.r(a.length / tot), n: a.length, p50: Q.r(pct(a, 0.5)), p90: Q.r(pct(a, 0.9)) }]));
   out.botBotFrames = botBot; out.botBotPairs = [...botBotPairs].slice(0, 10);
   if (botBot > 30) out.fails.push(`bot-bot interpenetration ${botBot} pair-frames (${out.botBotPairs.join(',')})`);
   out.kills = g.mode.score; out.nan = Q.nanScan(); if (out.nan.length) out.fails.push('NaN ' + out.nan);
