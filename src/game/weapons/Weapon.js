@@ -1,6 +1,10 @@
 import { computeStats } from './WeaponDefs.js';
 import { clamp, DEG } from '../../core/MathUtil.js';
 
+// Spread bloom tuning (shared by player and bots). Sustained fire blooms ~1.7x the per-shot table, up to
+// 1.6x spreadMax; the first BLOOM_GRACE shots of a burst stay tight when aimed; ADS keeps 65% of bloom.
+const BLOOM_GAIN = 1.7, BLOOM_CAP = 1.6, BLOOM_GRACE = 2, ADS_BLOOM = 0.65;
+
 /**
  * Weapon gameplay logic shared by the player and bots.
  * States: idle | equip | reload | bolt | pump | melee | inspect
@@ -275,8 +279,12 @@ export class Weapon {
 
   currentSpread(moveFactor, airborne, crouched) {
     const s = this.stats;
-    const hip = s.hipSpread + Math.min(s.spreadMax, this.spread) + moveFactor * 0.6 * 2.2 + (airborne ? 3 : 0);
-    const ads = s.adsSpread + Math.min(s.spreadMax, this.spread) * 0.25 + moveFactor * 0.15 + (airborne ? 1.5 : 0);
+    // Bloom: the first couple of shots stay on target (taps/bursts reward discipline); sustained auto fire
+    // blooms well past the sight picture, even aimed. Movement hurts ADS accuracy too.
+    const bloom = Math.min(s.spreadMax * BLOOM_CAP, this.spread);
+    const aimedBloom = Math.max(0, bloom - BLOOM_GRACE * s.spreadPerShot * BLOOM_GAIN) * ADS_BLOOM;
+    const hip = s.hipSpread + bloom + moveFactor * 0.6 * 2.2 + (airborne ? 3 : 0);
+    const ads = s.adsSpread + aimedBloom + moveFactor * 0.6 + (airborne ? 2 : 0);
     let sp = hip + (ads - hip) * Math.min(1, this.adsT / 0.6);
     if (crouched) sp *= 0.8;
     if (s.beam && this.laserOn && this.adsT < 0.5) sp *= 0.85;
@@ -294,7 +302,7 @@ export class Weapon {
     const pitch = rp * s.vRecoilMul * adsRecoil * DEG;
     const yaw = (ry + (Math.random() * 2 - 1) * s.hJitter) * s.hRecoilMul * adsRecoil * DEG;
     const spreadBefore = this.spread;
-    this.spread = Math.min(s.spreadMax, this.spread + s.spreadPerShot);
+    this.spread = Math.min(s.spreadMax * BLOOM_CAP, this.spread + s.spreadPerShot * BLOOM_GAIN);
     this.inspectT = 0;
     const shot = { pitch, yaw, spreadBloom: spreadBefore, index: idx, pellets: s.pellets || 1 };
     this.emit('fire', shot);

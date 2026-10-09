@@ -276,11 +276,16 @@ export class HUD {
   update(dt) {
     const g = this.game, p = g.player, w = g.currentWeapon;
     // FPS counter.
-    this.fpsAcc += dt; this.fpsFrames++;
-    if (this.fpsAcc > 0.5) {
-      const info = g.renderer.renderer.info;
-      this.el.fps.textContent = g.settings.showFps ? `${Math.round(this.fpsFrames / this.fpsAcc)} FPS · ${info.render.calls} draws · ${(info.render.triangles / 1000).toFixed(0)}k tris` : '';
-      this.fpsAcc = 0; this.fpsFrames = 0;
+    // Wall-clock based so it reports the real frame rate even when the sim step is clamped.
+    const nowMs = performance.now();
+    this.fpsT0 ??= nowMs; this.fpsFrames++;
+    if (nowMs - this.fpsT0 > 500) {
+      const info = g.renderer.renderer.info, secs = (nowMs - this.fpsT0) / 1000;
+      const fps = this.fpsFrames / secs, scale = g.renderer.dynScale ?? 1;
+      this.el.fps.textContent = g.settings.fpsCounter
+        ? `${Math.round(fps)} FPS · ${(1000 / fps).toFixed(1)} ms · ${Math.round(scale * 100)}% res · ${info.render.calls} draws` : '';
+      this.el.fps.style.color = fps < 30 ? 'rgba(255,110,110,0.85)' : fps < 50 ? 'rgba(255,210,120,0.8)' : '';
+      this.fpsT0 = nowMs; this.fpsFrames = 0;
     }
 
     // Health with a trailing "ghost" chunk that shows the damage just taken.

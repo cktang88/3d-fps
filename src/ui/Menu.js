@@ -7,7 +7,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 
 export const DEFAULT_SETTINGS = {
   sensitivity: 1.6, adsSensMult: 1.0, invertY: false, fov: 100, viewmodelFov: 52, quality: 2, renderScale: 1,
-  volume: 0.8, showFps: false, crosshairColor: '#ffffff', holdCrouch: false, toggleAds: false, reduceMotion: false,
+  volume: 0.8, fpsCounter: true, dynamicRes: true, crosshairColor: '#ffffff', holdCrouch: false, toggleAds: false, reduceMotion: false,
   botDifficulty: 'regular', botCount: 6, godMode: false,
   loadout: { primary: 'm4', secondary: 'p226', attachments: {} },
   career: { xp: 0, matches: 0, wins: 0, kills: 0, deaths: 0 },
@@ -212,7 +212,7 @@ export class Menu {
       ${range('fov', 'Field of view', 70, 120, 1)}${range('viewmodelFov', 'Viewmodel FOV', 40, 70, 1)}
       ${sel('quality', 'Quality', [[0, 'Low'], [1, 'Medium'], [2, 'High'], [3, 'Ultra']])}
       ${range('renderScale', 'Render scale', 0.5, 1, 0.05, (v) => Math.round(v * 100) + '%')}
-      ${check('showFps', 'Show FPS')}${check('reduceMotion', 'Reduce camera motion')}
+      ${check('fpsCounter', 'Show FPS')}${check('dynamicRes', 'Dynamic resolution')}${check('reduceMotion', 'Reduce camera motion')}
       <label>Crosshair colour</label><div class="swatches">${['#ffffff', '#7dff6a', '#3fe0ff', '#ffd23f', '#ff4df0'].map((c) => `<button class="${s.crosshairColor === c ? 'on' : ''}" data-color="${c}" style="--c:${c}"></button>`).join('')}</div><span></span>
     </div></div>
     <div class="card"><h3>Audio</h3><div class="opts">${range('volume', 'Master volume', 0, 1, 0.01, (v) => Math.round(v * 100))}</div></div>

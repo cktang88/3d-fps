@@ -284,7 +284,7 @@ kbd { display: inline-block; min-width: 20px; padding: 0 5px; margin-right: 6px;
 #scoreboard .sbfoot { display: flex; gap: 28px; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); font: 700 11px var(--font); letter-spacing: 0.2em; color: var(--faint); }
 #scoreboard .sbfoot b { color: var(--fg); font-size: 15px; margin-left: 6px; letter-spacing: 0.04em; }
 
-#fps { position: absolute; right: 10px; bottom: 6px; font: 11px monospace; color: rgba(255, 255, 255, 0.4); }
+#fps { position: absolute; right: 10px; bottom: 6px; font: 11px monospace; color: rgba(255, 255, 255, 0.6); text-shadow: 0 1px 2px #000; }
 
 /* =====================================================================================
    MENUS

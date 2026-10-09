@@ -1128,7 +1128,40 @@ export class Level {
     this.tyres(30.4, -4.5, 4); this.tyres(31.1, -5.1, 2); this.tyres(52.5, 6.5, 5); this.tyres(44.2, 25.2, 3);
     this.prop('wheelRim', 31.0, -3.6, 0.3, { rx: Math.PI / 2, nav: false, collide: false });
     this.lampPost(37.8, -26.5, Math.PI); this.lampPost(55.6, 2.5, -Math.PI / 2);
+    this.radioMast(52.5, -52.5, 30);
     this.patrolPoints.push(V(30, 0, 0), V(37, 0, -8), V(37, 0, 10), V(45, 0, -2), V(52, 0, 8), V(44, 0, -18), V(30, 0, 24));
+  }
+
+  /**
+   * Landmark: tapering steel lattice radio mast with a red aviation beacon (reads as a silhouette against the
+   * storm sky from both spawns and the courtyard; orientation anchor for the NE). Steel batch + one emissive.
+   */
+  radioMast(x, z, H) {
+    const legs = (y) => { const r = 1.1 - 0.85 * (y / H); return [[-r, -r], [r, -r], [r, r], [-r, r]].map(([a, b]) => V(x + a, y, z + b)); };
+    const seg = 2.5;
+    for (let y = 0; y < H - 0.01; y += seg) {
+      const lo = legs(y), hi = legs(Math.min(H, y + seg));
+      for (let k = 0; k < 4; k++) {
+        this.cyl('steel', lo[k], hi[k], 0.06, 6);
+        const k2 = (k + 1) % 4;
+        this.cyl('steel', hi[k], hi[k2], 0.025, 4);
+        this.cyl('steel', (y / seg) % 2 ? lo[k] : lo[k2], (y / seg) % 2 ? hi[k2] : hi[k], 0.02, 4);
+      }
+    }
+    // Antenna whip, dish and beacon.
+    this.cyl('steel', V(x, H, z), V(x, H + 4, z), 0.05, 6);
+    this.cyl('metalDark', V(x + 0.4, H - 4, z + 0.4), V(x + 0.75, H - 4, z + 0.75), 0.55, 14);
+    if (!this.mats.mats.beacon) {
+      const m = new THREE.MeshStandardMaterial({ color: 0x100000, emissive: 0xff2a14, emissiveIntensity: 14, roughness: 0.4 });
+      m.name = 'beacon'; m.userData.noUnify = true; this.mats.mats.beacon = m;
+    }
+    for (const y of [H + 0.15, H * 0.55]) {
+      const g = new THREE.SphereGeometry(0.16, 10, 6); g.translate(x, y, z + (y < H ? 0.7 : 0));
+      this.mesh(this.mats.mats.beacon, g, { cast: false });
+    }
+    this.box('concrete', x, 0.2, z, 3.0, 0.4, 3.0, { uv: 1.5, map: true });
+    this.game.physics.addStaticBox(V(x, H / 2, z), V(0.9, H / 2, 0.9), null, { surface: 'metal' });
+    this.blob(x, z, 3.6, 3.6, 0, 0.012, 0.6);
   }
 
   buildRuins() {

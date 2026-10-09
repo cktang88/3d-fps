@@ -219,8 +219,10 @@ export class Renderer {
     const s = this.settings;
     const q = s.quality; // 0 low, 1 medium, 2 high, 3 ultra
     const on = (k) => s[k] !== false;
-    const pr = Math.min(devicePixelRatio, [0.75, 1, 1.25, 2][q]) * s.renderScale;
-    this.renderer.setPixelRatio(pr);
+    this.basePixelRatio = Math.min(devicePixelRatio, [0.75, 1, 1.25, 2][q]) * s.renderScale;
+    this.dynScale ??= 1;
+    if (s.dynamicRes === false) this.dynScale = 1;
+    this.renderer.setPixelRatio(this.basePixelRatio * this.dynScale);
     this.aoPass.enabled = q >= 1;
     this.aoPass.setQualityMode(['Performance', 'Low', 'Medium', 'High'][q]);
     this.aoPass.configuration.halfRes = q < 3;
@@ -282,7 +284,28 @@ export class Renderer {
     lu.get('dirtK').value = this.lensOn ? 0.55 : 0;
   }
 
+  /** Dynamic resolution: hold ~60 fps by trading pixel ratio (55–100%) on slow GPUs. */
+  _updateDynRes() {
+    if (this.settings.dynamicRes === false || window.__qaFixedDt) return;
+    const now = performance.now();
+    if (this._drT0 === undefined) { this._drT0 = now; this._drN = 0; return; }
+    this._drN++;
+    const span = now - this._drT0;
+    if (span < 700) return;
+    const ms = span / this._drN;
+    this._drT0 = now; this._drN = 0;
+    let s = this.dynScale;
+    if (ms > 19) s = Math.max(0.55, s - (ms > 30 ? 0.15 : 0.08));
+    else if (ms < 14.5 && s < 1) s = Math.min(1, s + 0.05);
+    if (s !== this.dynScale) {
+      this.dynScale = s;
+      this.renderer.setPixelRatio(this.basePixelRatio * s);
+      this.resize();
+    }
+  }
+
   render(dt, lowHealth = 0) {
+    this._updateDynRes();
     this.damagePulse = Math.max(0, this.damagePulse - dt * 1.8);
     const ca = this.caOn ? this.damagePulse * 0.006 + lowHealth * 0.002 : 0;
     this.chroma.offset.set(ca, ca * 0.6);

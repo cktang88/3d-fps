@@ -30,7 +30,7 @@ export class Physics {
   step(dt) {
     this.accum += Math.min(dt, 0.1);
     let steps = 0;
-    while (this.accum >= this.world.timestep && steps < 4) {
+    while (this.accum >= this.world.timestep && steps < 8) {
       this.world.step();
       this.accum -= this.world.timestep;
       steps++;

@@ -7,7 +7,7 @@ import { clamp, damp, DEG, rand, randSign } from '../../core/MathUtil.js';
 // Difficulty table (spec §6).
 export const DIFFICULTY = {
   recruit: { reaction: [0.7, 0.15], e0: 6, eMin: 1.5, tau: 1.5, head: 0.05, recoilCtl: 0.3, turn: 180, jump: 0, label: 'Recruit' },
-  regular: { reaction: [0.45, 0.1], e0: 4, eMin: 0.8, tau: 1.0, head: 0.15, recoilCtl: 0.55, turn: 300, jump: 0.05, label: 'Regular' },
+  regular: { reaction: [0.45, 0.1], e0: 4.5, eMin: 1.0, tau: 1.0, head: 0.15, recoilCtl: 0.55, turn: 300, jump: 0.05, label: 'Regular' },
   hardened: { reaction: [0.3, 0.08], e0: 3, eMin: 0.4, tau: 0.7, head: 0.3, recoilCtl: 0.75, turn: 450, jump: 0.08, label: 'Hardened' },
   veteran: { reaction: [0.22, 0.05], e0: 2, eMin: 0.25, tau: 0.5, head: 0.45, recoilCtl: 0.9, turn: 600, jump: 0.1, label: 'Veteran' },
 };
@@ -424,7 +424,7 @@ export class Bot {
         if (g.time - this.lastHitTime < 0.4) e *= 1.3;
         e *= 1 + this.suppression;
         const dist = tgtPt.distanceTo(this.eye);
-        const r = Math.tan(e * DEG) * dist;
+        const r = Math.tan(e * DEG * (1 + Math.max(0, dist - 18) / 22)) * dist; // humans get much worse past ~20 m
         // Early in a track the error sits on a ring (shots go wide, not randomly through centre mass);
         // it fills in as the bot settles. Vertical error is smaller (humans track height well).
         const settle = Math.exp(-this.trackTime / this.diff.tau);
@@ -443,12 +443,13 @@ export class Bot {
       const tol = Math.max(2.5 * DEG, Math.atan(0.6 / dist));
       if (yawErr < tol && pitchErr < tol && this.trackTime > 0.05) {
         // Burst discipline at range.
-        if (dist > 30 && this.weapon.mode === 'auto') {
+        if (dist > 16 && this.weapon.mode === 'auto') {
           if (this.burstPause > 0) this.burstPause -= dt;
           else {
             wantFire = true;
             if (this.weapon.lastShotTime === this.weapon.time) this.burstCount++;
-            if (this.burstCount > 3 + ((Math.random() * 4) | 0)) { this.burstCount = 0; this.burstPause = 0.25 + Math.random() * 0.25; }
+            const burstLen = dist > 35 ? 2 + ((Math.random() * 2) | 0) : 3 + ((Math.random() * 3) | 0);
+            if (this.burstCount >= burstLen) { this.burstCount = 0; this.burstPause = 0.3 + Math.random() * 0.3 + Math.min(0.4, dist / 120); }
           }
         } else wantFire = true;
       }
