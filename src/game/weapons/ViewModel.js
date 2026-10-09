@@ -9,6 +9,7 @@ import { PlayerBody } from '../PlayerBody.js';
 
 const V = (a) => new THREE.Vector3(a[0], a[1], a[2]);
 const PROBE_LAYER = 4; // render layer for the viewmodel light probe
+const PROBE_OUTDOOR_LUM = 0.16; // probe luminance that counts as full daylight for the viewmodel
 // Overhand-throw hand path (UAL2 "OverhandThrow", CC0): throwing hand relative to the head at 20 Hz,
 // mirrored onto the left hand and converted to view space (x right, y up, z back).
 const THROW_PATH = [[-0.339,-0.578,0.211],[-0.445,-0.481,0.277],[-0.469,-0.292,0.412],[-0.36,-0.084,0.508],[-0.236,0.084,0.494],
@@ -1684,7 +1685,9 @@ export class ViewModel {
       this.vmProbe.intensity = damp(this.vmProbe.intensity, 0.8, 3, dt);
     }
     const probeOn = this.vmProbe.intensity / 0.8;
-    const dark = this.shTarget ? clamp(this.probeLum / Math.max(1e-4, this.probeLumRef), 0.2, 1) : 1 - this._indoorK * 0.65;
+    // Absolute reference (open daylight at the eye ≈ 0.16–0.2 probe luminance) rather than a running max: a single
+    // bright capture (muzzle flash, explosion, sun face) used to set the max and leave the gun dark for a minute.
+    const dark = this.shTarget ? clamp(this.probeLum / PROBE_OUTDOOR_LUM, 0.25, 1) : 1 - this._indoorK * 0.65;
     // With the probe carrying diffuse ambient, the sky IBL is mostly there for reflections.
     this.viewScene.environmentIntensity = (0.9 - 0.4 * probeOn) * dark;
     this.vmHemi.intensity = 0.3 * (1 - this._indoorK * 0.5) * (1 - probeOn);
