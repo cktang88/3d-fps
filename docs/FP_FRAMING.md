@@ -81,21 +81,45 @@ How these numbers are used in the game:
     onto each gun's GripL and magazine well, and solved by our arm IK;
   - the magazine follows the template magazine track.
   Pistols and the pump shotgun's shell loading keep their own animation.
-* **Reload art direction (from user feedback).** The template reload tips the muzzle about 25° up with up to 53° roll.
-  In our camera that swings the support forearm across the screen centre. The retarget keeps the template's
-  timing and envelope (grab f8, magazine seated f57, hand back f75) but rebuilds the rifle pose about the grip:
-  - 2.5 cm down, 2.5 cm inboard, 2 cm forward;
-  - muzzle 4° down;
-  - cant at most 30°, with the magazine well turned toward the eyes;
-  - yaw halved.
-  The sprint carry (template Run loop) gets the same treatment. It keeps the timing and rotation but pivots about
-  the grip, carries the rifle 8 cm lower and 2 cm inboard, and caps the cant at 35°. Our full-length stocks
-  otherwise swing the receiver into the top-right of the frame.
-  The procedural reload carries for pistols and the shotgun's shell-by-shell loading are lowered the same way
-  (`FP_TUNE.reloadPos/reloadRot`). Target: arm and hand pixels under 25% of the screen at peak, and nothing in the
-  central 20% box for more than a few frames. This is measured by `tools/qa/arm_coverage.py` on QA mask shots, where
-  the arms are rendered flat magenta. Setting `window.__vmProcAnims = true`
-  restores the procedural set for A/B comparison.
+* **Reload art direction (user feedback, round 2).** Round 1 dropped the reload below the frame, so it read as
+  nothing. The rifle reload now keeps the template's support-hand and magazine tracks (grab f8, pouch f24, seated f57,
+  hand back f75), but the gun pose is hand-authored in `src/game/weapons/ReloadChoreo.js` (`RIFLE_TAC`, eased keys
+  pivoting about the firing grip):
+  - the rifle cants about 30° (top to the right, so the magazine well turns toward the eye and the support hand),
+    comes about 2 cm inboard and 1.5 cm up, and tips the muzzle 5–6° up. The well sits at about x 60%, y 60–65% for the
+    whole swap;
+  - it is tugged down as the old magazine is stripped (f14), dips as the new one is pushed in, and jolts up on the
+    seat (f57, the "slap").
+  - Empty reloads compress the template into the first 56% and then work the bolt (`BOLT_PHASE`): `release` (M4: the
+    palm runs up the magazine well and slaps the bolt catch; the carrier is locked back until then) or `rack` (AK,
+    SCAR, MP5: the hand takes the charging handle, runs it back with the gun canted toward it, `rackRoll`, and lets
+    it slam). Per-gun `FP_TUNE.emptyAction / rackRoll / boltTravel / boltHand`.
+  - Pistols (`PISTOL_TAC / PISTOL_EMPTY`, fully procedural): the pistol cants about 50° with the butt swung toward
+    the support hand and lifts into frame, the magazine drops free along the grip axis, the support hand fetches a new
+    one from the belt (palm turned up), inserts it along the grip and palm-slaps it; on an empty reload the slide stays
+    locked back until the slide release at 71%.
+  - The support elbow follows a pole below and outside the arm (`ELBOW_POLE_L`) as the hand leaves its grip, so the
+    upper arm never flares into the left edge of the frame. In round 1 the "dark blob" at the left edge in mid-reload
+    was this upper arm and sleeve, bending up and out toward the pouch.
+  - Fingers: the trigger finger indexes along the frame while sprinting, reloading, inspecting and switching. The
+    support hand closes around a carried magazine or charging handle and opens flat for the palm slap
+    (`FPArms.setFingers`).
+  Target: arm and hand pixels under 25% of the screen at peak, and the arm mostly out of the central 20% box
+  (`tools/qa/arm_coverage.py` on mask shots). `window.__vmProcAnims = true` restores the old procedural set for A/B.
+* **Sprint carry.** Only the bounce of the template Run loop is kept (its pose relative to frame 0). The carry pose is
+  ours: `FP_TUNE.sprintPose`, rotating about the sight/receiver point so the stock never swings into the face. The
+  rifle sits low in the lower right, canted, muzzle down-left, and stays partly in frame.
+* **Inspect (I).** `INSPECT_RIFLE / INSPECT_PISTOL` (3.2 s): the gun swings out in front with its left side to the eye,
+  then rolls over to show the ejection-port side and settles back. An interrupted inspect (fire, aim, sprint, reload)
+  fades out instead of popping.
+* **Pistol recoil (visual).** Separate stiff, under-damped flip springs about the grip: about 9° (P226) and 13°
+  (M1911) at the hip, about half that aimed, plus a little roll into the wrist and a push back. Every shot runs a
+  0.11 s slide cycle (fast back, slower return), and the slide locks back on the last round.
+* **Sight picture.** A grounded player carries a -2 m/s ground-stick vertical velocity. The sway layer used to turn it
+  into a constant 4 mm lift, which put every sight 2–5% of the screen height above the crosshair. Vertical velocity
+  sway now only applies in the air. Collimated reticles and the PiP scope camera follow the sight line (`rig.sightQ`),
+  not the bore. Measured after the fix: every optic and iron sight is within 0.6% of the screen centre (QA
+  `__qa.adsProbe`).
 
 ### Rig framing (implemented, `tools/blender/rigs.py` FRAMING)
 
