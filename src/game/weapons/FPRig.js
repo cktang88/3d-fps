@@ -24,13 +24,14 @@ export const FP_TUNE = {
   default: { opticScale: 0.82, reloadPos: [-0.025, -0.05, -0.01], reloadRot: [-0.08, 0.08, -0.3] },
   // Measured on the FP models (tools/blender/measure_sights.py, WeaponRoot-local = gun frame, K-space).
   // M4A1 (Firewarden model): BUIS aperture centre / front post tip (rear-view renders), flat-top rail ahead of the BUIS.
-  m4a1: { ironRear: [0, 0.2498, 0.255], ironFront: [0, 0.2404, -0.505], rail: [0, 0.1786, 0.06] },
+  m4a1: { ironRear: [0, 0.2498, 0.255], ironFront: [0, 0.2404, -0.505], rail: [0, 0.1786, 0.06], gunTint: 0.42 },
   // AK: notch bottom of the rear leaf / post tip inside the front sight ears (zoomed side renders); the dust
   // cover top sits 1.5 mm (K-space) under this line, as on the real rifle.
-  ak47: { ironRear: [0, 0.1005, -0.645], ironFront: [0, 0.1005, -1.375], rail: [0, 0.0956, -0.492] },
-  scarl: { ironRear: [0, 0.2655, 0.2311], ironFront: [0, 0.2777, -0.514], rail: [0, 0.1879, -0.058] },
+  // Empty reloads: 'rack' (charging handle, rackRoll = cant while racking, deg) or 'release' (bolt catch, default).
+  ak47: { ironRear: [0, 0.1005, -0.645], ironFront: [0, 0.1005, -1.375], rail: [0, 0.0956, -0.492], emptyAction: 'rack', rackRoll: 14, boltTravel: 0.13 },
+  scarl: { ironRear: [0, 0.2655, 0.2311], ironFront: [0, 0.2777, -0.514], rail: [0, 0.1879, -0.058], emptyAction: 'rack', rackRoll: -24, boltTravel: 0.12, boltHand: [-0.06, -0.06, 0.08] },
   // MP5: diopter drum aperture centre / front post tip inside the hood.
-  mp5a5: { ironRear: [0, 0.238, 0.0978], ironFront: [0, 0.254, -0.5722], rail: [0, 0.2286, -0.21] },
+  mp5a5: { ironRear: [0, 0.238, 0.0978], ironFront: [0, 0.254, -0.5722], rail: [0, 0.2286, -0.21], emptyAction: 'rack', rackRoll: -24, boltTravel: 0.12, boltHand: [-0.05, -0.06, 0.08] },
   // Remington: ghost ring on the receiver + the authored bead.
   shotgun: { reloadPos: [-0.03, -0.05, 0.0], reloadRot: [-0.08, 0.1, 0.4], ironRear: [0, 0.16, 0.0], ironFront: [0, 0.157, -0.984], rail: [0, 0.1314, 0.0], pumpStroke: 0.16,
     shellPort: [0.0, -0.02, 0.05], shellBelt: [0.1, -0.5, 0.25] },

@@ -1479,13 +1479,13 @@ export class Level {
     this.container(49.1, -7.5, Math.PI / 2 + 0.03, 'containerBlue', 0, false);
     this.container(49.1, 9, Math.PI / 2 - 0.02, 'containerWhite', 0, false);
     // Cross containers closing the long sightlines down both spawn strips (corner spawns ↔ strip spawns).
-    for (const z of [-37.5, 37.5]) { this.container(-54.3, z, 0.02, 'containerBlue', 0, false); this.container(54.3, z, -0.02, 'containerTan', 0, false); }
+    for (const z of [-37.5, 37.5]) { this.container(-53.1, z, 0.02, 'containerBlue', 0, false); this.container(54.3, z, -0.02, 'containerTan', 0, false); }
     // Corridors behind the warehouse (north) and the office (south): containers break the 100 m perimeter lanes.
-    this.container(-25, -52.2, 0.04, 'containerRed', 0, false); this.container(25, -52.4, -0.05, 'containerGreen', 2.6 * 0, true);
-    this.container(-25, 52.3, -0.03, 'containerWhite', 0, false); this.container(25, 52.2, 0.05, 'containerBlue', 0, false);
+    this.container(-25, -51.0, 0.03, 'containerRed', 0, false); this.container(25, -51.4, -0.04, 'containerGreen', 0, true);
+    this.container(-25, 51.0, -0.03, 'containerWhite', 0, false); this.container(25, 51.0, 0.04, 'containerBlue', 0, false);
     // Main road: a jack-knifed container mid-map and one at the west end break the lane into fights at range.
-    this.container(-2, 4.3, -0.45, 'containerRed', 0, true);
-    this.container(-30, 3.9, 0.3, 'containerGreen', 0, false);
+    this.container(-2, 3.0, -0.85, 'containerRed', 0, true);
+    this.container(-30, 2.9, 0.75, 'containerGreen', 0, false);
     this.prop('barrier', 2.6, 6.8, 0.2); this.prop('barrier2', -35.2, 7.2, -0.2);
   }
 
@@ -1601,9 +1601,12 @@ export class Level {
   }
 
   defineSpawns() {
+    // Team spawns sit behind the blast-wall screens (buildSpawnScreens): face the nearest exit gap, not the wall.
+    const face = (p, gx, gaps) => { const gz = gaps.reduce((a, b) => (Math.abs(b - p.z) < Math.abs(a - p.z) ? b : a)); return Math.atan2(-(gx - p.x), -(gz - p.z)); };
     for (let i = 0; i < 8; i++) {
-      this.spawns[0].push({ pos: V(-53, 0, -30 + i * 8.5), yaw: -Math.PI / 2 });
-      this.spawns[1].push({ pos: V(55, 0, -30 + i * 8.5), yaw: Math.PI / 2 });
+      const a = V(-53, 0, -30 + i * 8.5), b = V(55, 0, -30 + i * 8.5);
+      this.spawns[0].push({ pos: a, yaw: face(a, -50, [-36, -24, 0, 25.5, 36]) });
+      this.spawns[1].push({ pos: b, yaw: face(b, 51.5, [-36, -7.5, 9, 36]) });
     }
     const ffa = [[-50, -50], [0, -52], [50, -52], [-52, 0], [55, 0], [-50, 50], [0, 52], [52, 50], [-12, -40], [12, -32], [-7, 35], [30, 0], [-30, 0], [0, 10], [-34.5, 21], [37.5, -18]];
     for (const [x, z] of ffa) this.spawns.ffa.push({ pos: V(x, 0, z), yaw: Math.atan2(x, z) });

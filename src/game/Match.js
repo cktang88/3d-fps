@@ -78,7 +78,10 @@ export class Match {
     this.combat = this.combat.filter((c) => g.time - c.t < 10);
     const eye = new THREE.Vector3();
     let best = null, bestS = -Infinity;
+    const enemyBase = mode.teams ? lvl.spawns[actor.team === 0 ? 1 : 0] : null;
     for (const sp of list) {
+      // TDM: a mid-map point inside/next to the enemy's base strip is never ours.
+      if (enemyBase && !own.includes(sp) && enemyBase.some((e) => e.pos.distanceTo(sp.pos) < 14)) continue;
       let s = Math.random() * 4;
       eye.copy(sp.pos).setY(sp.pos.y + 1.6);
       for (const a of g.actors) {

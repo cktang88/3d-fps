@@ -1,5 +1,5 @@
 // (d) Movement regression: walk / sprint / crouch speeds, jump apex, slide, vault (low brick wall x=-34),
-// mantle (loading dock x=9 z=-24.5), stairs to the warehouse catwalk. Pure simulation.
+// mantle (loading dock x=13 z=-24.5, moved 4 m east by level), stairs to the warehouse catwalk. Pure simulation.
 (() => {
   const g = window.__game, Q = window.__qa, p = g.player, out = { fails: [] };
   const fail = (m) => out.fails.push(m);
@@ -41,8 +41,8 @@
   if (!mt.some((m) => m[0] === 'vault')) fail(`vault at brick wall x=-34 did not trigger (events ${JSON.stringify(mt)}, end ${JSON.stringify(Q.p())})`);
   if (p.position.x > -34.6) fail(`player did not cross the brick wall, x=${Q.r(p.position.x)}`);
   Q.releaseAll(); mt.length = 0;
-  // Mantle onto the loading dock (top y=1.2, z in [-26,-23]); approach from z=-19 heading -Z at x=9.
-  settle([9, 0.1, -19], 0); Q.down('KeyW'); Q.sim(0.5);
+  // Mantle onto the loading dock (top y=1.2, z in [-26,-23]); approach from z=-19 heading -Z at x=13 (dock moved east by level).
+  settle([13, 0.1, -19], 0); Q.down('KeyW'); Q.sim(0.5);
   jumped = false; let mDone = false; Q.sim(2.0, 1 / 30, () => { if (!jumped && p.position.z < -22.3) { Q.tap('Space'); Q.down('Space'); jumped = true; } if (jumped && !mDone && mt.length && !p.mantle) { mDone = true; Q.releaseAll(); } });
   Q.releaseAll(); Q.sim(0.5);
   out.mantle = { events: mt.slice(), endPos: Q.p(), onDock: p.position.y > 1.0 };

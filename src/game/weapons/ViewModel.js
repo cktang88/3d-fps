@@ -335,6 +335,8 @@ export class ViewModel {
     const gun = fp ? new THREE.Group().add(src.clone(true)) : src.clone(true);
     root.add(gun);
     root.updateMatrixWorld(true);
+    // Albedo tint for source models authored too light (FP_TUNE gunTint; materials are shared by every clone).
+    if (tune.gunTint) gun.traverse((o) => { if (o.isMesh && !o.material.userData.vmTinted) { o.material.userData.vmTinted = true; o.material.color.multiplyScalar(tune.gunTint); } });
 
     const rig = { root, gun, weapon, pose, poseKey, sidearm, scale, kind: pose.kind, stats: s, tune };
     rig.magazine = find(gun, 'Magazine');
@@ -750,10 +752,10 @@ export class ViewModel {
       this.flash.scale.setScalar(sc / rig.scale);
     }
     if (rig.sidearm) {
-      // Snappy flip: ~7 deg (P226) / ~10 deg (M1911) at the hip, about half aimed, a little roll into the wrist and a
+      // Snappy flip: ~9 deg (P226) / ~13 deg (M1911) at the hip, about half aimed, a little roll into the wrist and a
       // yaw that follows the shot's push; the push back sells the slide mass.
       const kp = (s.kick ?? 1) * (1 - this.adsBlend * 0.55);
-      this.flipR.impulse(240 * kp, (side * 30 + rand(-15, 15)) * kp, rand(-20, 60) * kp);
+      this.flipR.impulse(300 * kp, (side * 30 + rand(-15, 15)) * kp, rand(-20, 70) * kp);
       this.flipP.impulse(rand(-4, 4) * kp, 9 * kp, 42 * kp);
     }
     // Slide / bolt carrier cycles (pistol slides run longer so every shot reads: fast back, slower return).
@@ -958,11 +960,11 @@ export class ViewModel {
     rig.root.position.copy(pos);
     rig.root.rotation.copy(rot);
     if (tpl) this._applyTemplate(rig, tpl, w, ctx, dt, adsE, sb, tplReload);
-    // Sprint carry: the template Run loop (pivoting about the grip) plus a per-class carry offset so the rifle stays
-    // in the lower right, canted, instead of leaving the frame (FP_TUNE sprintAdj: cm / deg, as ReloadChoreo keys).
+    // Sprint carry (rifle family): canted low-ready in the lower right, muzzle down-left, rotating about the receiver
+    // (sight) so the stock never swings up into the face (FP_TUNE sprintPose: cm / deg, as ReloadChoreo keys).
     if (tpl && sb > 0.001) {
-      const adj = window.__vmRunAdj || rig.tune.sprintAdj;
-      if (adj) { const k = sb * (1 - adsE); for (let i = 0; i < 6; i++) _k[i] = adj[i] * k; this._pivotDelta(rig, _k); }
+      const sp = window.__vmRunAdj || rig.tune.sprintPose;
+      if (sp) { const k = smoothstep(sb) * (1 - adsE); for (let i = 0; i < 6; i++) _k[i] = sp[i] * k; this._pivotDelta(rig, _k, rig.aim.point); }
     }
     // Inspect (FP rigs): authored keys; an interrupted inspect (fire / aim / sprint) fades out instead of popping.
     if (rig.fp) {
@@ -1067,7 +1069,14 @@ export class ViewModel {
     const move = clamp(ctx.fpcam.bobAmount ?? 0, 0, 1);
     blend('Idle', 'IdleAimed', this.time, 1);
     if (move > 0.01) blend('Walk', 'WalkAimed', A.at('Walk', stride), move * (1 - sb));
-    if (sb > 0.001) blend('Run', null, A.at('Run', stride), sb * (1 - adsE));
+    // Run loop: only its bounce (pose relative to its first frame); the carry pose itself is ours (_sprintCarry).
+    if (sb > 0.001) {
+      const k = sb * (1 - adsE);
+      A.gun('Run', A.at('Run', stride), T.a, 1); A.gun('Run', 0, T.b, 1);
+      T.b.q.invert(); T.a.q.multiply(T.b.q); T.a.p.sub(T.b.p.applyQuaternion(T.a.q)); // a * inv(b)
+      T.a.p.multiplyScalar(k); T.a.q.slerp(_q2.identity(), 1 - k);
+      composeDelta(T.a, acc, acc);
+    }
     this.fireClipT = (this.fireClipT ?? 99) + dt;
     if (this.fireClipT < A.dur('Fire')) blend('Fire', 'FireAimed', this.fireClipT, 1);
     if (this.equipT < 1) blend('Equip', null, A.at('Equip', this.equipT), 1);
@@ -1108,10 +1117,10 @@ export class ViewModel {
     return rig.charging ? 'release' : null;
   }
 
-  /** root := T(pivot + off) R T(-pivot) * root, with k = [x, y, z (cm), pitch, yaw, roll (deg)], pivot = firing grip. */
-  _pivotDelta(rig, k) {
+  /** root := T(pivot + off) R T(-pivot) * root, k = [x, y, z (cm), pitch, yaw, roll (deg)]; pivot = firing grip or a root-local point. */
+  _pivotDelta(rig, k, pivotLocal = null) {
     const q = _q.setFromEuler(_e.set(k[3] * DEG, k[4] * DEG, k[5] * DEG, 'YXZ'));
-    const piv = _pv.fromArray(rig.pose.primary).multiplyScalar(rig.scale).applyQuaternion(rig.root.quaternion).add(rig.root.position);
+    const piv = (pivotLocal ? _pv.copy(pivotLocal) : _pv.fromArray(rig.pose.primary)).multiplyScalar(rig.scale).applyQuaternion(rig.root.quaternion).add(rig.root.position);
     rig.root.position.sub(piv).applyQuaternion(q).add(piv).add(_v.set(k[0] / 100, k[1] / 100, k[2] / 100));
     rig.root.quaternion.premultiply(q);
   }
@@ -1158,11 +1167,12 @@ export class ViewModel {
       const reach = phase(u, ph.reach), pull = phase(u, ph.pull), snap = phase(u, ph.snap), back = phase(u, ph.back);
       rig.root.updateMatrixWorld(true);
       const toRoot = _m.copy(rig.root.matrixWorld).invert();
-      // Bolt work point (root space): charging handle (rack) or the bolt catch above the magazine well (release).
-      const base = act === 'rack' && ch
-        ? ch.parent.localToWorld(_v.copy(rig.chargingHome)).applyMatrix4(toRoot)
-        : rig.magHome.p.clone().applyMatrix4(_m2.copy(toRoot).multiply(rig.magazine.parent.matrixWorld));
-      const off = rig.tune.boltHand || (act === 'rack' ? [0.02, -0.12, 0.1] : [-0.06, -0.02, 0.12]);
+      // Bolt work point (root space): the charging handle (rack), or (release) the bolt catch, reached from where the
+      // palm seated the magazine: up the left side of the magazine well.
+      let base;
+      if (act === 'rack' && ch) base = ch.parent.localToWorld(_v.copy(rig.chargingHome)).applyMatrix4(toRoot);
+      else { base = this._tplReload(rig, A, TPL_SEAT).p.clone(); this._tplReload(rig, A, tplU); }
+      const off = rig.tune.boltHand || (act === 'rack' && ch ? [0.05, -0.09, 0.08] : [-0.04, 0.1, 0.1]);
       const B = new THREE.Vector3(base.x + off[0], base.y + off[1], base.z + off[2]);
       if (act === 'rack') B.z += travel * pull * (1 - snap * 0.2); else B.y += 0.025 * Math.sin(pull * Math.PI);
       p = p.clone().lerp(B, reach).lerp(rig.fp.homeL.p, back);

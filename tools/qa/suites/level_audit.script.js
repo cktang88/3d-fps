@@ -16,7 +16,8 @@
   for (let i = 0; i < S.ffa.length; i++) for (let j = i + 1; j < S.ffa.length; j++) if (los(S.ffa[i].pos, S.ffa[j].pos)) ffa.push([i, j, Math.round(S.ffa[i].pos.distanceTo(S.ffa[j].pos))]);
   // Team spawns vs mid-map (FFA) points the enemy can also spawn on in TDM.
   const mix = [];
-  for (const t of [0, 1]) for (const a of S[t]) S.ffa.forEach((b, j) => { if (los(a.pos, b.pos) && a.pos.distanceTo(b.pos) > 12) mix.push([t, [a.pos.x, a.pos.z].map(Math.round), j, Math.round(a.pos.distanceTo(b.pos))]); });
+  // Only mid points the ENEMY team may use (pickSpawn excludes points within 14 m of the enemy base).
+  for (const t of [0, 1]) for (const a of S[t]) S.ffa.forEach((b, j) => { if (S[t].some((o) => o.pos.distanceTo(b.pos) < 14)) return; if (los(a.pos, b.pos)) mix.push([t, [a.pos.x, a.pos.z].map(Math.round), j, Math.round(a.pos.distanceTo(b.pos))]); });
   out.los = { tdmPairs: S[0].length * S[1].length, tdmVisible: tdm.length, tdm, ffaPairs: S.ffa.length * (S.ffa.length - 1) / 2, ffaVisible: ffa.length, ffa, teamToMidVisible: mix.length, teamToMid: mix.slice(0, 40) };
   // Doors.
   const doors = g.level.doors || [];

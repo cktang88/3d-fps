@@ -610,7 +610,7 @@ export class Character {
     this.proneAction = tpl.prone ? this.mixer.clipAction(tpl.prone) : null;
 
     this.gaitPhase = Math.random();
-    this.speedS = 0;
+    this.speedS = 0; this._tvx = 0; this._tvz = 0; this._travel = 0; this._lastX = undefined;
     this.bodyYaw = 0;
     this.yawRate = 0;
     this.twist = 0;
@@ -759,7 +759,7 @@ export class Character {
     this.dblend?.reset(); this._dbSig = undefined; this._procSaved = false;
     this.bodyYaw = bot ? bot.yaw + this.stanceYaw : 0;
     this.twist = 0; this.lean = 0; this.fwdLean = 0; this.yawRate = 0;
-    this.speedS = 0;
+    this.speedS = 0; this._tvx = 0; this._tvz = 0; this._travel = 0; this._lastX = undefined;
     this.root.visible = true;
     this.root.rotation.set(0, this.bodyYaw, 0);
     this.pivot.position.set(0, 0, 0);
@@ -817,6 +817,16 @@ export class Character {
     const v = bot.velocity;
     const speed = Math.hypot(v.x, v.z);
     this.speedS = damp(this.speedS, speed, 14, dt);
+    // Actual ground travel (crowd corrections and accelerations included) drives the stride wheel and the
+    // travel direction, so planted feet track the root exactly; bot.velocity is smoothed and lags it.
+    if (dt > 0) {
+      let tx = 0, tz = 0;
+      if (this._lastX !== undefined) { tx = bot.position.x - this._lastX; tz = bot.position.z - this._lastZ; if (tx * tx + tz * tz > 1) tx = tz = 0; }
+      this._lastX = bot.position.x; this._lastZ = bot.position.z;
+      const kt = 1 - Math.exp(-30 * dt);
+      this._tvx += (tx / dt - this._tvx) * kt; this._tvz += (tz / dt - this._tvz) * kt;
+      this._travel += Math.hypot(this._tvx, this._tvz) * dt;
+    }
     const sp = this.speedS;
     const aimYaw = bot.yaw;
     let moveYaw = sp > 0.25 ? Math.atan2(-v.x, -v.z) : aimYaw;
@@ -855,7 +865,8 @@ export class Character {
     const chestNow = this.bodyYaw + this.twist;
     const dc = wrapPi(chestT - chestNow), maxStep = 8.7 * dt;
     this.twist = clamp(wrapPi(chestNow + clamp(dc * Math.min(1, dt * 16), -maxStep, maxStep) - this.bodyYaw), -100 * DEG, 100 * DEG);
-    this.velRel = sp > 0.05 ? wrapPi(Math.atan2(-v.x, -v.z) - this.bodyYaw) : 0; // travel direction relative to the legs
+    const tvs = Math.hypot(this._tvx, this._tvz);
+    this.velRel = sp > 0.05 ? wrapPi((tvs > 0.25 ? Math.atan2(-this._tvx, -this._tvz) : Math.atan2(-v.x, -v.z)) - this.bodyYaw) : 0; // travel direction relative to the legs
     // Lean into turns and with acceleration (small, speed-scaled).
     const accel = (sp - this.prevSpeed) / Math.max(dt, 1e-4);
     this.prevSpeed = sp;
@@ -929,7 +940,10 @@ export class Character {
     this._restoreProc();
     // Turning on the spot: shuffle the feet (drive the walk cycle from the turn rate) instead of
     // pivoting on planted soles.
+    const sp0 = sp;
     if (sp < 0.3) sp = Math.max(sp, clamp(Math.abs(this.yawRate) * 0.32 - 0.15, 0, 1.1));
+    const travel = this._travel + (sp - sp0) * dt; // real ground travel + the turn shuffle's virtual steps
+    this._travel = 0;
     const c = clamp(bot.crouch, 0, 1);
     const air = clamp((bot.jumpY || 0) / 0.18, 0, 1);
 
@@ -989,7 +1003,7 @@ export class Character {
     for (const [d, w] of MW) { wsum += w; stride += w * d.stride; }
     if (wsum > 1e-3) {
       stride /= wsum;
-      this.gaitPhase += (sp * dt / Math.max(0.3, stride)) * (this.backward ? -1 : 1);
+      this.gaitPhase += (travel / Math.max(0.3, stride)) * (this.backward ? -1 : 1);
       this.gaitPhase -= Math.floor(this.gaitPhase);
     }
     // Weights glide toward their targets (no frame-to-frame pops), then renormalise the layer to 1.

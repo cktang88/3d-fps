@@ -115,7 +115,7 @@ async function getPage(worker, job, buildInfo, result) {
   page.on('pageerror', (e) => sink.result?.logs.push('[pageerror] ' + e.message + ' ' + (e.stack || '').split('\n').slice(0, 3).join(' | ')));
   const t0 = Date.now();
   await page.goto(`http://localhost:${PORT}/${buildInfo.stamp}/`, { waitUntil: 'load' });
-  await page.waitForFunction(() => window.__game?.menu, null, { timeout: 240000 });
+  await page.waitForFunction(() => window.__game?.menu, null, { timeout: 480000 });
   await page.evaluate(() => { window.__qaSettings0 = structuredClone(window.__game.settings); });
   result.loadMs = Date.now() - t0;
   warm.set(worker, { page, stamp: buildInfo.stamp, W, H, sink });

@@ -14,13 +14,13 @@
 // Tactical rifle reload (template timeline unchanged).
 export const RIFLE_TAC = [
   [0.00, 0, 0, 0, 0, 0, 0],
-  [0.10, -3.0, 3.0, -1.0, 7, 8, -28], // tilt in: magazine well rolled toward the eye and lifted into frame
-  [0.15, -3.0, 2.0, -1.0, 5, 8, -33], // old magazine stripped: the gun is tugged down
-  [0.24, -3.3, 3.2, -1.0, 8, 9, -30],
-  [0.50, -3.5, 3.5, -1.0, 9, 9, -31],
-  [0.565, -3.5, 2.5, -1.0, 7, 9, -33], // new magazine pushed up into the well
-  [0.60, -3.5, 4.4, -1.0, 10.5, 9, -28], // seat: slap jolts the gun up
-  [0.68, -3.2, 3.3, -0.8, 8, 8, -27],
+  [0.10, -2.0, 1.4, -1.5, 5, 5, -28], // tilt in: magazine well rolled toward the eye, into the lower frame
+  [0.15, -2.0, 0.5, -1.5, 3, 5, -33], // old magazine stripped: the gun is tugged down
+  [0.24, -2.2, 1.5, -1.5, 6, 6, -30],
+  [0.50, -2.4, 1.7, -1.5, 6.5, 6, -31],
+  [0.565, -2.4, 0.8, -1.5, 5, 6, -33], // new magazine pushed up into the well
+  [0.60, -2.4, 2.6, -1.5, 8.5, 6, -28], // seat: slap jolts the gun up
+  [0.68, -2.2, 1.6, -1.2, 6, 5, -27],
   [0.82, -0.3, 0.3, 0, 1, 1, -3],
   [0.92, 0, 0, 0, 0, 0, 0],
 ];
@@ -34,20 +34,20 @@ export function rifleEmptyKeys(action, rackRoll = 12) {
   if (action === 'rack') {
     const r = rackRoll;
     return [...head,
-      [0.62, -3.0, 3.2, -1.0, 8, 7, (r - 30) / 2],
-      [0.66, -2.8, 3.0, -1.0, 7, 6, r],
-      [0.71, -2.5, 2.7, 0.2, 6, 6, r], // handle run back: the rifle is tugged toward the shoulder
-      [0.735, -2.7, 4.0, -1.0, 9, 6, r * 0.9], // released: bolt slams home
-      [0.79, -2.4, 2.8, -0.8, 7, 5, r * 0.6],
+      [0.62, -2.0, 1.6, -1.5, 6, 5, (r - 30) / 2],
+      [0.66, -1.8, 1.4, -1.5, 5, 4, r],
+      [0.71, -1.5, 1.1, -0.3, 4, 4, r], // handle run back: the rifle is tugged toward the shoulder
+      [0.735, -1.7, 2.4, -1.5, 7, 4, r * 0.9], // released: bolt slams home
+      [0.79, -1.5, 1.3, -1.2, 5, 3, r * 0.6],
       [0.90, -0.3, 0.3, 0, 1, 1, -1],
       [0.97, 0, 0, 0, 0, 0, 0],
     ];
   }
   return [...head, // bolt release
-    [0.61, -3.2, 3.3, -1.0, 8, 10, -34],
-    [0.655, -3.2, 2.7, -1.0, 7, 11, -36],
-    [0.675, -3.2, 4.2, -1.0, 10, 10, -31], // palm hits the release: bolt slams home
-    [0.74, -2.8, 3.0, -0.8, 7, 7, -25],
+    [0.61, -2.2, 1.6, -1.5, 6, 6, -34],
+    [0.655, -2.2, 1.1, -1.5, 5, 7, -36],
+    [0.675, -2.2, 2.6, -1.5, 8, 6, -31], // palm hits the release: bolt slams home
+    [0.74, -1.9, 1.5, -1.2, 5, 4, -25],
     [0.86, -0.3, 0.3, 0, 1, 1, -3],
     [0.95, 0, 0, 0, 0, 0, 0],
   ];
@@ -62,19 +62,19 @@ export const BOLT_PHASE = {
 // Pistol gun keys (same layout).
 export const PISTOL_TAC = [
   [0.00, 0, 0, 0, 0, 0, 0],
-  [0.09, -3.0, 2.8, 0, 4, 10, -42], // tilt in: butt swung toward the support hand, magazine well in frame
-  [0.13, -3.0, 3.3, 0, 6, 10, -46], // thumb on the release, magazine drops
-  [0.40, -3.2, 3.2, 0, 5, 11, -47],
-  [0.52, -3.2, 2.6, 0, 4, 11, -48], // new magazine pushed in
-  [0.575, -3.2, 4.2, 0, 8, 11, -42], // palm slap
-  [0.66, -2.8, 3.0, 0, 5, 9, -36],
-  [0.82, -0.2, 0.2, 0, 0.5, 0.5, -2],
+  [0.09, -0.6, 3.2, -1.5, 4, 3, -50], // tilt in: butt swung toward the support hand, magazine well in frame
+  [0.13, -0.6, 3.7, -1.5, 6, 3, -54], // thumb on the release, magazine drops
+  [0.40, -0.8, 3.6, -1.5, 5, 4, -55],
+  [0.52, -0.8, 3.0, -1.5, 4, 4, -56], // new magazine pushed in
+  [0.575, -0.8, 4.6, -1.5, 8, 4, -50], // palm slap
+  [0.66, -0.6, 3.4, -1.2, 5, 3, -42],
+  [0.82, -0.1, 0.2, 0, 0.5, 0.5, -2],
   [0.90, 0, 0, 0, 0, 0, 0],
 ];
 export const PISTOL_EMPTY = [
   ...PISTOL_TAC.slice(0, 7),
-  [0.705, -2.2, 2.4, 0.2, 4, 7, -26],
-  [0.73, -2.0, 3.4, 0.6, 9, 6, -22], // slide release: slide slams forward
+  [0.705, -0.5, 2.4, -0.8, 4, 3, -30],
+  [0.73, -0.4, 3.4, -0.4, 9, 2, -26], // slide release: slide slams forward
   [0.80, -1.0, 1.2, 0.2, 3, 3, -10],
   [0.92, 0, 0, 0, 0, 0, 0],
 ];
@@ -107,21 +107,21 @@ export function phase(u, ab) { return ease(Math.min(1, Math.max(0, (u - ab[0]) /
  */
 export const INSPECT_RIFLE = [
   [0.00, 0, 0, 0, 0, 0, 0],
-  [0.16, -5.5, 4.5, 2.5, 9, -38, 20],
-  [0.24, -5.8, 4.2, 2.5, 8, -42, 17], // settle into the hold (weight)
-  [0.44, -6.2, 4.8, 2.8, 10, -46, 16],
-  [0.60, -4.0, 4.0, 2.0, 14, 22, -62], // roll over
-  [0.66, -4.2, 3.7, 2.0, 13, 25, -66],
-  [0.84, -4.6, 4.3, 2.2, 15, 28, -70],
+  [0.16, -4.0, 3.5, -11, 7, -30, 14], // out in front, left side turned to the eye
+  [0.24, -4.2, 3.2, -11, 6, -33, 12], // settle into the hold (weight)
+  [0.44, -4.5, 3.7, -11.5, 8, -36, 11],
+  [0.60, -3.0, 3.0, -10, 10, 20, -52], // roll over: right side (ejection port)
+  [0.66, -3.2, 2.8, -10, 9, 22, -56],
+  [0.84, -3.5, 3.3, -10.5, 11, 24, -60],
   [1.00, 0, 0, 0, 0, 0, 0],
 ];
 export const INSPECT_PISTOL = [
   [0.00, 0, 0, 0, 0, 0, 0],
-  [0.16, -4, 3.5, 2, 12, -40, 25],
-  [0.24, -4.2, 3.2, 2, 11, -44, 22],
-  [0.44, -4.5, 3.8, 2.2, 13, -48, 20],
-  [0.60, -3.0, 3.2, 1.8, 16, 25, -65],
-  [0.66, -3.2, 2.9, 1.8, 15, 28, -70],
-  [0.84, -3.5, 3.4, 2, 17, 30, -72],
+  [0.16, -4, 3.5, -4, 10, -38, 22],
+  [0.24, -4.2, 3.2, -4, 9, -42, 20],
+  [0.44, -4.5, 3.8, -4.5, 11, -46, 18],
+  [0.60, -3.0, 3.2, -3.5, 14, 25, -62],
+  [0.66, -3.2, 2.9, -3.5, 13, 28, -66],
+  [0.84, -3.5, 3.4, -4, 15, 30, -68],
   [1.00, 0, 0, 0, 0, 0, 0],
 ];
