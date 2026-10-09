@@ -229,3 +229,9 @@ run: assets 3.9 s, level 4.9 s, ambience 5.3 s, navmesh 5.5 s (baked), shaders 9
   100k tris. A second cascade would add a second shadow sampler to every lit material variant for little gain.
 * **GPU occlusion queries:** the PVS plus the bot ray-occlusion covers the static map. Queries add a frame of latency
   (popping) for small extra gains.
+
+### QA confirmation (QA lead, job `1791516320967_qa_e_keyart`, 960x540 full quality, fresh load)
+sun 278/387k · courtyardN 257/404k · dock 203/375k · warehouse 206/414k · warehouse_rev 214/493k · catwalk 259/432k ·
+office1 201/372k · office2 222/417k · containers 287/476k · ruins 202/359k · ruins_wall 219/382k · perimeter 163/239k ·
+tower 187/306k · lane 261/402k. All 14 views are under 400 calls / 1.2 M tris. Fresh load 18.6 s, zero console errors or warnings,
+dynamic res 100%, no visual regressions.

@@ -2,7 +2,7 @@
 
 Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Results: `tools/qa/results/<id>/`.
 
-**Last run:** 2026-10-09 03:25 UTC: `core` 1791514719140 (snapshot 03:07). `e_keyart` and `w_spray` queued. Perf budget: ≤400 calls, ≤1.2M tris per view, ≤20 s fresh load (owner: perf a06576c27e6a80553).
+**Last run:** 2026-10-09 03:46 UTC: `e_keyart` 1791516320967 (snapshot 03:37), `core` 1791514719140 (03:07). `w_spray` queued. Perf budget: ≤400 calls, ≤1.2M tris per view, ≤20 s fresh load (owner: perf a06576c27e6a80553).
 
 ## Pass / fail by area
 
@@ -13,7 +13,7 @@ Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Resu
 | Weapons logic (fire modes, burst, tac +1, empty reload, ADS, sprint lockout, switch, tracers/decals) | `core.json` | PASS | 11/11. Decal check now counts add() calls (pools saturate after long sims) |
 | Weapons visual (hip / ADS / fire / reload / sprint x 11) | `c_weapons_visual_{a,b}.json` | FAIL (batch A) | gunmetal colour OK, red dot + holo reticles OK; AK irons no sight picture; optic housings low-poly octagons; ACOG lens washed; AK reload unreadable; RPK = AK (no drum) |
 | Movement (speeds, jump, slide, vault, mantle, stairs, spawn/fall) | `core.json` | PASS | walk 4.37 / sprint 6.46 / crouch 1.9 / jump 1.05; slide 8.3 m/s for 0.83 s; vault, dock climb, catwalk stairs; no falls at 37 positions |
-| Key art per area + perf | `e_keyart.json` | FAIL | 01:54: hook/balloon gone, tower wood fixed, warehouse shelves dressed, office tiled ceiling. Open: office ceiling rays (e07), debug FPS overlay visible by default, FP gun looks LOD-simplified. Perf: tris 0.46–0.89M (OK) but calls 457–777 (regressed, geos 186→633). Boot 404 from missing PVS bake |
+| Key art per area + perf | `e_keyart.json` | PASS | 03:37: all 14 views 163–287 calls / 0.24–0.49M tris; fresh load 18.6 s; 0 console messages; office rays gone; warehouse, tower and office dressing fixed. Debug FPS overlay shown by design (user request) |
 | FFA | `f_ffa_hang.json` | PASS (00:19) | 120 s FFA with and without ambience: 28 kills, no NaN, no hang, no throw after the dt fix. The 21:51 hang did not reproduce |
 | HUD / menus / UI flow | `core.json` | PASS | kills/medals/tally, low ammo, cook + drop on death, death card, respawn 1.6/4.5 s, damage arcs, pause opens on home, bullets hit bot, end screen |
 | Bot animation jank metrics | `core.json` L4 | FAIL (3 bots) | 03:07: palm 1.1–2.6 cm, pops ≤6/min, yaw ≤401°/s, deaths 0.53–0.97 s and 3/18 > 0.45 m, all OK; bots 0–2 hold the gun 12–30° off the aim ray after a second Match.start (rematch path suspected). Foot-slide metric still unvalidated |
@@ -29,7 +29,7 @@ Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Resu
 | 5 | HUD | gameplay a9c1ad23de29b1b81 | HUD/death card bleed through end-of-match screen | 1791477665095_gameplay/end.png | VERIFIED fixed 21:20 |
 | 7 | Boot | art lead a03eed672de8192c8 / weapons | Console errors: models/fp/<id>.glb 404 for all FP_IDS (dir missing) | any result logs | VERIFIED fixed 21:11 |
 | 8 | Level | level a338aa036921e6327 | Warehouse: large brown blob/hook meshes floating under roof (hangLamp row?) | e_keyart e04, e06 | VERIFIED fixed 01:54 |
-| 9 | Level | level (finished) → coordinator | Office ceiling white rays/streaks at top of frame persist after the HDR-pass-order fix | e_keyart 1791509573464 e07 | open |
+| 9 | Level | level (finished) → coordinator | Office ceiling white rays/streaks at top of frame persist after the HDR-pass-order fix | e_keyart 1791509573464 e07 | VERIFIED fixed 03:37 |
 | 10 | Level | level | Guard tower parapet flat saturated orange wood | e_keyart e13 | VERIFIED fixed 01:54 |
 | 11 | UI | gameplay a9c1ad23de29b1b81 | Menu at 960x540: TDM label wraps, briefing + profile clipped | ab_boot a1_menu | VERIFIED fixed 21:11 |
 | 12 | HUD | gameplay | Intro banner overlaps minimap; killfeed over scoreboard panel | ab_boot b1, b4 | VERIFIED fixed 21:20 |
@@ -43,8 +43,8 @@ Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Resu
 | 22 | Ambience | QA (applied at coordinator's request) | Unbounded per-frame accumulator loops could spin forever on non-finite input (DistantBattle, Fires, Weather bolt, AmbAudio) | code review after worker hangs | FIXED 01:10 (clamped + capped), no hang in 1028 s core run |
 | 23 | Runner/game | QA / coordinator | Intermittent page hangs (900 s timeouts: fprig film 23:30, bots film 00:52) | runner log | watchdog now captures JS stack on hang, none since 01:00 |
 | 24 | Physics hang | coordinator (Player.js) | Page hang inside Rapier world.step() (captured stack), likely NaN player collider translation via Player._syncBody; proposed 8-line finite guard (QA edit blocked by permissions) | runner log 01:50 fprig_cov | guard applied by coordinator 02:15; origin hunt re-runs queued |
-| 25 | Perf | perf a06576c27e6a80553 | Draw calls regressed (transmission glass + zoning, fixed by owner); PVS 404 (VERIFIED gone 03:07); FPS overlay intentional (user); chunky FP gun = dynamic res at 85% (disabled under QA) | e_keyart 1791509573464 | re-verify in e_keyart |
-| 6 | Perf | perf a06576c27e6a80553 | ~1600 calls / 3.5M tris, 75 s load vs budget 400 / 1.2M / 20 s | coordinator | open |
+| 25 | Perf | perf a06576c27e6a80553 | Draw calls regressed (transmission glass + zoning, fixed by owner); PVS 404 (VERIFIED gone 03:07); FPS overlay intentional (user); chunky FP gun = dynamic res at 85% (disabled under QA) | e_keyart 1791509573464 | VERIFIED fixed 03:37 |
+| 6 | Perf | perf a06576c27e6a80553 | ~1600 calls / 3.5M tris, 75 s load vs budget 400 / 1.2M / 20 s | coordinator | VERIFIED: budget met 03:37 |
 | 17 | UI | gameplay a9c1ad23de29b1b81 | Pause menu opened on last-visited page (Credits) | g_hud_ui g12b_pause | VERIFIED fixed 01:31 |
 | 18 | Weapons/FP art | art lead a03eed672de8192c8 | AK irons still no front post at ADS on fresh build | c_optics o3_ak_irons_ads | open |
 
