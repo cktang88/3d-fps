@@ -103,7 +103,15 @@ async function getPage(worker, job, buildInfo, result) {
   const page = await (await ensureBrowser()).newPage({ viewport: { width: W, height: H } });
   page.setDefaultTimeout(300000);
   const sink = { result };
-  page.on('console', (m) => { const r = sink.result; if (r && (m.type() === 'error' || m.type() === 'warning' || r._verbose)) r.logs.push(`[${m.type()}] ${m.text()}`.slice(0, 600)); });
+  const CTX_LOST = /CONTEXT_LOST_WEBGL|context could not be created|Could not create a WebGL context|WebGL context was lost|caused context loss|QA: WebGL CONTEXT LOST/i;
+  page.on('console', (m) => {
+    const r = sink.result; if (!r) return;
+    const t = m.text();
+    if (CTX_LOST.test(t) && !r.contextLost) r.contextLost = t.slice(0, 200);
+    if (m.type() === 'error' || m.type() === 'warning' || r._verbose) r.logs.push(`[${m.type()}] ${t}`.slice(0, 600));
+  });
+  // Surface context loss from the page itself (three only logs it lazily).
+  await page.addInitScript(() => { addEventListener('webglcontextlost', () => console.error('QA: WebGL CONTEXT LOST (webglcontextlost event)'), true); });
   page.on('pageerror', (e) => sink.result?.logs.push('[pageerror] ' + e.message + ' ' + (e.stack || '').split('\n').slice(0, 3).join(' | ')));
   const t0 = Date.now();
   await page.goto(`http://localhost:${PORT}/${buildInfo.stamp}/`, { waitUntil: 'load' });
@@ -183,6 +191,8 @@ async function runJob(job, buildInfo, worker = 0) {
   } catch (e) {
     result.error = e.message.slice(0, 1000);
   }
+  // A lost / uncreatable WebGL context makes every later shader "fail": report the real cause loudly.
+  if (result.contextLost) result.error = `WEBGL CONTEXT LOST - results invalid (${result.contextLost})` + (result.error ? ' | ' + result.error : '');
   // Keep the page warm for the next job unless something went wrong.
   if (result.error || job.fresh) { await page?.close().catch(() => {}); warm.delete(worker); }
   delete result._verbose;
@@ -288,6 +298,8 @@ async function worker(n) {
     }
     fs.mkdirSync(path.join(RES, job.id), { recursive: true });
     fs.writeFileSync(path.join(RES, job.id, 'job.json'), JSON.stringify(job)); // lets anyone re-submit it
+    // Context loss can poison the whole browser (Chrome blocks 3D APIs per origin): recycle it.
+    if (r.contextLost) { log(`[w${n}] WebGL context lost in`, job.id, '- recycling browser'); warm.clear(); await browser?.close().catch(() => {}); browser = null; }
     fs.writeFileSync(path.join(RES, job.id, 'result.json'), JSON.stringify(r, null, 2));
     fs.unlinkSync(fp);
     log(`[w${n}] done`, job.id, r.error ? 'ERROR ' + r.error.split('\n')[0] : 'ok', `${Math.round((Date.parse(r.finishedAt) - Date.parse(r.startedAt)) / 1000)}s`);
