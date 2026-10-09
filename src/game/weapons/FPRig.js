@@ -99,9 +99,12 @@ class ArmIK {
     this.reset();
     const top = this.up.parent;
     top.updateMatrixWorld(true);
-    // Optional shoulder override (world point + weight): rigs built with the shoulder slid forward toward a far
+    // Optional shoulder shift (world delta d, weight k): rigs built with the shoulder slid forward toward a far
     // handguard (AK) would otherwise swing the upper arm into frame when the hand comes back to the body.
-    if (shoulder && shoulder.k > 0) { this.up.position.lerp(top.worldToLocal(shoulder.p.clone()), shoulder.k); this.up.updateMatrixWorld(true); }
+    if (shoulder && shoulder.k > 0) {
+      const w = this.up.getWorldPosition(new THREE.Vector3()).addScaledVector(shoulder.d, shoulder.k);
+      this.up.position.copy(top.worldToLocal(w)); this.up.updateMatrixWorld(true);
+    }
     const S = this.up.getWorldPosition(new THREE.Vector3());
     const E0 = this.fo.getWorldPosition(new THREE.Vector3());
     const W0 = this.end.getWorldPosition(new THREE.Vector3());

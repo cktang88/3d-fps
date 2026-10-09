@@ -19,8 +19,8 @@ const _k = new Array(6), _e = new THREE.Euler(), _pv = new THREE.Vector3(), _pol
 // Support-arm elbow pole (view-camera space): when the hand travels far from its grip (magazine pouch, belt) the
 // elbow hangs down and out instead of flaring up into the left edge of the frame.
 const ELBOW_POLE_L = [-0.5, -0.85, 0.15];
-// Template left shoulder (view space, m: docs/FP_FRAMING.md, upperarm_l (-0.29, -0.15, -0.12) canonical).
-const SHOULDER_L = [-0.29, -0.12, 0.15];
+// Left shoulder shift during reloads (view space, m): back, out and down, within the arm's reach.
+const SHOULDER_BACK_L = [-0.04, -0.03, 0.07];
 // Magazine pouch / belt (view space, m): below the bottom-left of the frame, close to the body.
 const POUCH = [-0.12, -0.42, -0.08];
 
@@ -1159,8 +1159,9 @@ export class ViewModel {
     const k = smoothstep(clamp((p.distanceTo(home) - 0.06) / 0.2, 0, 1));
     this.viewCam.updateMatrixWorld(true);
     const far = this.viewCam.localToWorld(_pole.fromArray(ELBOW_POLE_L));
-    // Shoulder back at the body (template shoulder) while the hand is away from its grip.
-    const sh = k > 0 ? { p: this.viewCam.localToWorld(new THREE.Vector3().fromArray(SHOULDER_L)), k } : null;
+    // Shoulder eased back toward the body while the hand is away from its grip (the rigs' shoulders sit ~12 cm in
+    // front of the eye, slid toward the handguard at build time, so a bent arm otherwise shows its upper arm).
+    const sh = k > 0 ? { d: new THREE.Vector3().fromArray(SHOULDER_BACK_L).transformDirection(this.viewCam.matrixWorld).multiplyScalar(Math.hypot(...SHOULDER_BACK_L)), k } : null;
     const hip = this._hipPole(rig);
     if (hip) { rig.fp.setLeftAbs(rig.root, p, q, hip.pole.lerp(far, k), hip.k + (1 - hip.k) * k, sh); return; }
     rig.fp.setLeftAbs(rig.root, p, q, k > 0 ? far : null, k, sh);
