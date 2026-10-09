@@ -27,7 +27,9 @@ npm run build    # static build in dist/
   is what the game is tested on.
 - First boot picks graphics settings from the GPU (`Renderer.autoQuality`): discrete GPUs get **High + FSR Quality**,
   Apple Silicon and integrated GPUs (Intel Iris/UHD, Radeon APUs) get **Medium + FSR Balanced**, software renderers and
-  phones get **Low + FSR Performance**. Picking a quality or upscaling mode yourself turns this off.
+  phones get **Low + FSR Performance**. On Apple GPUs the automatic setting also turns off the viewmodel light probe
+  (a GPU→CPU readback) and the viewmodel shadow pass, which stall Metal's tile-based GPUs. Picking a quality or
+  upscaling mode yourself turns this off.
 - **Adaptive quality**: while the quality is still automatic, a machine that averages under 30 fps steps one feature
   down at a time (AO → god rays → shadow map → viewmodel probe → bloom → render scale) and shows a toast. It never steps
   back up by itself; picking a quality in Settings resets it.

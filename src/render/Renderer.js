@@ -365,6 +365,9 @@ export class Renderer {
   computeFeatures() {
     const s = this.settings, q = THREE.MathUtils.clamp(s.quality | 0, 0, 3);
     const f = { ...QUALITY_PRESETS[q], scaleMul: 1 };
+    // Apple GPUs (ANGLE-Metal) on auto quality: skip the viewmodel probe's GPU→CPU readback and the extra viewmodel
+    // shadow pass — both stall a tile-based GPU far more than they cost on desktop (gun falls back to hemi + rim + local lights).
+    if (this.gpuInfo?.apple && s.qualityAuto !== false) { f.probe = 0; f.vmShadow = 0; }
     const lvl = s.qualityAuto !== false && s.adaptiveQuality !== false ? Math.min(ADAPTIVE_STEPS.length, s.adaptiveLevel | 0) : 0;
     for (let i = 0; i < lvl; i++) Object.assign(f, ADAPTIVE_STEPS[i].apply(f, s));
     return Object.assign(f, this.bench);
