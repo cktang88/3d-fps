@@ -373,11 +373,13 @@ export class Bot {
         if (this.brakeTimer > 0) this.brakeTimer -= dt;
         const toT = _v.subVectors(this.target.position, this.position).setY(0).normalize();
         const side = new THREE.Vector3(-toT.z, 0, toT.x).multiplyScalar(this.strafeDir);
-        const approach = dist > ideal * 1.4 ? 0.7 : dist < ideal * 0.5 ? -0.5 : 0;
+        const approach = dist > ideal * 1.4 ? 0.7 : dist < ideal * 0.5 ? -0.34 : 0; // back off at a backpedal pace (~1.5 m/s)
         // Aimed strafes at a human pace (combat glide ~1 m/s; quicker shuffle when not aiming down sights).
         const lateral = this.strafeHold || this.brakeTimer > 0 ? 0 : wantAim ? 1.1 : 1.7;
         desiredVel = side.multiplyScalar(lateral).addScaledVector(toT, approach * runSpeed * (this.brakeTimer > 0 ? 0.3 : 1));
         if (this.crouchPeek && wantAim) { desiredVel.multiplyScalar(0.3); crouchT = 1; }
+        // Under fire people move at a combat pace with the gun up (keeps the legs in the aimed-walk set).
+        if (visible && desiredVel.lengthSq() > 1.85 * 1.85) desiredVel.setLength(1.85);
         break;
       }
       case 'cover': {

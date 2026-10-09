@@ -185,49 +185,70 @@ export class GunModels {
     this.src = {};
   }
 
-  async load() {
-    // Per-weapon first-person rigs (gun + posed gloved arms, tools/blender, docs/FP_FRAMING.md) replace the
-    // static gun + rigidly mounted arms for the models they cover.
+  /**
+   * Load weapon models. FP rigs (gun + posed gloved arms, tools/blender, docs/FP_FRAMING.md) replace the static gun
+   * + rigidly mounted arms for the ids in models/fp/manifest.json. Only `priority` model keys (the player's loadout)
+   * are fetched here, before the menu; the rest stream in via loadRest() (Game awaits it before a match) or on demand
+   * via ensure() (gunsmith loadout changes).
+   */
+  async load(priority = null) {
     this.fp = {};
-    // Only request rigs listed in models/fp/manifest.json (missing manifest = none shipped yet, no 404s).
-    let ids = [];
-    try { const r = await fetch('./assets/models/fp/manifest.json'); if (r.ok) ids = (await r.json()).ids || []; } catch { /* none */ }
-    await Promise.all(ids.filter((k) => FP_IDS.includes(k)).map(async (k) => {
-      const g = await this.assets.model('fp_' + k, `models/fp/${k}.glb`);
-      const fp = g && parseFP(g, k);
-      if (fp?.gun) { this.fp[k] = fp; this.src[k] = fp.gun; }
-    }));
+    this._fpLoading = {};
+    this.manifest = [];
+    try { const r = await fetch('./assets/models/fp/manifest.json'); if (r.ok) this.manifest = ((await r.json()).ids || []).filter((k) => FP_IDS.includes(k)); } catch { /* none */ }
+    const first = priority ? this.manifest.filter((k) => priority.includes(k)) : this.manifest;
     // Authored FP rifle animation set (Free FPS Template, effector-retargeted; drives FP rigs' gun + support hand).
-    try { const r = await fetch('./assets/anims/fp_rifle_anims.json'); if (r.ok) this.tplAnims = new FPAnims(await r.json()); } catch { /* procedural fallback */ }
-    const keys = ['m4a1', 'ak47', 'scarl', 'mp5a5', 'vss', 'm24', 'awm', 'p226', 'm1911', 'shotgun', 'optics'].filter((k) => !this.fp[k]);
+    const anims = fetch('./assets/anims/fp_rifle_anims.json').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) this.tplAnims = new FPAnims(j); }).catch(() => {});
+    const keys = ['m4a1', 'ak47', 'scarl', 'mp5a5', 'vss', 'm24', 'awm', 'p226', 'm1911', 'shotgun', 'optics'].filter((k) => !this.manifest.includes(k));
     await Promise.all([
-      ...keys.map(async (k) => { const g = await this.assets.model('gun_' + k, `models/weapons/${k}.glb`); if (g) this.src[k] = g.scene; }),
+      anims,
+      ...first.map((k) => this.ensureOne(k)),
+      ...keys.map(async (k) => { const g = await this.assets.model('gun_' + k, `models/weapons/${k}.glb`); if (g) { this.src[k] = g.scene; if (k === 'shotgun') this.src.shotgun = this.normaliseShotgun(g.scene); this._prepGun(k, this.src[k]); } }),
       this.assets.model('arms_rifle', 'models/weapons/smg45_rifle_arms.glb').then((g) => (this.armsRifle = g)),
       this.assets.model('arms_pistol', 'models/weapons/smg45_pistol_service_arms.glb').then((g) => (this.armsPistol = g)),
       this.assets.model('arms_reload', 'models/weapons/animated_reload_arms.glb').then((g) => (this.armsReload = g)),
     ]);
-    // Normalise the shotgun (third-party model, different axes/scale) into the shared contract:
-    // muzzle toward −Z, ~1.75 units long (same Godot-space scale as the steel-tide rifles).
-    if (this.src.shotgun && !this.fp.shotgun) this.src.shotgun = this.normaliseShotgun(this.src.shotgun);
     // Arms share the look (no metal wear; cloth / leather roughness floor).
-    for (const a of [this.armsRifle, this.armsPistol, this.armsReload, ...Object.values(this.fp).map((f) => ({ scene: f.root, skinnedOnly: true }))]) {
-      a?.scene.traverse((o) => {
-        if (!o.isMesh || (a.skinnedOnly && !o.isSkinnedMesh)) return;
-        for (const m of Array.isArray(o.material) ? o.material : [o.material]) applyGunLook(m, { wear: 0, micro: 0.5, rmin: 0.5, sat: 0.85, lumMax: 0.45, keepDiffuse: 0.7 });
-      });
-    }
-    for (const [k, s] of Object.entries(this.src)) {
-      s.traverse((o) => {
-        if (o.isMesh) {
-          const mats = Array.isArray(o.material) ? o.material : [o.material];
-          if (mats.some((m) => /glass/i.test(m.name || ''))) o.userData.glass = true;
-          o.material = Array.isArray(o.material) ? o.material.map((m) => unifyMaterial(m, k)) : unifyMaterial(o.material, k);
-          o.castShadow = false;
-          o.receiveShadow = false;
-          o.frustumCulled = false;
-        }
-      });
-    }
+    for (const a of [this.armsRifle, this.armsPistol, this.armsReload]) this._prepArms(a?.scene, false);
+  }
+
+  /** Stream every remaining FP rig (idempotent; resolves when all are loaded). */
+  loadRest() { return (this._rest ||= Promise.all(this.manifest.map((k) => this.ensureOne(k)))); }
+
+  /** Make sure the rigs for these model keys are loaded. */
+  ensure(keys) { return Promise.all(keys.filter((k) => this.manifest?.includes(k)).map((k) => this.ensureOne(k))); }
+
+  ensureOne(k) {
+    return (this._fpLoading[k] ||= this.assets.model('fp_' + k, `models/fp/${k}.glb`).then((g) => {
+      const fp = g && parseFP(g, k);
+      if (!fp?.gun) return;
+      this.fp[k] = fp; this.src[k] = fp.gun;
+      this._prepArms(fp.root, true);
+      this._prepGun(k, fp.gun);
+    }));
+  }
+
+  /** True when every model key is ready to build a rig. */
+  has(keys) { return keys.every((k) => !!this.src[k]); }
+
+  _prepArms(scene, skinnedOnly) {
+    scene?.traverse((o) => {
+      if (!o.isMesh || (skinnedOnly && !o.isSkinnedMesh)) return;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) applyGunLook(m, { wear: 0, micro: 0.5, rmin: 0.5, sat: 0.85, lumMax: 0.45, keepDiffuse: 0.7 });
+    });
+  }
+
+  _prepGun(k, s) {
+    s.traverse((o) => {
+      if (o.isMesh) {
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        if (mats.some((m) => /glass/i.test(m.name || ''))) o.userData.glass = true;
+        o.material = Array.isArray(o.material) ? o.material.map((m) => unifyMaterial(m, k)) : unifyMaterial(o.material, k);
+        o.castShadow = false;
+        o.receiveShadow = false;
+        o.frustumCulled = false;
+      }
+    });
   }
 
   normaliseShotgun(scene) {

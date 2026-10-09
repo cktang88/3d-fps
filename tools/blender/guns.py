@@ -15,7 +15,7 @@ SF = 'https://sketchfab.com/3d-models/'
 GUNS = {
     'm4a1': dict(src='repo:public/assets/models/weapons/m4a1.glb', keep_nodes=True, length=0.84,
                  measure=r'^(M4A1Body_00|M4A1Body_01|StockGeometry)'),
-    'ak47': dict(src='repo:public/assets/models/weapons/ak47.glb', keep_nodes=True, length=0.88,
+    'ak47': dict(src='repo:public/assets/models/weapons/ak47.glb', keep_nodes=True, length=0.88, decimate=0.3,
                  measure=r'.*'),
     'scarl': dict(src='sf:g_scar/model.glb', rot=(0, 0, 0), length=0.889,
                   parts={'Magazine': r'^(Magazine|Mag\.002)', 'ChargingHandle': r'^Loader'},

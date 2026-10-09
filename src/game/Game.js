@@ -72,7 +72,8 @@ export class Game {
       this.assets.hdri(LEVEL_HDRI),
       this.materials.load(),
       this.level.loadProps(this.assets),
-      this.gunModels.load(),
+      // FP rigs: only the player's loadout before the menu; the rest stream in after init (see below).
+      this.gunModels.load([this.settings.loadout.primary, this.settings.loadout.secondary].map((id) => WEAPONS[id]?.model).filter(Boolean)),
       this.assets.model('soldier', 'models/characters/soldier.glb'),
       this.assets.model('soldierTac', 'models/characters/soldier_tac.glb'),
       this.loadSounds(),
@@ -127,6 +128,8 @@ export class Game {
     this.renderer.renderer.compile(this.renderer.viewScene, this.renderer.viewCamera);
     this.perf.mark('shaders compiled');
     onProgress?.(1, 'Ready');
+    // Stream the remaining FP weapon rigs while the menu is up (startMatch awaits them).
+    this.gunModels.loadRest().then(() => { this._rigsReady = true; });
   }
 
   async loadSounds() {
@@ -185,7 +188,14 @@ export class Game {
   }
 
   applyLoadoutChange() {
-    // Called from gunsmith. Rebuild weapons, keep player alive.
+    // Called from gunsmith. Rebuild weapons, keep player alive. FP rigs load on demand (streamed after init).
+    const lo = this.settings.loadout;
+    const need = [lo.primary, lo.secondary].map((id) => WEAPONS[id]?.model).filter(Boolean);
+    if (!this.gunModels.has(need)) {
+      const tok = (this._loadoutTok = (this._loadoutTok || 0) + 1);
+      this.gunModels.ensure(need).then(() => { if (tok === this._loadoutTok) this.applyLoadoutChange(); });
+      return;
+    }
     for (const w of this.inventory || []) this.viewmodel.invalidate(w.id);
     this.buildLoadout();
   }
@@ -227,6 +237,10 @@ export class Game {
 
   // ------------------------------------------------------------------ match
   startMatch(modeKey) {
+    // Bots carry any weapon: make sure every FP rig has streamed in (normally done while the menu is up).
+    if (!this._rigsReady) {
+      return this.gunModels.loadRest().then(() => { this._rigsReady = true; return this.startMatch(modeKey); });
+    }
     this.match.start(modeKey);
     this.started = true;
     this.hud.show(true);

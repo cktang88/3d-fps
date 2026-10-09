@@ -207,6 +207,16 @@ def prep(gid, spec, sfdir, work):
             if role == 'Glass':
                 for m in ob.data.materials:
                     if m: m.name = 'glass_' + m.name
+    # Optional triangle budget: collapse-decimate heavy gun meshes (perf: the steel-tide AK is ~100k tris).
+    if spec.get('decimate'):
+        for o in [o for o in bpy.data.objects if o.type == 'MESH' and len(o.data.polygons) > 3000]:
+            bpy.context.view_layer.objects.active = o
+            for x in bpy.data.objects: x.select_set(x == o)
+            md = o.modifiers.new('dec', 'DECIMATE'); md.ratio = spec['decimate']; md.use_collapse_triangulate = True
+            n0 = len(o.data.polygons)
+            if o.data.users > 1: o.data = o.data.copy()
+            bpy.ops.object.modifier_apply(modifier='dec')
+            print('DECIMATE', gid, o.name, n0, '->', len(o.data.polygons))
     # Export + diagnostics.
     bpy.ops.object.select_all(action='DESELECT')
     allo = [o for o in bpy.data.objects]
