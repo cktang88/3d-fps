@@ -249,6 +249,37 @@ function claim() {
   }
   return null;
 }
+// Is the page still making progress? Samples game/physics counters twice, 5 s apart, reading them under
+// Debugger.pause (works whether the page is busy in a long script or idle between rAF frames; a Runtime.evaluate
+// would queue behind a running script and block the CDP session).
+async function probeLiveness(page) {
+  if (!page || page.isClosed()) return { alive: false, why: 'no page' };
+  let cdp;
+  try {
+    cdp = await page.context().newCDPSession(page);
+    await cdp.send('Debugger.enable');
+    const expr = 'JSON.stringify({ frame: globalThis.__game?.frame ?? null, steps: globalThis.__physInfo?.().steps ?? null })';
+    const sample = async () => {
+      const paused = new Promise((ok) => cdp.once('Debugger.paused', (e) => ok(e.callFrames)));
+      await cdp.send('Debugger.pause');
+      const frames = await Promise.race([paused, new Promise((ok) => setTimeout(() => ok(null), 5000))]);
+      let v = null;
+      const js = frames?.find((f) => f.url && !/wasm/.test(f.url) && !/^\$/.test(f.functionName || '')) || frames?.[0];
+      if (js) v = (await cdp.send('Debugger.evaluateOnCallFrame', { callFrameId: js.callFrameId, expression: expr, returnByValue: true, silent: true }).catch(() => null))?.result?.value ?? null;
+      await cdp.send('Debugger.resume').catch(() => {});
+      return v ? JSON.parse(v) : null;
+    };
+    const a = await sample();
+    await new Promise((r) => setTimeout(r, 5000));
+    const b = await sample();
+    const df = a && b && a.frame != null ? b.frame - a.frame : null, ds = a && b && a.steps != null ? b.steps - a.steps : null;
+    const alive = (df ?? 0) > 0 || (ds ?? 0) > 0;
+    return { alive, why: `game frames +${df}, physics steps +${ds} in 5 s`, a, b };
+  } catch (e) {
+    return { alive: false, why: 'probe failed: ' + e.message };
+  } finally { cdp?.detach().catch(() => {}); }
+}
+
 async function worker(n) {
   for (;;) {
     if (shuttingDown) return new Promise(() => {});
@@ -261,11 +292,26 @@ async function worker(n) {
     log(`[w${n}] run`, job.id, 'for', job.owner, 'snapshot', b.stamp);
     // Watchdog: a job that hangs (e.g. an infinite loop inside page.evaluate) must not block a worker forever.
     const limit = (job.timeoutS || 900) * 1000;
-    let timer;
+    // A page that is merely slow (CPU contention: 10+ min boots and 15-40 s views were seen) must not be reported as
+    // hung. At the deadline we first probe liveness (game frame / physics step counters sampled 5 s apart) and grant
+    // up to MAX_EXTENSIONS extra periods of EXTENSION_MS while the page keeps making progress.
+    const EXTENSION_MS = Math.min(limit, 300000), MAX_EXTENSIONS = job.noExtend ? 0 : 2;
+    let timer, extensions = 0;
     const r = await Promise.race([
       runJob(job, b, n),
-      new Promise((res) => { timer = setTimeout(async () => {
-        log(`[w${n}] TIMEOUT`, job.id, `after ${limit / 1000}s - closing its page`);
+      new Promise((res) => { const onDeadline = async () => {
+        const live = await Promise.race([probeLiveness(warm.get(n)?.page || current.get(n)),
+          new Promise((ok) => setTimeout(() => ok({ alive: false, why: 'liveness probe timed out' }), 40000))]);
+        if (live.alive && extensions < MAX_EXTENSIONS) {
+          extensions++;
+          log(`[w${n}] deadline`, job.id, `reached but page is alive (${live.why}) - extending by ${EXTENSION_MS / 1000}s (${extensions}/${MAX_EXTENSIONS})`);
+          const cur = warm.get(n)?.sink?.result;
+          if (cur) (cur.extended ||= []).push({ at: new Date().toISOString(), ...live });
+          timer = setTimeout(onDeadline, EXTENSION_MS);
+          return;
+        }
+        const total = limit + extensions * EXTENSION_MS;
+        log(`[w${n}] TIMEOUT`, job.id, `after ${total / 1000}s - closing its page (liveness: ${live.why})`);
         const w = warm.get(n); warm.delete(n); const partial = w?.sink?.result;
         const hungPage = w?.page || current.get(n);
         // Grab the JS stack of the hung page (Debugger.pause interrupts a busy loop; if nothing is running the
@@ -305,18 +351,21 @@ async function worker(n) {
           }
           await cdp.send('Debugger.resume').catch(() => {});
         } catch (e) { hangStack = 'stack capture failed: ' + e.message; }
-        log(`[w${n}] hang stack`, job.id, hangStack.slice(0, 600));
+        log(`[w${n}] ${live.alive ? 'busy (alive, not hung) stack' : 'hang stack'}`, job.id, hangStack.slice(0, 600));
         if (hangTrace) {
           log(`[w${n}] hang trace`, job.id, String(hangTrace).length, 'chars (see result.hangTrace)');
           try { fs.mkdirSync(path.join(RES, job.id), { recursive: true }); fs.writeFileSync(path.join(RES, job.id, 'hangTrace.json'), String(hangTrace)); } catch {}
         }
         if (partial) { partial.hangStack = hangStack; partial.hangTrace = hangTrace; }
         // Resolve BEFORE closing the page so the timeout wins the race (closing makes runJob reject with "closed").
-        res({ ...(partial || {}), id: job.id, owner: job.owner, startedAt: partial?.startedAt || new Date(Date.now() - limit).toISOString(), finishedAt: new Date().toISOString(), shots: partial?.shots || [], logs: partial?.logs || [], data: partial?.data || {}, hangStack, hangTrace, timedOut: true, error: `TIMEOUT after ${limit / 1000}s (page hung - possible infinite loop in game code or job script)` });
+        const hung = !live.alive;
+        res({ ...(partial || {}), id: job.id, owner: job.owner, startedAt: partial?.startedAt || new Date(Date.now() - total).toISOString(), finishedAt: new Date().toISOString(), shots: partial?.shots || [], logs: partial?.logs || [], data: partial?.data || {}, hangStack, hangTrace, liveness: live, timedOut: true,
+          error: hung ? `TIMEOUT after ${total / 1000}s (page hung - possible infinite loop in game code or job script)`
+            : `TIMEOUT after ${total / 1000}s (page still alive and progressing - job too slow for its timeoutS; NOT a hang. The stack below is just where it was busy)` });
         hungPage?.close().catch(() => {});
         // Stuck before the game even booted: the browser itself is wedged - recycle it.
         if (!w) { log(`[w${n}] page never booted - recycling browser`); warm.clear(); browser?.close().catch(() => {}); browser = null; }
-      }, limit); }),
+      }; timer = setTimeout(onDeadline, limit); }),
     ]);
     clearTimeout(timer);
     if (shuttingDown) return new Promise(() => {}); // leave it in running/; the next start re-queues it
