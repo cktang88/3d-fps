@@ -42,8 +42,10 @@ export const FP_TUNE = {
   shotgun: { reloadPos: [-0.02, 0.006, -0.01], reloadRot: [0.09, 0.06, -0.48], ironRear: [0, 0.16, 0.0], ironFront: [0, 0.157, -0.984], rail: [0, 0.1314, 0.0], pumpStroke: 0.16,
     shellPort: [0.0, 0.0, 0.28], shellBelt: [-0.1, -0.5, 0.3], sprintPose: [1, -0.5, -2, -15, 22, 35] },
   // Pistols: longer eye relief at ADS (arms extended), so the two-hand grip stays compact under the sights.
-  p226: { ironRelief: 0.5, dotRelief: 0.5, adsSupport: [0.012, -0.03, 0.012], reloadPos: [-0.02, -0.045, 0.0], reloadRot: [-0.05, 0.06, 0.3], ironRear: [0, 0.1352, 0.1435], ironFront: [0, 0.1359, -0.1692], rail: [0, 0.131, 0.04] },
-  m1911: { ironRelief: 0.5, dotRelief: 0.5, adsSupport: [0.012, -0.03, 0.012], reloadPos: [-0.02, -0.045, 0.0], reloadRot: [-0.05, 0.06, 0.3], ironRear: [0, 0.1297, 0.1299], ironFront: [0, 0.1287, -0.1954], rail: [0, 0.1281, 0.045] },
+  p226: { ironRelief: 0.5, dotRelief: 0.5, adsSupport: [0.012, -0.03, 0.012], hipPush: 1.3, thumbR: 0.8, supportFingers: [0.5, 0.8],
+    adsHandsDrop: [0.005, -0.05, 0.02], sprintPose: [8, -4, 3, 20, -5, -15], reloadPos: [-0.02, -0.045, 0.0], reloadRot: [-0.05, 0.06, 0.3], ironRear: [0, 0.1352, 0.1435], ironFront: [0, 0.1359, -0.1692], rail: [0, 0.131, 0.04] },
+  m1911: { ironRelief: 0.5, dotRelief: 0.5, adsSupport: [0.012, -0.03, 0.012], hipPush: 1.3, thumbR: 0.8, supportFingers: [0.5, 0.8],
+    adsHandsDrop: [0.005, -0.05, 0.02], sprintPose: [8, -4, 3, 20, -5, -15], reloadPos: [-0.02, -0.045, 0.0], reloadRot: [-0.05, 0.06, 0.3], ironRear: [0, 0.1297, 0.1299], ironFront: [0, 0.1287, -0.1954], rail: [0, 0.1281, 0.045] },
   // Fixed-scope precision platforms: the authored scope glass defines the optical axis.
   vss: { integratedScope: true, hipPush: 1.2 }, // PSO eyecup sits right at the eye otherwise
   m24: { integratedScope: true },
@@ -183,7 +185,7 @@ export class FPArms {
     for (const side of ['L', 'R']) {
       const g = (i) => root.getObjectByName(`Bone_${side}.${String(i).padStart(3, '0')}`);
       const chain = (a) => [g(a), g(a + 1), g(a + 2)].filter(Boolean).map((b) => ({ b, q: b.quaternion.clone() }));
-      this.fingers[side] = { index: chain(5), others: [...chain(9), ...chain(13), ...chain(17)], thumb: chain(21) };
+      this.fingers[side] = { index: chain(5), others: [...chain(9), ...chain(13), ...chain(17)], thumb: chain(20) };
     }
   }
 
@@ -198,7 +200,9 @@ export class FPArms {
     const apply = (list, w) => list.forEach((e, i) => e.b.quaternion.copy(e.q).multiply(_q.setFromAxisAngle(_v.set(0, 0, 1), w[i % w.length])));
     apply(f.index, [index * 0.9, index * 0.35, index * 0.8]);
     apply(f.others, [-curl * 0.8, -curl, -curl * 0.7]);
-    apply(f.thumb, [-thumb, -thumb * 0.8]);
+    // Thumb (.020 metacarpal, .021, .022): it bends about its local x (the fingers curl about z).
+    const ax = window.__vmThumbAxis || 'x';
+    f.thumb.forEach((e, i) => e.b.quaternion.copy(e.q).multiply(_q.setFromAxisAngle(_v.set(ax === 'x' ? 1 : 0, 0, ax === 'z' ? 1 : 0), -thumb * [0.6, 0.8, 0.6][i])));
   }
 
   /** Cache the left hand control's authored transform in WeaponRoot space. */

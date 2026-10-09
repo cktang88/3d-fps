@@ -125,6 +125,12 @@ How these numbers are used in the game:
   (`FP_TUNE.adsSupport`). The red dot and holo housings were smoothed: one crease-preserving Catmull-Clark level
   (`tools/blender/smooth_optics.py`), then meshopt, so optics.glb went from 2.2 to 1.6 MB. The ACOG and riflescope were
   left as they were, because subdividing them flattened the rolled rubber eyecup.
+* **Pistols (coordinator pass, round 2).** At the hip the pose is pushed out (`hipPush` 1.3), so the glove reads in
+  scale with the pistol. At ADS both hands drop under the frame (`adsHandsDrop`), which keeps the slide, rear sight
+  and front sight clear above the hands. The firing thumb tucks (`thumbR`; thumb bones bend about local x), and the
+  support fingers curl (`supportFingers`). The sprint pose is a low ready in the lower right (`sprintPose` [8, -4, 3,
+  20, -5, -15]). The support hand stays mostly hidden behind the firing hand at ADS; this is the authored ccransh
+  pistol hold.
 * **Sight picture.** A grounded player carries a -2 m/s ground-stick vertical velocity. The sway layer used to turn it
   into a constant 4 mm lift, which put every sight 2–5% of the screen height above the crosshair. Vertical velocity
   sway now only applies in the air. Collimated reticles and the PiP scope camera follow the sight line (`rig.sightQ`),
