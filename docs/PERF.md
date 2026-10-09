@@ -159,3 +159,73 @@ passes) is the other main-thread cost.
   programs), and scale the pool by quality.
 * Non-critical assets (flyovers, distant spectacle) load **after** the menu shows.
 * Check with `perf_profile` before and after.
+
+## Round 2: bake, cache, amortise, occlude
+
+### Baked / cached (shipped as assets, or cached client-side)
+| what | how | tool / file | effect |
+|---|---|---|---|
+| Navmesh | Recast navmesh serialised (`exportNavMesh`) and imported at boot when the FNV hash of `level.navGeos` matches; otherwise built as before | `node tools/perf/bake_nav.mjs` → `public/assets/nav/level.{bin,json}`; `Navigation.loadBaked` | 280 ms build → ~90 ms import |
+| PVS | 4 m cells x 3 storeys; 15 eye points per cell ray-test samples on every level zone + prop instance; only thick static boxes occlude; each cell is dilated with its 8 neighbours (conservative) | `node tools/perf/bake_pvs.mjs [--jobs 6 --prio]` (runs in-game through the QA runner, ~20 s per job) → `public/assets/pvs/level.json` (70 KB, 342 targets, 1079 unique rows); runtime `src/render/Pvs.js` | culls hidden zones and prop instances; disables itself on a level-hash mismatch |
+| Static sun shadow | Static casters (consolidated level + props) are drawn into the 4096 map **once**, and the depth is cached in a private RT. Each frame: three clears → a zero-draw "blitter" (first in traversal) `blitFramebuffer`s the cached depth back → dynamic casters draw on top. Re-bakes on resize or quality change. Same single map, so no shader changes | `src/render/ShadowCache.js` | shadow pass 35 calls / ~345k tris → ~33 calls / ~100k tris (only dynamic casters); pixel-identical (`perf_shadowcache.json` A/B) |
+| Runtime LODs | meshopt results are persisted to IndexedDB, keyed by a content hash (positions + index + budget) and reused on later boots | `Lod.lodCacheLoad/lodCacheSave` | ~310–430 ms of simplification skipped from the 2nd boot on (verified: 86 entries stored) |
+| Shaders | `compileAsync` (KHR_parallel_shader_compile) for both scenes during loading | `Game.init` | parallel compile; still all warmed before the menu |
+
+### Amortised
+* Bots (bots owner): perception/LOS ~8 Hz staggered, decisions 0.4–0.6 s, path requests only on target change or a 1.5 s repath. Animation rate-LOD by k=dist·tan(fov/2), off-screen and occluded. IK is skipped when off-screen or occluded.
+* Bot occlusion: visible bots are re-tested every 2nd frame (alternating halves), hidden bots every frame, so a bot is never drawn late.
+* Light pool: selection every 3rd frame, or immediately when a light turns on (muzzle flash). Values and positions are copied every frame.
+* Prop LOD distances: recomputed every 3rd frame.
+* HUD minimap: 15 Hz wall-clock (was every 2nd frame). DOM writes were already change-gated.
+* Ambience (ambience owner): fires beyond 40 m or out of frustum tick every 3rd frame; DistantBattle smoke sim/sort every 2nd frame.
+* Scope PiP: every 2nd frame on Medium/Low (always on the first ADS frame).
+* FP rigs (FP art lead): only the loadout's primary and secondary load before the menu, the rest in the background. AK decimated 110k → 33k. Arms maps are shared. `MeshoptDecoder` is enabled in `Assets` for meshopt-compressed GLBs.
+
+### Level zoning (for culling)
+`Level.finalize` splits each material batch into zones: one per interior volume (warehouse, office, shed), the
+exterior (`E`), and a global zone for pieces > 30 m. A first attempt with a 24 m grid produced 369 chunks and 1000+ draws.
+Exterior splits cost more draws than they save, so the exterior is one zone.
+
+### Bugs found and fixed this round
+* **Two tiny GLB glasses with `KHR_materials_transmission`** (generator gauge, hanging-lamp glass) made three render
+  every opaque object a second time into a transmission buffer **every frame**, which doubled world-pass draw calls. `Assets.model` now converts
+  transmission to plain alpha glass.
+* Dynamic resolution ran during the 1-fps headless page load, ratcheted down to 85%, and stayed there in QA shots
+  ("chunky" viewmodel). It's off and reset to 100% under `navigator.webdriver` / `__qaFixedDt`.
+* PVS/nav fallbacks log with `console.info` (no warnings). The baked files are shipped, so there are no 404s.
+
+### Results (fresh page, High, warm frame first; calls / tris incl. shadow, AO, viewmodel, post)
+
+| view | round 1 end (`…041`) | round 2 start (`…050`) | **now (`…064`)** |
+|---|---|---|---|
+| courtyard | 343 / 1.01 M | 217 / 0.76 M | **181 / 0.24 M** |
+| sun | 363 / 0.89 M | 441 / 1.37 M | **368 / 0.70 M** |
+| warehouse | 249 / 1.06 M | 247 / 1.01 M | **222 / 0.40 M** |
+| containers | 252 / 0.92 M | 325 / 1.00 M | **244 / 0.37 M** |
+| office | 259 / 0.88 M | 259 / 0.84 M | **213 / 0.38 M** |
+| scope ADS | 356 / 1.37 M | 375 / 1.33 M | **314 / 0.54 M** |
+
+Full-res 960x540 screenshot run (`…066_perf_visual`): courtyard 280 / 0.45 M, sun 230 / 0.35 M, warehouse 214 / 0.42 M,
+containers 216 / 0.45 M, office 211 / 0.37 M, bot close 179 / 0.29 M, bot far 205 / 0.34 M, scope 221 / 0.44 M.
+
+Shadow pass: 35 / ~345k → **~33 / ~100k** (static depth cached; only dynamic casters drawn).
+
+PVS popping check (`perf_pvs_check.json`): 23 positions strafing past the warehouse door, along the office front and
+across the warehouse interior, each rendered with the PVS off and on. Pixel diffs show only HUD/killfeed/viewmodel
+sway; no geometry differs.
+
+CPU (`perf_cpu`, live TDM, 60 Hz step): game.update **2.86 ms/frame**. physics 0.39, viewmodel 0.29, ambience 0.25,
+occlusion 0.19, player 0.14, HUD 0.10 (was 0.37), nav 0.08; bots ≈1.3 ms for 11.
+
+Load (shared llvmpipe runner, fresh page, contended): 18.8–28.6 s to menu (**init done in 9.2 s** in the cleanest
+run: assets 3.9 s, level 4.9 s, ambience 5.3 s, navmesh 5.5 s (baked), shaders 9.2 s).
+
+### Not done this round (and why)
+* **Baked AO / lightmaps / irradiance grid:** this needs a lightmap-UV + raytrace bake pipeline for the procedural
+  level, so it's a project of its own. N8AO already runs half-res on High. The viewmodel light probe now renders only static
+  level geometry (layer 4), one cube face every 2nd frame (~35 calls / 100k tris on those frames). It's the obvious
+  consumer of a baked irradiance grid later.
+* **Separate tight dynamic cascade:** with the static map cached and blitted, dynamic casters cost ~33 calls /
+  100k tris. A second cascade would add a second shadow sampler to every lit material variant for little gain.
+* **GPU occlusion queries:** the PVS plus the bot ray-occlusion covers the static map. Queries add a frame of latency
+  (popping) for small extra gains.
