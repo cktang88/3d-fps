@@ -1341,7 +1341,10 @@ export class ViewModel {
         // Perf: PiP resolution per quality (Low 256 / Med 384 / High 512 / Ultra 768); skipped on QA sim-only frames.
         const res = [256, 384, 512, 768][g.settings.quality] ?? 512;
         if (this.scopeRT.width !== res) this.scopeRT.setSize(res, res);
-        if (!window.__qaSkipRender) {
+        // Perf: on Medium and Low the PiP refreshes every 2nd frame (the lens image is small and mostly static while aiming).
+        this._scopeTick = (this._scopeTick || 0) + 1;
+        if (!window.__qaSkipRender && ((g.settings.quality ?? 2) >= 2 || (this._scopeTick & 1) === 0 || !this._scopeFresh)) {
+          this._scopeFresh = true;
           const prevTarget = r2.getRenderTarget();
           // Reuse this frame's shadow maps (the main pass already updated them).
           const sa = r2.shadowMap.autoUpdate;
