@@ -61,7 +61,7 @@ export class Assets {
       const t = await this.tex.loadAsync(BASE + path);
       if (srgb) t.colorSpace = THREE.SRGBColorSpace;
       if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      t.anisotropy = Math.min(8, this.maxAniso);
+      t.anisotropy = Math.min(16, this.maxAniso);
       this.textures[path] = t;
       return t;
     } catch (e) {

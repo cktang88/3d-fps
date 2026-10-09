@@ -99,7 +99,7 @@ function unifyNoiseTex(size = 512, seed = 7) {
   const t = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter;
-  t.generateMipmaps = true; t.anisotropy = 4;
+  t.generateMipmaps = true; t.anisotropy = 16;
   t.needsUpdate = true;
   return t;
 }
@@ -321,7 +321,7 @@ export class Materials {
     // Goes through the unify pass (alphaOK) so decals get the same grade, grime, wetness and puddles as the
     // surfaces they sit on.
     const da = alpha.DecalAtlas;
-    for (const t of [da.map, da.normalMap, da.roughnessMap]) { if (t) { t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.anisotropy = 8; } }
+    for (const t of [da.map, da.normalMap, da.roughnessMap]) { if (t) { t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.anisotropy = 16; } }
     this.mats.decals = new THREE.MeshStandardMaterial({
       map: da.map, normalMap: da.normalMap, roughnessMap: da.roughnessMap, roughness: 1, metalness: 0,
       transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,

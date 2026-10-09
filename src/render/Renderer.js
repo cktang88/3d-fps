@@ -11,6 +11,31 @@ import { N8AOPostPass } from 'n8ao';
  * ---------------------------------------------------------------------------------------------- */
 
 /** Final colour grade (the "glue"): split toning, lift/gamma/gain, filmic contrast, saturation. Runs after tonemapping. */
+/** Contrast-adaptive sharpening (after AMD FidelityFX CAS). Restores the crispness lost to SMAA, TAA-free
+ * upscaling (dynamic resolution / render scale) and half-res effects, without ringing on hard edges. */
+class SharpenEffect extends Effect {
+  constructor(amount = 0.5) {
+    super('SharpenEffect', /* glsl */`
+      uniform float sharpness;
+      void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
+        vec3 b = texture2D(inputBuffer, uv + vec2(0.0, -texelSize.y)).rgb;
+        vec3 d = texture2D(inputBuffer, uv + vec2(-texelSize.x, 0.0)).rgb;
+        vec3 e = inputColor.rgb;
+        vec3 f = texture2D(inputBuffer, uv + vec2(texelSize.x, 0.0)).rgb;
+        vec3 h = texture2D(inputBuffer, uv + vec2(0.0, texelSize.y)).rgb;
+        vec3 mn = min(e, min(min(b, d), min(f, h)));
+        vec3 mx = max(e, max(max(b, d), max(f, h)));
+        vec3 amp = sqrt(clamp(min(mn, 2.0 - mx) / max(mx, 1e-4), 0.0, 1.0));
+        vec3 w = -amp / mix(8.0, 5.0, sharpness);
+        vec3 c = (e + (b + d + f + h) * w) / (1.0 + 4.0 * w);
+        outputColor = vec4(clamp(c, 0.0, 1.0), inputColor.a);
+      }`, {
+      attributes: EffectAttribute.CONVOLUTION,
+      uniforms: new Map([['sharpness', new THREE.Uniform(amount)]]),
+    });
+  }
+}
+
 class GradeEffect extends Effect {
   constructor() {
     super('GradeEffect', /* glsl */`
@@ -189,10 +214,12 @@ export class Renderer {
     this.chroma = new ChromaticAberrationEffect({ offset: new THREE.Vector2(0, 0), radialModulation: true, modulationOffset: 0.45 });
     this.vignette = new VignetteEffect({ offset: 0.38, darkness: 0.32 });
     this.noise = new NoiseEffect({ blendFunction: BlendFunction.OVERLAY, premultiply: false });
-    this.noise.blendMode.opacity.value = 0.035;
+    this.noise.blendMode.opacity.value = 0.02;
     this.gradePass = new EffectPass(this.camera, this.toneMap, this.grade, this.vignette, this.chroma, this.noise);
     this.smaa = new SMAAEffect({ preset: SMAAPreset.HIGH });
     this.aaPass = new EffectPass(this.camera, this.smaa);
+    this.sharpen = new SharpenEffect(0.55);
+    this.sharpenPass = new EffectPass(this.camera, this.sharpen);
 
     // HDR effects that read scene depth (god rays, sun-glare occlusion) must run BEFORE the viewmodel pass,
     // which clears depth — otherwise the sun "shines through" walls and ceilings.
@@ -200,6 +227,7 @@ export class Renderer {
     this.composer.addPass(this.viewPass);
     this.composer.addPass(this.gradePass);
     this.composer.addPass(this.aaPass);
+    this.composer.addPass(this.sharpenPass);
 
     this.damagePulse = 0;
     this.ads = 0;
@@ -237,7 +265,8 @@ export class Renderer {
     const s = this.settings;
     const q = s.quality; // 0 low, 1 medium, 2 high, 3 ultra
     const on = (k) => s[k] !== false;
-    this.basePixelRatio = Math.min(devicePixelRatio, [0.75, 1, 1.25, 2][q]) * s.renderScale;
+    this.basePixelRatio = Math.min(devicePixelRatio, [0.75, 1, 1.5, 2][q]) * s.renderScale;
+    this.sharpenPass.enabled = s.sharpen !== false;
     this.dynScale ??= 1;
     if (s.dynamicRes === false) this.dynScale = 1;
     this.renderer.setPixelRatio(this.basePixelRatio * this.dynScale);
@@ -249,7 +278,7 @@ export class Renderer {
     this.godRays.samples = q >= 2 ? 48 : 32;
     this.lensOn = on('fxLens');
     this.caOn = on('fxCA');
-    this.noise.blendMode.opacity.value = on('fxGrain') ? 0.035 : 0;
+    this.noise.blendMode.opacity.value = on('fxGrain') ? 0.02 : 0;
     this.renderer.shadowMap.enabled = true;
     // Perf: sun shadow-map size per quality (Low 1024 / Medium 2048 / High+ 4096), applied live.
     const shadowSize = [1024, 2048, 4096, 4096][q];
@@ -346,6 +375,7 @@ export class Renderer {
     if (sc !== this.dynScale) {
       this.dynScale = sc;
       this.renderer.setPixelRatio(this.basePixelRatio * sc);
+      this.sharpen.uniforms.get('sharpness').value = Math.min(1, 0.55 + (1 - sc) * 0.9); // sharper when upscaling
       this.resize();
     }
   }

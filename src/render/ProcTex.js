@@ -33,7 +33,7 @@ function makeNoise(seed = 1) {
 const tex = (c, srgb = true) => {
   const t = new THREE.CanvasTexture(c);
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
+  t.anisotropy = 16;
   t.needsUpdate = true;
   return t;
 };

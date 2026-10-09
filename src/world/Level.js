@@ -530,7 +530,7 @@ export class Level {
           mat.transparent = false; mat.opacity = 1; mat.depthWrite = true;
           mat.userData.noUnify = true;
         }
-        if (mat.map) mat.map.anisotropy = 8;
+        if (mat.map) mat.map.anisotropy = 16;
         void name;
         parts.push({ geo, mat });
       });
@@ -1695,7 +1695,7 @@ export class Level {
     const scatterCol = info.sunHorizon.clone().sub(info.horizon).multiplyScalar(0.32);
     scatterCol.r = Math.max(scatterCol.r, 0.25); scatterCol.g = Math.max(scatterCol.g, 0.14); scatterCol.b = Math.max(scatterCol.b, 0.05);
     installAtmosphere({ sunDir: info.dir, sunColor: scatterCol, heightFalloff: 0.06, heightShare: 0.7, scatter: 1.0, indoor: INDOOR_VOLUMES() });
-    scene.fog = new THREE.FogExp2(fogCol, 0.0042);
+    scene.fog = new THREE.FogExp2(fogCol, 0.0031);
     g.renderer.setSun?.(info.dir, new THREE.Color(1.0, 0.7, 0.42));
     // Fake volumetric shafts through the warehouse's south windows + the main door, with dust motes.
     this.shaftOpenings.push({ center: V(-9, 2.4, -27), w: 5.6, h: 4.6, normal: V(0, 0, 1), length: 14 });
