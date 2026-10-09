@@ -84,11 +84,13 @@ export class Pvs {
 
   /**
    * Coarse: could anything at world point p be visible from the camera's cell? (any visible level chunk in the
-   * same 24 m chunk cell). Used by ambience to throttle hidden emitters. Always true when the PVS is off.
+   * same zone: interior volume or exterior quadrant). Used by ambience to throttle hidden emitters. Always true when the PVS is off.
    */
   visiblePoint(p) {
     if (!this.enabled || this._row < 0) return true;
-    const key = `${Math.floor((p.x + 60) / 24)},${Math.floor((p.z + 60) / 24)}`;
+    const vols = this.game.level.indoorVolumes || [];
+    const vi = vols.findIndex((v) => v.containsPoint(p));
+    const key = vi >= 0 ? 'I' + vi : `Q${p.x < 0 ? 0 : 1}${p.z < 0 ? 0 : 1}`;
     const list = this._byKey.get(key);
     if (!list) return true;
     for (const i of list) if (this.visibleTarget(i)) return true;

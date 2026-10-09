@@ -1560,13 +1560,20 @@ export class Level {
           for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
           if (g.index === null) g.setIndex([...Array(g.attributes.position.count).keys()]);
         }
-        // Perf (docs/PERF.md): split each material batch into spatial chunks (24 m grid; pieces > 30 m go to a
-        // global chunk) so frustum + PVS culling (render/Pvs.js) can drop them. Names stay 'lvl_<mat>@<chunk>'.
+        // Perf (docs/PERF.md): split each material batch into zones so frustum + PVS culling (render/Pvs.js)
+        // can drop them: each interior volume (warehouse, office, shed) is its own zone, the exterior is split
+        // into 60 m quadrants, pieces > 30 m go to a global zone. Names stay 'lvl_<mat>@<zone>'.
         const chunks = new Map();
         const bb = new THREE.Box3(), c = new THREE.Vector3(), sz = new THREE.Vector3();
+        const vols = INDOOR_VOLUMES();
         for (const g of list) {
           g.computeBoundingBox(); bb.copy(g.boundingBox); bb.getCenter(c); bb.getSize(sz);
-          const key = Math.max(sz.x, sz.z) > 30 ? 'G' : `${Math.floor((c.x + 60) / 24)},${Math.floor((c.z + 60) / 24)}`;
+          let key;
+          if (Math.max(sz.x, sz.z) > 30) key = 'G';
+          else {
+            const vi = vols.findIndex((v) => v.containsPoint(c));
+            key = vi >= 0 ? 'I' + vi : `Q${c.x < 0 ? 0 : 1}${c.z < 0 ? 0 : 1}`;
+          }
           (chunks.get(key) || chunks.set(key, []).get(key)).push(g);
         }
         for (const [key, part] of chunks) {

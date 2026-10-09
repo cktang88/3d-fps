@@ -34,7 +34,7 @@
     for (const [k, p] of Object.entries(f.passes)) passes[k] = `${p.calls} calls / ${Math.round(p.tris / 1000)}k tris (x${p.n})`;
     out.views[v.name] = {
       total: `${f.total.calls} calls / ${Math.round(f.total.tris / 1000)}k tris`, calls: f.total.calls, tris: f.total.tris,
-      botsHidden: g.botOcclusion?.hiddenCount, fov: +g.renderer.camera.fov.toFixed(2), botsLow: g.bots.filter((b) => b.model?._geoLod?.low).length, shadow: `${f.shadow.calls} calls / ${Math.round(f.shadow.tris / 1000)}k tris (x${f.shadow.n})`, passes, cpuMs: f.cpuMs, wallMs: Math.round(performance.now() - t0),
+      botsHidden: g.botOcclusion?.hiddenCount, pvsHidden: g.pvs?.enabled ? `${g.pvs.stats.hiddenChunks}c/${g.pvs.stats.hiddenProps}p` : 'off', fov: +g.renderer.camera.fov.toFixed(2), botsLow: g.bots.filter((b) => b.model?._geoLod?.low).length, shadow: `${f.shadow.calls} calls / ${Math.round(f.shadow.tris / 1000)}k tris (x${f.shadow.n})`, passes, cpuMs: f.cpuMs, wallMs: Math.round(performance.now() - t0),
     };
     window.__perfLegacy = false;
     if (v.scar) Q.down('Mouse2', false);
@@ -45,5 +45,6 @@
   out.bodyRoots = (() => { const s = []; g.renderer.scene.traverseVisible((o) => { if (o.isSkinnedMesh && o.name === 'Object_101') { let r = o; while (r.parent && r.parent !== g.renderer.scene) r = r.parent; s.push(g.bots.some((b) => b.model?.root === r) ? 'bot' : g.bots.some((b) => b.spareModel?.root === r) ? 'spare' : (r.name || r.type)); } }); return s; })();
   out.top = P.top(25);
   out.load = P.loadTimeline();
+  out.lod = window.__lod?.lodStats; out.nav = { baked: !!g.nav?.baked, ms: g.nav?.buildTime }; out.pvs = { enabled: !!g.pvs?.enabled, ...(g.pvs?.stats || {}) }; out.shadowBakes = g.shadowCache?.bakes;
   return out;
 })()

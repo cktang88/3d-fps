@@ -1,22 +1,108 @@
 {
  "tag": "w_spray",
- "setupFiles": ["tools/qa/suites/lib.js", "tools/qa/suites/w_spray.lib.js"],
+ "setupFiles": [
+  "tools/qa/suites/lib.js",
+  "tools/qa/suites/w_spray.lib.js"
+ ],
  "match": "tdm",
  "lofi": true,
  "w": 1280,
  "h": 800,
  "timeoutS": 1500,
  "views": [
-  { "name": "spray_data", "shot": false, "frames": 1, "eval": "window.__sr = window.__qa.sprayAll()", "read": "window.__sr" },
-  { "name": "sheet_10m", "frames": 1, "eval": "window.__qa.spraySheet(10)" },
-  { "name": "sheet_25m", "frames": 1, "eval": "window.__qa.spraySheet(25)" },
-  { "name": "sheet_50m", "frames": 1, "eval": "window.__qa.spraySheet(50)" },
-  { "name": "wall_m4_auto_nocomp_10m", "frames": 2, "eval": "window.__w = window.__qa.sprayWall('m4','auto',10,0)", "read": "window.__w" },
-  { "name": "wall_m4_auto_comp_10m", "frames": 2, "eval": "window.__w = window.__qa.sprayWall('m4','autoC',10,1)", "read": "window.__w" },
-  { "name": "wall_m4_burst3_25m", "frames": 2, "eval": "window.__w = window.__qa.sprayWall('m4','burst3C',25,3)", "read": "window.__w" },
-  { "name": "wall_ak_auto_comp_10m", "frames": 2, "eval": "window.__w = window.__qa.sprayWall('ak','autoC',10,4)", "read": "window.__w" },
-  { "name": "wall_mp5_auto_comp_10m", "frames": 2, "eval": "window.__w = window.__qa.sprayWall('mp5','autoC',10,5)", "read": "window.__w" },
-  { "name": "sanity_match", "shot": false, "frames": 1, "eval": "window.__qa.cleanup(); window.__qa.loadout('m4'); window.__ms = window.__qa.matchSim(45)", "read": "(() => { const m = window.__ms; return { kills: m.kills, nanAt: m.nanAt, stuck: m.stuckBots, aliveBots: m.aliveBots, bots: m.bots.map((b) => b.k + '/' + b.d) }; })()" },
-  { "name": "sanity_fire_ads", "frames": 6, "eval": "window.__qa.god(); window.__qa.lookAtBot(12); window.__game.input.down.add('Mouse2'); window.__game.input.down.add('Mouse0'); window.__game.input.pressed.add('Mouse0')", "read": "({ ammo: window.__game.currentWeapon.ammo, nan: window.__qa.nanScan() })", "release": ["Mouse0", "Mouse2"] }
+  {
+   "name": "spray_data",
+   "shot": false,
+   "frames": 1,
+   "eval": "window.__srP = window.__qa.sprayAll()",
+   "read": "window.__srP"
+  },
+  {
+   "name": "sheet_10m",
+   "frames": 1,
+   "eval": "window.__qa.spraySheet(10)"
+  },
+  {
+   "name": "sheet_25m",
+   "frames": 1,
+   "eval": "window.__qa.spraySheet(25)"
+  },
+  {
+   "name": "sheet_50m",
+   "frames": 1,
+   "eval": "window.__qa.spraySheet(50)"
+  },
+  {
+   "name": "wall_m4_auto_nocomp_10m_data",
+   "shot": false,
+   "frames": 1,
+   "eval": "window.__wP = window.__qa.sprayWall('m4','auto',10,0)",
+   "read": "window.__wP"
+  },
+  {
+   "name": "wall_m4_auto_nocomp_10m",
+   "frames": 3
+  },
+  {
+   "name": "wall_m4_auto_comp_10m_data",
+   "shot": false,
+   "frames": 1,
+   "eval": "window.__wP = window.__qa.sprayWall('m4','autoC',10,1)",
+   "read": "window.__wP"
+  },
+  {
+   "name": "wall_m4_auto_comp_10m",
+   "frames": 3
+  },
+  {
+   "name": "wall_m4_burst3_25m_data",
+   "shot": false,
+   "frames": 1,
+   "eval": "window.__wP = window.__qa.sprayWall('m4','burst3C',25,3)",
+   "read": "window.__wP"
+  },
+  {
+   "name": "wall_m4_burst3_25m",
+   "frames": 3
+  },
+  {
+   "name": "wall_ak_auto_comp_10m_data",
+   "shot": false,
+   "frames": 1,
+   "eval": "window.__wP = window.__qa.sprayWall('ak','autoC',10,4)",
+   "read": "window.__wP"
+  },
+  {
+   "name": "wall_ak_auto_comp_10m",
+   "frames": 3
+  },
+  {
+   "name": "wall_mp5_auto_comp_10m_data",
+   "shot": false,
+   "frames": 1,
+   "eval": "window.__wP = window.__qa.sprayWall('mp5','autoC',10,5)",
+   "read": "window.__wP"
+  },
+  {
+   "name": "wall_mp5_auto_comp_10m",
+   "frames": 3
+  },
+  {
+   "name": "sanity_match",
+   "shot": false,
+   "frames": 1,
+   "eval": "window.__qa.cleanup(); window.__msP = window.__qa.sprayLoad('m4').then(() => window.__qa.matchSim(45))",
+   "read": "window.__msP.then((m) => ({ kills: m.kills, nanAt: m.nanAt, stuck: m.stuckBots, aliveBots: m.aliveBots, bots: m.bots.map((b) => b.k + '/' + b.d) }))"
+  },
+  {
+   "name": "sanity_fire_ads",
+   "frames": 6,
+   "eval": "window.__qa.god(); window.__qa.lookAtBot(12); window.__game.input.down.add('Mouse2'); window.__game.input.down.add('Mouse0'); window.__game.input.pressed.add('Mouse0')",
+   "read": "({ weapon: window.__game.currentWeapon.id, ammo: window.__game.currentWeapon.ammo, nan: window.__qa.nanScan() })",
+   "release": [
+    "Mouse0",
+    "Mouse2"
+   ]
+  }
  ]
 }

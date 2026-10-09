@@ -12,6 +12,7 @@ export const lodReady = MeshoptSimplifier.ready.then(() => { _ready = true; });
 let _ready = false;
 const _cache = new WeakMap();
 export const lodErrors = [];
+export const lodStats = { ms: 0, n: 0 }; // runtime simplification cost (load-time budget, docs/PERF.md)
 
 /**
  * @param {THREE.BufferGeometry} geo
@@ -26,6 +27,7 @@ export function simplifiedGeometry(geo, maxTris, error = 0.01) {
   if (!per) _cache.set(geo, (per = new Map()));
   const key = maxTris + '|' + error;
   if (per.has(key)) return per.get(key);
+  const _t0 = performance.now();
   const src = geo.index ? geo : mergeVertices(geo);
   const p = src.attributes.position;
   const pos = new Float32Array(p.count * 3);
@@ -61,6 +63,7 @@ export function simplifiedGeometry(geo, maxTris, error = 0.01) {
   out.name = (geo.name || '') + '_lod' + maxTris;
   out.userData.lodOf = geo;
   per.set(key, out);
+  lodStats.ms += performance.now() - _t0; lodStats.n++;
   return out;
 }
 
@@ -332,7 +335,7 @@ export class DistanceLod {
 }
 
 // Debug handle for QA scripts (docs/PERF.md).
-if (typeof window !== 'undefined') window.__lod = { simplifiedGeometry, triCount, lodErrors, get ready() { return _ready; } };
+if (typeof window !== 'undefined') window.__lod = { simplifiedGeometry, triCount, lodErrors, lodStats, get ready() { return _ready; } };
 
 const _shadowMats = new Map();
 function shadowOnlyMaterial(side, shadowSide) {

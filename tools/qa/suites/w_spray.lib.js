@@ -18,7 +18,7 @@
   Q.sprayCase = (id, kase, opts = {}) => {
     const g = G(), p = g.player;
     Q.releaseAll();
-    if (g.currentWeapon.id !== id) { Q.loadout(id); }
+    if (g.currentWeapon.id !== id) throw new Error('weapon ' + id + ' not loaded (call await __qa.sprayLoad first)');
     p.spawnProtect = 0;
     const w = g.currentWeapon, s = w.stats;
     w.refill(); w.state = 'idle'; w.burstLeft = 0;
@@ -99,14 +99,29 @@
     return { torsoPct: Math.round(torso * 100), medCm: Math.round(r[r.length >> 1] * 100), esCm: Math.round(es * 100), mpiCm: [Math.round(mx * 100), Math.round(my * 100)] };
   };
 
-  Q.sprayAll = (ids = IDS, pos = null) => {
+  // startMatch() and loadout swaps wait for gun models to stream in: always await these before simulating.
+  Q.waitFor = (fn, ms = 120000) => new Promise((res, rej) => {
+    const t0 = performance.now();
+    const tick = () => { let ok = false; try { ok = fn(); } catch (e) { /* not ready */ } if (ok) res(true); else if (performance.now() - t0 > ms) rej(new Error('waitFor timeout: ' + fn)); else setTimeout(tick, 50); };
+    tick();
+  });
+  Q.sprayReady = () => Q.waitFor(() => G().started && G().player && G().currentWeapon);
+  Q.sprayLoad = async (id) => {
+    const g = G(); await Q.sprayReady();
+    if (!g.player.alive) g.spawnPlayer();
+    if (g.currentWeapon.id !== id) { Q.loadout(id); await Q.waitFor(() => g.currentWeapon.id === id, 60000); }
+  };
+
+  Q.sprayAll = async (ids = IDS, pos = null) => {
     const g = G();
+    await Q.sprayReady();
     Q.god(); Q.freezeBots(true);
     const spot = pos || Q.sprayFindWall(10)?.pos || [0, 0.1, 0];
     const out = {}; Q.sprayData = {};
     for (const id of ids) {
       out[id] = {}; Q.sprayData[id] = {};
       const bolt = ['bolt', 'pump'].includes((window.__WEAPONS?.[id] || {}).modes?.[0]) || ['m870', 'm24', 'awm'].includes(id);
+      try { await Q.sprayLoad(id); } catch (e) { out[id] = { error: String(e) }; continue; }
       for (const k of CASES) {
         if (bolt && k !== 'tapC') continue;
         Q.place(spot.pos || spot, spot.yaw ?? 0, 0);
@@ -150,8 +165,9 @@
   };
 
   // Spray a real wall, then frame the impact area for a screenshot.
-  Q.sprayWall = (id, kase, D = 10, slot = 0) => {
+  Q.sprayWall = async (id, kase, D = 10, slot = 0) => {
     const g = G(), p = g.player;
+    await Q.sprayLoad(id);
     Q.god(); Q.freezeBots(true);
     const spot = Q.sprayFindWall(D, (slot - 2) * 3.2);
     if (!spot) return { error: 'no wall found at ' + D + ' m' };
