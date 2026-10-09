@@ -114,9 +114,8 @@ Code is original except where noted. Third-party assets:
 - **Level textures added**: ambientCG Ground110, Fence006 (chain-link), MetalWalkway013 (grating), Leaking003 (wall
   streaks) — CC0.
 - **Level art pass 2 (textures & decals)** — all CC0, resized/re-encoded to webp (AO baked into colour where present):
-  - Poly Haven (https://polyhaven.com, CC0): `weathered_planks` (tower deck), `rusty_corrugated_iron` (tower sheets/roof),
-    `worn_plaster_wall` (office partitions).
-  - ambientCG (https://ambientcg.com, CC0): `OfficeCeiling006` (office ceilings), `Facade018A`, `Facade020A` (skyline
+  - Poly Haven (https://polyhaven.com, CC0): `weathered_planks` (tower deck), `rusty_corrugated_iron` (tower sheets/roof).
+  - ambientCG (https://ambientcg.com, CC0): `OfficeCeiling006` (office ceilings), `PaintedPlaster015` (office partitions), `Facade018A`, `Facade020A` (skyline
     buildings).
   - Decal atlas `textures/DecalAtlas` composed from ambientCG `GraffitiSet001`, `Leaking012A`, `Leaking014A`,
     `Leaking016A`, `Leaking019B`, `Sign004`, `Sign009`, `Sign021`, `Tape001`, `TireTracks001`, `AsphaltDamage001`

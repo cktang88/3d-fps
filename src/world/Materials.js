@@ -45,7 +45,7 @@ const DEFS = {
   planks: { set: 'WeatheredPlanks', tint: 0xb3a998, normal: 1.3, surface: 'wood', grime: 0.4, wet: 0.9, rmin: 0.5 },
   rustSheet: { set: 'RustyCorrugated', tint: 0xb9aa9c, sat: 0.62, normal: 1.6, metal: 0.55, surface: 'metal', grime: 0.35, wet: 0.75, rmin: 0.32 },
   ceilingTile: { set: 'OfficeCeiling006', tint: 0xcfc8bb, normal: 1, surface: 'concrete', grime: 0.3, wet: 0, rmin: 0.6 },
-  wornPlaster: { set: 'WornPlaster', tint: 0xcfc6b4, normal: 1.2, surface: 'concrete', grime: 0.35, wet: 0.5, rmin: 0.5 },
+  wornPlaster: { set: 'PaintedPlaster015', tint: 0xc4bcae, normal: 1.2, surface: 'concrete', grime: 0.35, wet: 0.5, rmin: 0.5 },
   facadeA: { set: 'Facade018A', tint: 0xa89d92, sat: 0.8, normal: 1, surface: 'concrete', grime: 0.5, wet: 0.6, rmin: 0.2 },
   facadeB: { set: 'Facade020A', tint: 0xa89d92, sat: 0.8, normal: 1, surface: 'concrete', grime: 0.5, wet: 0.6, rmin: 0.2 },
 };

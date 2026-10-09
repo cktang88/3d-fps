@@ -304,6 +304,7 @@ export class Bot {
 
   // ---------------- Update ----------------
   update(dt) {
+    dt = dt > 0 ? Math.min(dt, 0.1) : 0;
     this.time += dt;
     if (this.corpse) { this.corpse.update(dt, CORPSE); if (!this.corpse.root.visible) this.corpse = null; }
     if (!this.spareModel && this.model) {

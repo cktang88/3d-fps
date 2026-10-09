@@ -13,6 +13,9 @@
     if (Object.prototype.hasOwnProperty.call(g, 'onActorKilled')) delete g.onActorKilled;
     if (g.player?.events?._qaOrigMantle) { g.player.events.onMantle = g.player.events._qaOrigMantle; delete g.player.events._qaOrigMantle; }
     g.settings.godMode = false;
+    // Warm pages: never inherit a corrupted camera FOV from an earlier job.
+    if (g.fpcam && !(g.fpcam.fovCurrent > 20 && g.fpcam.fovCurrent < 130)) { g.fpcam.fovCurrent = g.settings.fov; g.renderer.camera.fov = g.settings.fov; g.renderer.camera.updateProjectionMatrix(); }
+    if (g.time < 0 || !Number.isFinite(g.time)) g.time = 0;
   };
   // Simulate N seconds without rendering (fast on SwiftShader). cb(t) runs before each step.
   Q.sim = (seconds, dt = 1 / 30, cb) => {
@@ -146,3 +149,5 @@
   // Pick the alive bot best matching a predicate (closest to origin as tie-break).
   Q.pickBot = (pred) => { const g = G(); let best = -1, bd = 1e9; g.bots.forEach((b, i) => { if (b.alive && pred(b)) { const d = b.position.length(); if (d < bd) { bd = d; best = i; } } }); return best; };
 })();
+
+;(() => { try { window.__qa.cleanup(); } catch (e) { console.warn('qa sanitize', e); } })();

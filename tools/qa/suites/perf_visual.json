@@ -1,0 +1,11 @@
+{"tag":"perf_visual","setupFiles":["tools/qa/suites/lib.js"],"match":"tdm","w":960,"h":540,"fresh":true,
+ "views":[
+  {"name":"p1_courtyard","frames":2,"eval":"__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([0,0,20],0.3,0.02);__qa.sim(0.3);__game.player.yaw=0.3;__game.player.pitch=0.02;","read":"__qa.perf()"},
+  {"name":"p2_sun","frames":2,"eval":"__qa.place([2,0,-8],2.68,0.06);__qa.sim(0.3);__game.player.yaw=2.68;__game.player.pitch=0.06;","read":"__qa.perf()"},
+  {"name":"p3_warehouse","frames":2,"eval":"__qa.place([13,0,-35],1.57,0.12);__qa.sim(0.3);__game.player.yaw=1.57;__game.player.pitch=0.12;","read":"__qa.perf()"},
+  {"name":"p4_containers","frames":2,"eval":"__qa.place([37,0,4],0.1,0.03);__qa.sim(0.3);__game.player.yaw=0.1;__game.player.pitch=0.03;","read":"__qa.perf()"},
+  {"name":"p5_office","frames":2,"eval":"__qa.place([-12.5,0,40.5],-1.9,0);__qa.sim(0.3);__game.player.yaw=-1.9;__game.player.pitch=0;","read":"__qa.perf()"},
+  {"name":"p6_bot_close","frames":3,"eval":"window.__bi=__qa.lookAtBot(4);","read":"({bot:window.__bi,perf:__qa.perf()})"},
+  {"name":"p7_bot_far","frames":3,"eval":"window.__bi=__qa.lookAtBot(30);","read":"({bot:window.__bi,perf:__qa.perf()})"},
+  {"name":"p8_scope","frames":3,"eval":"__qa.place([0,0.1,10],0.15,0.02);__qa.loadout('scar');__qa.sim(1.2);__qa.down('Mouse2');__qa.sim(0.8);__game.player.yaw=0.15;__game.player.pitch=0.02;","read":"__qa.perf()"}
+ ]}

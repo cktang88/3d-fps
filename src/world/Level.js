@@ -480,12 +480,12 @@ export class Level {
     for (let k = 0; k < n; k++) {
       const y = k * 0.145 + (opt.y ?? 0);
       const r2 = rot + (rnd() - 0.5) * 0.06;
-      for (const lz of [-0.35, 0, 0.35]) { const [px, pz] = L(0, lz); this.box('wood', px, y + 0.01, pz, 1.2, 0.022, 0.1, { ...o, rot: r2 }); }
+      for (const lz of [-0.35, 0, 0.35]) { const [px, pz] = L(0, lz); this.box('planks', px, y + 0.01, pz, 1.2, 0.022, 0.1, { ...o, rot: r2 }); }
       for (const lz of [-0.35, 0, 0.35]) for (const lx of [-0.55, 0, 0.55]) { const [px, pz] = L(lx, lz); this.box('woodDark', px, y + 0.06, pz, 0.1, 0.078, 0.1, o); }
       for (let i = 0; i < 7; i++) {
         const lx = -0.55 + i * (1.1 / 6);
         const [px, pz] = L(lx, 0);
-        this.box('wood', px, y + 0.122, pz, 0.1, 0.022, 0.8, { ...o, rot: r2 });
+        this.box('planks', px, y + 0.122, pz, 0.1, 0.022, 0.8, { ...o, rot: r2, uv: 1.1 });
       }
     }
     const h = n * 0.145;
@@ -893,7 +893,7 @@ export class Level {
     for (const dx of [-L / 2, 0, L / 2]) for (const y of [0.6, 1.9]) this.beam('metalPainted', V(x + dx, y - 0.5, z - D / 2), V(x + dx, y + 0.5, z + D / 2), 0.03, 0.03);
     for (const y of [0.15, 1.3, 2.5]) {
       for (const dz of [-D / 2, D / 2]) this.box('rackBeam', x, y, z + dz, L + 0.1, 0.1, 0.05, { map: false, uv: 1, collide: false, nav: false });
-      this.box('metalDark', x, y + 0.03, z, L, 0.03, D - 0.06, { map: y < 1, uv: 1 });
+      this.box('planks', x, y + 0.03, z, L, 0.03, D - 0.06, { map: y < 1, uv: 1.6 });
     }
     for (let i = 0; i < 4; i++) {
       const bx = x - L / 2 + 0.8 + i * 1.5;
@@ -901,7 +901,13 @@ export class Level {
         if (rnd() > p) continue;
         this.pallets(bx, z, Math.PI / 2 + rand(-0.04, 0.04), 1, { y: shelfY, collide: false });
         const r = rnd();
-        if (r < 0.55) this.box('wood', bx, shelfY + 0.145 + 0.38, z, 1.1, 0.76, 0.9, { uv: 1.2, map: false });
+        if (r < 0.55) {
+          // Load of scanned timber crates (instanced) instead of a flat box; one clean collider for the load.
+          const y0 = shelfY + 0.145;
+          for (const dz of [-0.31, 0.31]) this.prop('woodCrate', bx + rand(-0.04, 0.04), z + dz, Math.PI / 2 + rand(-0.08, 0.08), { y: y0, mount: true });
+          if (rnd() < 0.7) this.prop('woodCrate', bx, z + rand(-0.15, 0.15), Math.PI / 2 + rand(-0.2, 0.2), { y: y0 + 0.46, mount: true });
+          this.game.physics.addStaticBox(V(bx, y0 + 0.46, z), V(0.4, 0.46, 0.62), null, { surface: 'wood' });
+        }
         else if (r < 0.85) {
           // Stack of cardboard boxes (instanced).
           for (let k = 0; k < 4; k++) this.prop('cardboard', bx + (k % 2 - 0.5) * 0.44, z + rand(-0.15, 0.15), rand(-0.1, 0.1), { y: shelfY + 0.145 + Math.floor(k / 2) * 0.34, mount: true });

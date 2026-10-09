@@ -757,6 +757,7 @@ export class Character {
 
   // ---------------- per frame ----------------
   update(dt, bot) {
+    dt = dt > 0 ? Math.min(dt, 0.1) : 0; // never step backwards (first-frame dt can be negative)
     const root = this.root;
     this._frame++;
     root.position.copy(bot.position);
