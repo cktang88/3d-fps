@@ -133,7 +133,14 @@
     let b = idx != null ? g.bots[idx] : null;
     if (!b) { let best = 1e9; for (const x of g.bots) if (x.alive) { const d = x.position.distanceTo(p.position); if (d < best) { best = d; b = x; } } }
     if (!b) return null;
-    const a = b.yaw, fx = -Math.sin(a), fz = -Math.cos(a);
+    // Try the bot's front first, then every 30° around it, until the camera has a clear line of sight to the bot.
+    const V = p.position.constructor; let a = b.yaw;
+    for (let k = 0; k < 12; k++) {
+      const ak = b.yaw + k * Math.PI / 6, ex = b.position.x - Math.sin(ak) * dist, ez = b.position.z - Math.cos(ak) * dist;
+      const eye = new V(ex, b.position.y + 1.6, ez), c = new V(b.position.x, b.position.y + 1.1, b.position.z);
+      if (!g.physics.lineOfSight || g.physics.lineOfSight(eye, c)) { a = ak; break; }
+    }
+    const fx = -Math.sin(a), fz = -Math.cos(a);
     p.position.set(b.position.x + fx * dist, b.position.y + 0.05, b.position.z + fz * dist); p.velocity.set(0, 0, 0); p._syncBody();
     const dx = b.position.x - p.position.x, dz = b.position.z - p.position.z;
     p.yaw = Math.atan2(-dx, -dz); p.pitch = -0.08;
