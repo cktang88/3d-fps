@@ -2,7 +2,7 @@
 
 Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Results: `tools/qa/results/<id>/`.
 
-**Last run:** 2026-10-09 07:58 UTC: `core` 1791531597800 (snapshot ~07:47). Weapons, movement, HUD, spawns and FFA all PASS; bots 10/11 OK. Perf budget: MET (05:19).
+**Last run:** 2026-10-09 08:41 UTC: `h_jank` 1791534734653 (snapshot 08:32), `core` 1791531597800 (07:47). Perf budget: MET (05:19).
 
 ## Pass / fail by area
 
@@ -17,7 +17,7 @@ Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Resu
 | Recoil / spray (tuned feature) | `w_spray.json` | BASELINE 04:10 | 25 m: tapC 100% torso on every rifle (median 2–4 cm); autoC torso 37–65%; burst3C 53–100%. Pistols tapC land 10–16 cm low at 25 m (p226 MPI −10 cm, m1911 −16 cm), possible sight zeroing |
 | FFA | `f_ffa.json` | PASS | 06:48: spawn, 120 s sim, scoreboard, bot close-up; no NaN, no console messages |
 | HUD / menus / UI flow | `core.json` | PASS | kills/medals/tally, low ammo, cook + drop on death, death card, respawn 1.6/4.5 s, damage arcs, pause opens on home, bullets hit bot, end screen |
-| Bot animation jank metrics | `h_bot_jank.json` | PASS* | 07:14: toe slip p50 0.01–0.03 / p90 0.10–0.57 on all bots (fwd 0.02 / 0.14); palm 1.2–2.3 cm; aim OK; 0 pops; deaths OK. *Open: backward motion at velRel 140–160° plays the forward gait (backward:false), so it moonwalks (1% of samples, p90 2.3 m/s); chest yaw 590°/s on 1 bot |
+| Bot animation jank metrics | `h_bot_jank.json` | PASS | 08:32: toe slip fwd 0.02/0.10, strafe 0.01/0.34 m/s (p50/p90), per-bot p50 ≤0.02; palm 1.3–2.2 cm; aim OK; yaw ≤433°/s; 0 pops; deaths 2/10 > 0.45 m. Minor: rare backpedal residual (0.2% of samples, p90 2.2 m/s) |
 
 ## Open issues
 
@@ -46,7 +46,7 @@ Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Resu
 | 24 | Physics hang | coordinator (Player.js) | Page hang inside Rapier world.step() (captured stack), likely NaN player collider translation via Player._syncBody; proposed 8-line finite guard (QA edit blocked by permissions) | runner log 01:50 fprig_cov | guard applied by coordinator 02:15; origin hunt re-runs queued |
 | 25 | Perf | perf a06576c27e6a80553 | Draw calls regressed (transmission glass + zoning, fixed by owner); PVS 404 (VERIFIED gone 03:07); FPS overlay intentional (user); chunky FP gun = dynamic res at 85% (disabled under QA) | e_keyart 1791509573464 | VERIFIED fixed 03:37 |
 | 26 | Runner | coordinator / render | "Renders nothing" 04:48 was a WebGL context loss at ~04:21 that made Chrome block 3D for the origin; not a code bug. Runner now passes --disable-domain-blocking-for-3d-apis and QA added context-loss detection plus browser recycle | c_optics 1791519443222 | RESOLVED 04:58 (smoke clean) |
-| 27 | Bots | bots a77d0883019b11e4c | Open: (a) back-diagonal (velRel 140–160°) plays the forward gait, i.e. moonwalk; (b) occasional bot skates in every class (07:47 bot6: fwd p50 1.8 m/s, many turn frames), root pushed without stride; (c) chest yaw 583–590°/s spikes | core 1791531597800, h_jank 1791528677015 | reported |
+| 27 | Bots | bots a77d0883019b11e4c | Moonwalk / skating / yaw spikes FIXED 08:32. Residual: rare backpedal slip (0.2% of samples) | h_jank 1791534734653 | minor |
 | 28 | FP rig | FP viewmodel r2 ae2dabb5f9b0dd692 | M870 reload at 45%: gun out of frame; P226 ADS: oversized support glove, pistol tiny/low | c_wvis_b 1791523688692 | reported |
 | 29 | Render | FP viewmodel r2 ae2dabb5f9b0dd692 | 1160-call / 2.3M-tri frame on the first render after a weapon switch (≈ full light-probe refresh); the shot frame itself is a normal 248 calls | k_m24_spike 1791525779216 | reported |
 | 30 | Weapons | FP viewmodel r2 ae2dabb5f9b0dd692 | Pistols land low on aimed taps at 25 m (P226 MPI −10 cm, M1911 −16 cm; rifles −1 to −4) | w_spray 1791516321026 | assigned |
