@@ -41,17 +41,26 @@
       s.dth = null; s.deadT = 0; s.aliveT += dt;
       m.root.updateMatrixWorld(true);
       const B = m.bones;
-      // Planted-foot slide (toes near the ground and not rising).
-      const toes = [wp(B.lFoot), wp(B.rFoot)];
+      // Ground reference: raycast down from the hips (nav y can be off on stairs / ramps).
+      const hipsW = wp(B.hips);
+      const gh = g.physics.raycast(new V(hipsW.x, b.position.y + 0.9, hipsW.z), new V(0, -1, 0), 3);
+      const groundY = gh ? gh.point.y : b.position.y;
+      // Planted-foot slide: only the LOWER foot, and only while it sits within 3 cm of its rolling 1 s minimum
+      // height and isn't rising - i.e. the stance foot. Slide = horizontal travel per contact.
+      const feet = [wp(B.lFoot), wp(B.rFoot)];
+      const lo = feet[0].y <= feet[1].y ? 0 : 1;
+      s.minHist = s.minHist || []; s.minHist.push(feet[lo].y - groundY); if (s.minHist.length > 30) s.minHist.shift();
+      const floorH = Math.min(...s.minHist);
       if (s.lastToe) for (let k = 0; k < 2; k++) {
-        const h = toes[k].y - b.position.y, vy = (toes[k].y - s.lastToe[k].y) / dt;
-        const planted = h < 0.12 && Math.abs(vy) < 0.15, dxz = Math.hypot(toes[k].x - s.lastToe[k].x, toes[k].z - s.lastToe[k].z);
-        if (planted) { s.slide.push(dxz / dt); s.stanceAcc[k] += dxz; s.stanceOn[k] = true; }
+        const h = feet[k].y - groundY, vy = (feet[k].y - s.lastToe[k].y) / dt;
+        const planted = k === lo && h - floorH < 0.03 && Math.abs(vy) < 0.3;
+        const dxz = Math.hypot(feet[k].x - s.lastToe[k].x, feet[k].z - s.lastToe[k].z);
+        if (planted) { s.slide.push(dxz / dt); s.stanceAcc[k] += dxz; s.stanceN = (s.stanceN || 0) + 1; s.stanceOn[k] = true; }
         else if (s.stanceOn[k]) { s.stance[k].push(s.stanceAcc[k]); s.stanceAcc[k] = 0; s.stanceOn[k] = false; }
       }
-      s.lastToe = toes;
-      // Floating / sinking: lowest toe vs ground while not jumping.
-      const low = Math.min(wp(B.lToe).y, wp(B.rToe).y) - b.position.y;
+      s.lastToe = feet;
+      // Floating / sinking: lowest toe vs the raycast ground while not jumping.
+      const low = Math.min(wp(B.lToe).y, wp(B.rToe).y) - groundY;
       if (!(b.jumpY > 0.01)) {
         if (low > TH.floatM || low < TH.sinkM) { s.floatT += dt; if (s.floatT > TH.floatT) s.floatEv++; } else s.floatT = 0;
         s.floatMax = Math.max(s.floatMax, low); s.sinkMin = Math.min(s.sinkMin, low);
@@ -111,7 +120,7 @@
     if (r.yawRateP99 > TH.yawRateP99) F(`upper-body yaw rate p99 ${r.yawRateP99}°/s > ${TH.yawRateP99}`);
     if (r.moveAimN > 20 && r.moveAimP95 > TH.moveAimP95) F(`muzzle off aim while moving aimed p95 ${r.moveAimP95}° > ${TH.moveAimP95}`);
     for (const d of s.deaths) {
-      if (d.ground == null || d.ground < TH.deathGroundLo || d.ground > TH.deathGroundHi) F(`death: hips grounded at ${d.ground}s (spec 0.7-1.1)`);
+      if ((d.ground == null && !(d.respawnedAt < 1.5)) || d.ground < TH.deathGroundLo || d.ground > TH.deathGroundHi) F(`death: hips grounded at ${d.ground == null ? 'never (within ' + (d.respawnedAt ?? 4) + ' s)' : d.ground + ' s'} (spec 0.7-1.1)`);
       if (d.disp > TH.deathDisp) F(`death: hips displaced ${d.disp} m > ${TH.deathDisp}`);
       if (d.jitter != null && d.jitter > TH.deathJitter) F(`death: corpse jitter ${d.jitter} m/s at 3-4 s`);
     }

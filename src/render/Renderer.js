@@ -253,6 +253,19 @@ export class Renderer {
     this.lens.uniforms.get('aspect').value = w / h;
   }
 
+  /** Render the shadow maps once (via an empty 1x1 view) so no pass ever samples a not-yet-created map. */
+  primeShadows() {
+    const r = this.renderer, rt = new THREE.WebGLRenderTarget(1, 1);
+    const cam = new THREE.PerspectiveCamera(1, 1, 0.1, 0.2);
+    cam.position.set(0, 1e4, 0); cam.lookAt(0, 2e4, 0); cam.updateMatrixWorld();
+    const prev = r.getRenderTarget();
+    r.setRenderTarget(rt);
+    r.shadowMap.needsUpdate = true;
+    r.render(this.scene, cam);
+    r.setRenderTarget(prev);
+    rt.dispose();
+  }
+
   setDamage(amount) { this.damagePulse = Math.min(1, this.damagePulse + amount); }
 
   _updateSun() {

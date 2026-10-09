@@ -128,8 +128,8 @@
   {
    "name": "g12d_bullets_at_bot",
    "frames": 1,
-   "eval": "const g=__game; __qa.god(); const b=g.bots.find(x=>x.alive&&x.team!==g.player.team); window.__hb=b; __qa.lookAtBot(8, g.bots.indexOf(b)); b._qaU0=b.update; b.update=()=>{}; const p=g.player; const dx=b.position.x-p.position.x, dz=b.position.z-p.position.z; p.pitch=Math.atan2(1.2-1.65, Math.hypot(dx,dz)); window.__hp0=b.health; __qa.press('Mouse0'); __qa.sim(0.35); __qa.down('Mouse0',false); __qa.sim(0.1); b.update=b._qaU0;",
-   "read": "({hp0: window.__hp0, hp: window.__hb.health, alive: window.__hb.alive, hits: __game.matchStats?.hits})"
+   "eval": "const g=__game; __qa.god(); __qa.sim(0.8); const b=g.bots.find(x=>x.alive&&x.team!==g.player.team); window.__hb=b; b.spawnProtect=0; __qa.lookAtBot(8, g.bots.indexOf(b)); b._qaU0=b.update; b.update=()=>{}; const p=g.player; const c=b.center; const e=p.position.clone(); e.y+=1.6; const dx=c.x-e.x, dz=c.z-e.z; p.yaw=Math.atan2(-dx,-dz); p.pitch=Math.atan2(c.y-e.y, Math.hypot(dx,dz)); window.__hp0=b.health; window.__w=g.currentWeapon.id+':'+g.currentWeapon.state; __qa.press('Mouse0'); __qa.sim(0.6); __qa.down('Mouse0',false); __qa.sim(0.2); b.update=b._qaU0;",
+   "read": "({hp0: window.__hp0, hp: window.__hb.health, alive: window.__hb.alive, hits: __game.matchStats?.hits, weapon: window.__w})"
   },
   {
    "name": "g13_end",

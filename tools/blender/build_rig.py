@@ -697,7 +697,7 @@ if OUT != '-':
         for i, p_ in enumerate(posed): kd.insert(p_, i)
         kd.balance()
         Lset = set(REG['L_hand'] + REG['L_forearm'])
-        for it in range(4):
+        for it in range(10):
             cur = [posed[i] + disp.get(i, Vector()) for i in range(len(posed))]
             hit_any = False
             for i, p_ in enumerate(cur):

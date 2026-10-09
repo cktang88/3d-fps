@@ -307,6 +307,7 @@ export class CharacterTemplate {
     // Forward crumple: knees from the crouch, arms from mid-way through the death clip.
     this.toppleLo = splitClip(pick('aim_crouch_idle', 'crouch_idle'), false);
     this.toppleUp = splitClip(this.death, true);
+    this.prone = pick('prone_idle', 'prone_crawl'); // face-down rest pose for knee-buckle collapses
     // Mocap lower-body locomotion (100STYLE, CC BY 4.0): directional walk / jog / crouch cycles named
     // 'mocap_<kind>_<dir>@<speed in leg-lengths per second>', all starting on a left-foot strike.
     this.mocap = null;
@@ -558,6 +559,7 @@ export class Character {
     this.toppleLoAction = this.mixer.clipAction(tpl.toppleLo);
     this.toppleUpAction = this.mixer.clipAction(tpl.toppleUp);
     this.toppleUpAction.setLoop(THREE.LoopOnce, 1); this.toppleUpAction.clampWhenFinished = true;
+    this.proneAction = tpl.prone ? this.mixer.clipAction(tpl.prone) : null;
 
     this.gaitPhase = Math.random();
     this.speedS = 0;
@@ -726,9 +728,9 @@ export class Character {
     const st = bot?.weapon?.stats;
     const heavy = st ? (st.pellets > 1 ? 2.2 : st.cls === 'Sniper Rifle' || st.cls === 'Marksman Rifle' ? 1.8 : st.cls === 'SMG' ? 0.7 : 1) : 1;
     const r = this.rc;
-    r.pitch.v += 2.6 * heavy * (0.8 + 0.4 * Math.random());
+    r.pitch.v += 1.5 * heavy * (0.8 + 0.4 * Math.random());
     r.yaw.v += (Math.random() * 2 - 1) * 0.9 * heavy;
-    r.back.v += 1.1 * heavy;
+    r.back.v += 0.9 * heavy;
   }
 
   onHit(bot, info) {
@@ -736,7 +738,7 @@ export class Character {
     this.hitJerk = Math.min(1.3, this.hitJerk + 0.9);
     this.hitPart = info?.part || 'torso';
     // a hit also knocks the weapon off the aim for a beat
-    this.rc.pitch.v += (Math.random() * 2 - 1) * 2.5; this.rc.yaw.v += (Math.random() * 2 - 1) * 3.5;
+    this.rc.pitch.v += (Math.random() * 2 - 1) * 1.2; this.rc.yaw.v += (Math.random() * 2 - 1) * 1.8;
     if (info?.dir) {
       // Flinch away from the shooter: tilt about the axis perpendicular to the bullet.
       _v1.set(info.dir.x, 0, info.dir.z);
@@ -799,7 +801,11 @@ export class Character {
     const turn = dy * Math.min(1, dt * (sp > 0.25 ? 9 : 6));
     this.bodyYaw = wrapPi(this.bodyYaw + turn);
     this.yawRate = damp(this.yawRate, turn / Math.max(dt, 1e-4), 8, dt);
-    this.twist = damp(this.twist, clamp(wrapPi(aimYaw - this.bodyYaw) + this.twistTrim, -100 * DEG, 100 * DEG), 16, dt);
+    // Chest follows the aim with a human turn-rate cap (≤ ~500°/s), legs absorb the rest.
+    const chestT = this.bodyYaw + clamp(wrapPi(aimYaw - this.bodyYaw) + this.twistTrim, -100 * DEG, 100 * DEG);
+    const chestNow = this.bodyYaw + this.twist;
+    const dc = wrapPi(chestT - chestNow), maxStep = 8.7 * dt;
+    this.twist = clamp(wrapPi(chestNow + clamp(dc * Math.min(1, dt * 16), -maxStep, maxStep) - this.bodyYaw), -100 * DEG, 100 * DEG);
     this.velRel = sp > 0.05 ? wrapPi(Math.atan2(-v.x, -v.z) - this.bodyYaw) : 0; // travel direction relative to the legs
     // Lean into turns and with acceleration (small, speed-scaled).
     const accel = (sp - this.prevSpeed) / Math.max(dt, 1e-4);
@@ -926,13 +932,21 @@ export class Character {
       this.gaitPhase += (sp * dt / Math.max(0.3, stride)) * (this.backward ? -1 : 1);
       this.gaitPhase -= Math.floor(this.gaitPhase);
     }
+    // Weights glide toward their targets (no frame-to-frame pops), then renormalise the layer to 1.
+    const lam = 1 - Math.exp(-14 * dt);
+    let tot = 0;
+    for (const k in this.lowerActions) { const a = this.lowerActions[k]; const w = a.getEffectiveWeight(); W[k] = w + (W[k] - w) * lam; tot += W[k]; }
+    for (const m of this.mocapActions) { const w = m.a.getEffectiveWeight(); const t = MW.get(m.d) || 0; m.w = w + (t - w) * lam; tot += m.w; }
+    const norm = tot > 1e-4 ? 1 / tot : 1;
+    for (const k in W) W[k] *= norm;
+    for (const m of this.mocapActions) m.w *= norm;
     for (const k in this.lowerActions) {
       const a = this.lowerActions[k];
       a.setEffectiveWeight(W[k]);
       if (gait[k]) { const p = this.gaitPhase + gait[k].offset; a.time = (p - Math.floor(p)) * gait[k].dur; }
     }
     for (const m of this.mocapActions) {
-      const w = MW.get(m.d) || 0;
+      const w = m.w < 1e-3 ? 0 : m.w;
       m.a.setEffectiveWeight(w);
       if (w > 0) m.a.time = this.gaitPhase * m.d.dur;
     }
@@ -1110,11 +1124,16 @@ export class Character {
     _v4.set(0, 0, 0);
     if (w.state === 'bolt' && w.stateDur > 0) this._boltHand(_v4, w.stateTime / w.stateDur);
     _v4.applyMatrix4(wrap.matrixWorld);
+    (this._rTarget ||= new THREE.Vector3()).copy(_v4);
     this._palmTarget(b.rHand, b.rMid, _v4);
     this._clavicleReach(b.rSh, b.rArm, _v4, ikW);
     this._twoBoneIK(b.rArm, b.rFore, b.rHand, _v4, ikW);
     this._pole(b.rArm, b.rFore, b.rHand, _v6.copy(_v5).multiplyScalar(0.55).add(UP_NEG), 0.75 * ikW);
-    if (this.handOff) this._lockHand(b.rHand, this.handOff.r, _q1, ikW * (w.state === 'bolt' ? 0.3 : 1));
+    if (this.handOff) {
+      this._lockHand(b.rHand, this.handOff.r, _q1, ikW * (w.state === 'bolt' ? 0.3 : 1));
+      // re-seat the palm (rotating the wrist moved it)
+      _v4.copy(this._rTarget); this._palmTarget(b.rHand, b.rMid, _v4); this._twoBoneIK(b.rArm, b.rFore, b.rHand, _v4, ikW);
+    }
     // Keep the hand's grip orientation glued to the gun (captured relative to the weapon while settled).
     // --- left hand: handguard / pump / magazine path ---
     if (b.lArm && b.lFore && b.lHand) {
@@ -1136,7 +1155,10 @@ export class Character {
       this._clavicleReach(b.lSh, b.lArm, _v4, ikW);
       this._twoBoneIK(b.lArm, b.lFore, b.lHand, _v4, ikW);
       this._pole(b.lArm, b.lFore, b.lHand, _v6.copy(_v5).multiplyScalar(-0.35).add(UP_NEG), 0.6 * ikW);
-      if (this.handOff) this._lockHand(b.lHand, this.handOff.l, _q1, ikW * (1 - rw));
+      if (this.handOff) {
+        this._lockHand(b.lHand, this.handOff.l, _q1, ikW * (1 - rw));
+        _v4.copy(this.lGripWorld); this._palmTarget(b.lHand, b.lMid, _v4); this._twoBoneIK(b.lArm, b.lFore, b.lHand, _v4, ikW);
+      }
     }
     // Capture the hands' grip orientation relative to the gun once, from a settled hold.
     if (!this.handOff && osw < 0.001 && rw < 0.01 && this._settle > 0.4) {
@@ -1379,13 +1401,13 @@ export class Character {
     // Pushed forward (shot from behind) → knees buckle and the body pitches onto its front.
     // Real casualties mostly collapse at the knees (REFERENCE_ENEMIES §hits: ~70% knee buckle, ~20%
     // twisting fall, ≤10% thrown backward) — the authored backward fall is the minority case.
-    let mode = Math.abs(off) > 105 * DEG || Math.random() < 0.72 ? 'topple' : 'clip';
+    let mode = Math.abs(off) > 105 * DEG || Math.random() < 0.85 ? 'topple' : 'clip';
     if (this.forceDeathMode) mode = this.forceDeathMode; // debug / tests
     const d = {
       mode, t: 0, fadeW: 0, rate: headshot ? 1.35 : explosive ? 1.2 : 0.88 + Math.random() * 0.25,
       fromYaw: this.bodyYaw, toYaw: this.bodyYaw, dir: dir.clone(), angle: 0, angVel: 0, landed: false,
       // Knockback: a short stagger-slide, bigger for buckshot / blasts.
-      slide: explosive ? 2.4 : shotgun ? 0.9 : headshot ? 0.12 : 0.25 + Math.random() * 0.25, slid: 0, maxSlide: 0,
+      slide: explosive ? 1.6 : shotgun ? 0.5 : headshot ? 0.06 : 0.08 + Math.random() * 0.14, slid: 0, maxSlide: 0,
       groundY: bot.position.y, lift: 0, origin: bot.position.clone(),
     };
     if (mode === 'clip') {
@@ -1425,6 +1447,11 @@ export class Character {
       lo.reset(); lo.play(); lo.time = 0.4; lo.timeScale = 0; lo.setEffectiveWeight(0);
       up.reset(); up.play(); up.time = up.getClip().duration * 0.3; up.timeScale = 0; up.setEffectiveWeight(0); // arms flung, spine still neutral
       d.poses = [lo, up];
+      if (this.proneAction) { const pr = this.proneAction; pr.reset(); pr.play(); pr.time = 0.3; pr.timeScale = 0; pr.setEffectiveWeight(0); }
+      // Knee-buckle collapse: the body folds where it stood and pitches onto its front, often with a
+      // twist toward the hit side.
+      d.fallDur = headshot ? 0.32 : 0.42 + Math.random() * 0.15;
+      d.spin = clamp(wrapPi(d.fallYaw - (this.bodyYaw + Math.PI)), -0.7, 0.7) * (0.5 + Math.random() * 0.5);
     }
     this.hitAction.setEffectiveWeight(0);
 
@@ -1475,10 +1502,21 @@ export class Character {
       this.mixer.update(dt);
     } else {
       // Knees buckle into a slump, then the whole body topples about the feet along the hit.
-      for (const a of d.poses) a.setEffectiveWeight(fw);
+      if (this.proneAction) {
+        // fall progress: gravity-like ease-in, then a small settle bounce
+        const u = clamp((d.t - d.kneel) / d.fallDur, 0, 1.4);
+        let pw = u < 1 ? u * u : 1;
+        if (u >= 1) { pw = 1 - Math.sin(Math.min(1, (u - 1) / 0.4) * Math.PI) * 0.06; d.landed = u >= 1.4; }
+        pw = clamp(pw, 0, 1);
+        this.toppleLoAction.setEffectiveWeight(fw * (1 - pw));
+        this.toppleUpAction.setEffectiveWeight(fw * (1 - pw));
+        this.proneAction.setEffectiveWeight(fw * pw);
+        this.bodyYaw = d.fromYaw + d.spin * smooth(clamp(u, 0, 1));
+        d.angle = 0;
+      } else for (const a of d.poses) a.setEffectiveWeight(fw);
       this.mixer.update(dt);
       root.rotation.set(0, this.bodyYaw, 0);
-      if (d.t > d.kneel && !d.landed) {
+      if (!this.proneAction && d.t > d.kneel && !d.landed) {
         d.angVel += (3.2 + 9 * Math.sin(d.angle)) * dt; // gravity torque grows as it tips
         d.angle += d.angVel * dt;
         if (d.angle >= Math.PI / 2 - 0.08) { d.angle = Math.PI / 2 - 0.08; d.angVel *= -0.18; if (Math.abs(d.angVel) < 0.2) d.landed = true; }

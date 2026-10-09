@@ -116,7 +116,7 @@ export class Game {
     // Pre-compile shaders to avoid hitches on first view.
     // Perf/robustness: create the sun shadow map now. Passes that run before the first world pass (scope, light
     // probe) never update shadows, and a null map binds a compare-less fallback (GL sampler mismatch).
-    if (this.level.sun) { const sm = this.renderer.renderer.shadowMap; sm.needsUpdate = true; sm.render([this.level.sun], this.renderer.scene, this.renderer.camera); }
+    this.renderer.primeShadows();
     this.renderer.renderer.compile(this.renderer.scene, this.renderer.camera);
     this.renderer.renderer.compile(this.renderer.viewScene, this.renderer.viewCamera);
     this.perf.mark('shaders compiled');

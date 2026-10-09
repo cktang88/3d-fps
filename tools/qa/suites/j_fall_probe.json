@@ -1,0 +1,39 @@
+{
+ "tag": "fallprobe",
+ "setupFiles": [
+  "tools/qa/suites/lib.js",
+  "tools/qa/suites/j_fall_probe.script.js:window.__fallTest"
+ ],
+ "setup": "window.__keyArt=[[\"e01_sun\",[2,0,-8],2.68],[\"e02_courtyardN\",[0,0,20],0.3],[\"e03_courtyard_dock\",[2,0,-12],0.4],[\"e04_warehouse\",[13,0,-35],1.57],[\"e05_warehouse_rev\",[-12,0,-30],-1.9],[\"e06_catwalk\",[10,4,-46.6],1.9],[\"e07_office1\",[-12.5,0,40.5],-1.9],[\"e08_office2\",[-12.5,3.4,35],-1.57],[\"e09_containers\",[37,0,4],0.1],[\"e10_ruins\",[-28,0,-2],1.4],[\"e11_ruins_wall\",[-30,0,3],1.9],[\"e12_perimeter\",[30,0,50],2.4],[\"e13_tower\",[-48,4.2,-40.5],-0.9]];",
+ "match": "tdm",
+ "w": 480,
+ "h": 270,
+ "timeoutS": 600,
+ "views": [
+  {
+   "name": "fp1_fresh_runner_teleport",
+   "pos": [
+    2,
+    0,
+    -8
+   ],
+   "yaw": 2.68,
+   "pitch": 0.06,
+   "frames": 40,
+   "read": "({alive:__game.player.alive,y:__game.player.position.y,hp:__game.player.health})"
+  },
+  {
+   "name": "fp2_probe",
+   "shot": false,
+   "frames": 1,
+   "eval": "window.__r=window.__fallTest();",
+   "read": "window.__r"
+  },
+  {
+   "name": "fp3_render_full",
+   "frames": 2,
+   "eval": "__qa.god();__qa.place([0,0.1,12],0.2,0.02);__qa.sim(0.5);",
+   "read": "__qa.perf()"
+  }
+ ]
+}

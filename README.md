@@ -113,6 +113,15 @@ Code is original except where noted. Third-party assets:
 - **HDRI**: Poly Haven "Bambanani Sunset" (Dimitrios Savva, Jarod Guest) — CC0.
 - **Level textures added**: ambientCG Ground110, Fence006 (chain-link), MetalWalkway013 (grating), Leaking003 (wall
   streaks) — CC0.
+- **Level art pass 2 (textures & decals)** — all CC0, resized/re-encoded to webp (AO baked into colour where present):
+  - Poly Haven (https://polyhaven.com, CC0): `weathered_planks` (tower deck), `rusty_corrugated_iron` (tower sheets/roof),
+    `worn_plaster_wall` (office partitions).
+  - ambientCG (https://ambientcg.com, CC0): `OfficeCeiling006` (office ceilings), `Facade018A`, `Facade020A` (skyline
+    buildings).
+  - Decal atlas `textures/DecalAtlas` composed from ambientCG `GraffitiSet001`, `Leaking012A`, `Leaking014A`,
+    `Leaking016A`, `Leaking019B`, `Sign004`, `Sign009`, `Sign021`, `Tape001`, `TireTracks001`, `AsphaltDamage001`
+    (CC0; cropped, alpha derived/aged), plus procedurally generated oil-stain, scorch, crack and stencil-signage cells
+    made for this project (same licence as the game).
 - **Ambience**: "Destroyed Ford Crown Vic" by alexdelker and "Sikorsky UH-60 Black Hawk" by helijah — CC BY 4.0 (Sketchfab;
   simplified/re-lit, see `public/assets/ambience/models/*/SOURCE.md`); Unity Labs VFX flipbooks Explosion01, WispySmoke02 & Flame03 — CC0;
   Poly Haven rusty_metal_04 — CC0.

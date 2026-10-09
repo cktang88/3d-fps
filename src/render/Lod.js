@@ -11,6 +11,7 @@ import { mergeVertices, mergeGeometries } from 'three/addons/utils/BufferGeometr
 export const lodReady = MeshoptSimplifier.ready.then(() => { _ready = true; });
 let _ready = false;
 const _cache = new WeakMap();
+export const lodErrors = [];
 
 /**
  * @param {THREE.BufferGeometry} geo
@@ -40,7 +41,7 @@ export function simplifiedGeometry(geo, maxTris, error = 0.01) {
     const target = Math.max(3, Math.floor((cnt / 3) * ratio) * 3);
     let res = sub;
     if (target < cnt) {
-      try { [res] = MeshoptSimplifier.simplify(sub, pos, 3, target, error); } catch (e) { res = sub; }
+      try { [res] = MeshoptSimplifier.simplify(sub, pos, 3, target, error); } catch (e) { res = sub; lodErrors.push(String(e?.message || e).slice(0, 200)); }
       if (res.length < 3) res = sub; // never let a part vanish
     }
     outIdx.push(res);
@@ -327,3 +328,6 @@ export class DistanceLod {
     return this;
   }
 }
+
+// Debug handle for QA scripts (docs/PERF.md).
+if (typeof window !== 'undefined') window.__lod = { simplifiedGeometry, triCount, lodErrors, get ready() { return _ready; } };

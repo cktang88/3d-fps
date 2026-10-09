@@ -19,6 +19,7 @@
       // Effects baseline
       let fired = 0; w.on('fire', () => fired++);
       let flashes = 0; const mf = g.effects.muzzleFlash; g.effects.muzzleFlash = function (...a) { flashes++; return mf.apply(this, a); };
+      let decalAdds = 0; const pools = Object.values(g.effects.decals); for (const d of pools) { d._qaAdd = d.add; d.add = function (...a) { decalAdds++; return d._qaAdd.apply(this, a); }; }
       let tracers = 0; const tf = g.effects.tracer; g.effects.tracer = function (...a) { tracers++; return tf.apply(this, a); };
       const fx0 = Q.fx();
       // Hip fire: hold trigger 0.5 s (auto) or tap once.
@@ -37,7 +38,8 @@
       if (fired >= 3 && tracers === 0) fail(id, 'no tracers for ' + fired + ' shots');
       r.fx = { flashes: fx1.flashes - fx0.flashes, decalsAdded: fx1.decals - fx0.decals, sparksDust: (fx1.sparks + fx1.dust) - (fx0.sparks + fx0.dust) };
       r.fxPeak = fx1;
-      if (fx1.decals <= fx0.decals && fired > 0) fail(id, 'no bullet-hole decals added after firing at wall');
+      r.decalAdds = decalAdds; for (const d of pools) { delete d.add; delete d._qaAdd; }
+      if (decalAdds === 0 && fired > 0) fail(id, 'no bullet-hole decals added after firing at wall');
       // Bolt / pump cycle
       if (mode === 'bolt' || mode === 'pump') { Q.press('Mouse0'); Q.sim(0.05); Q.down('Mouse0', false); r.cycleState = w.state; if (w.state !== mode) fail(id, `after shot state=${w.state}, expected ${mode}`); Q.sim(2); }
       // Burst check for weapons that have burst mode elsewhere in their list.
