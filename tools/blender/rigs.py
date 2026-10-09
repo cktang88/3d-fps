@@ -41,7 +41,7 @@ FRAMING = {
     # gun parallel to the view axis and ~5 deg cant. Raised 1.4 cm / 1 cm right after the side-by-side.
     'rifle': dict(pos=(0.068, 0.144, -0.052), rot=(0.0, 0.0, 5.0)),
     'smg': dict(pos=(0.072, 0.180, -0.056), rot=(0.0, 0.0, 5.0)),  # SMG sights sit right over the grip: push out
-    'sniper': dict(pos=(0.070, 0.150, -0.058), rot=(0.0, 0.0, 4.0)),
+    'sniper': dict(pos=(0.080, 0.200, -0.066), rot=(0.0, 0.0, 4.0)),  # big scopes: further out than the rifle
     'shotgun': dict(pos=(0.068, 0.144, -0.054), rot=(0.0, 0.0, 5.0)),
     'pistol': dict(pos=(0.050, 0.220, -0.035), rot=(1.0, 1.0, 2.0)),
 }
