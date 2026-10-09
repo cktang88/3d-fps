@@ -4,7 +4,7 @@ import { simplifiedGeometry, triCount } from '../render/Lod.js';
 import { GroundedSkybox } from 'three/addons/objects/GroundedSkybox.js';
 import { worldBox, worldUV } from './Geo.js';
 import { DEG } from '../core/MathUtil.js';
-import { Materials } from './Materials.js';
+import { Materials, DECAL_ATLAS } from './Materials.js';
 import { orientHDR, clampedHDR, installAtmosphere, buildLightShafts, buildDust } from './LevelEnv.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -46,7 +46,7 @@ const PROPS = {
   propane: ['propane_tank/propane_tank.glb'],
   generator: ['portable_generator/portable_generator.glb'],
   hangLamp: ['hanging_industrial_lamp/hanging_industrial_lamp.glb', { emissive: /glass/, emissiveColor: 0xffa858, emissiveIntensity: 6 }],
-  fluoro: ['mounted_fluorescent_lights/mounted_fluorescent_lights.glb', { emissive: /glass/, emissiveColor: 0xe6f2ff, emissiveIntensity: 2.5 }],
+  fluoro: ['mounted_fluorescent_lights/mounted_fluorescent_lights.glb', { emissive: /glass/, emissiveColor: 0xe6f2ff, emissiveIntensity: 5.5 }],
   pipes: ['modular_industrial_pipes_01/modular_industrial_pipes_01.glb'],
   woodCrate: ['wooden_crate_02/wooden_crate_02.glb'],
   cementBag: ['cement_bag/cement_bag.glb'],
@@ -169,6 +169,46 @@ export class Level {
     g.rotateY(rot);
     g.translate(x, y, z);
     this.mesh(strength >= 1 ? 'blob' : 'blobSoft', g, { cast: false });
+  }
+
+  /**
+   * Atlas decal (one shared material/draw call): `key` is a rect of DECAL_ATLAS. Quad w x h centred on p, facing
+   * `normal`, spun by `spin` around it. opt.flip mirrors U (more variety from the same cell).
+   */
+  decalA(key, p, normal, w, h, spin = 0, opt = {}) {
+    const r = DECAL_ATLAS.rects[key];
+    if (!r) return null;
+    const S = DECAL_ATLAS.size, e = 1.5;
+    const u0 = (r[0] + e) / S, u1 = (r[0] + r[2] - e) / S, v1 = 1 - (r[1] + e) / S, v0 = 1 - (r[1] + r[3] - e) / S;
+    const g = new THREE.PlaneGeometry(w, h);
+    const uv = g.attributes.uv;
+    for (let i = 0; i < uv.count; i++) {
+      const u = opt.flip ? 1 - uv.getX(i) : uv.getX(i);
+      uv.setXY(i, u0 + u * (u1 - u0), v0 + uv.getY(i) * (v1 - v0));
+    }
+    const n = normal.clone().normalize();
+    const q = new THREE.Quaternion().setFromUnitVectors(V(0, 0, 1), n);
+    const qs = new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), spin);
+    g.applyMatrix4(new THREE.Matrix4().compose(p.clone().addScaledVector(n, opt.lift ?? 0.012), q.multiply(qs), V(1, 1, 1)));
+    this._push(this.mats.get('decals'), g, false);
+    return g;
+  }
+
+  /** Top of the (render-only) ground surfacing at x,z: pads/roads sit a few cm above the base ground. */
+  groundTop(x, z) {
+    const inR = (x0, x1, z0, z1) => x >= x0 && x <= x1 && z >= z0 && z <= z1;
+    let y = 0;
+    if (inR(-20, 20, -51, -25)) y = Math.max(y, 0.04);
+    if (inR(-17, 13, 23, 29)) y = Math.max(y, 0.03);
+    if (inR(20, 54, -25, 25)) y = Math.max(y, 0.028);
+    if (inR(-this.bounds, this.bounds, -0.5, 8.5) || inR(-28, -20, -21, 9)) y = Math.max(y, 0.02);
+    if (inR(-14, 10, 32, 44)) y = Math.max(y, 0.06);
+    return y;
+  }
+
+  /** Decal lying on the ground surfacing (oil, cracks, scorch, tyre tracks, patches). */
+  groundDecal(key, x, z, w, h, spin = 0, opt = {}) {
+    return this.decalA(key, V(x, this.groundTop(x, z) + (opt.y ?? 0), z), UP, w, h, spin, { lift: 0.006, ...opt });
   }
 
   /** Worn road paint strip from (xa,z) to (xb,z) along X. */
@@ -380,9 +420,9 @@ export class Level {
     this.minimapShapes.push({ x, z, w: L, d: W, rot, fill: y > 0 ? 'rgba(170,120,100,0.0)' : 'rgba(190,150,120,0.55)' });
   }
 
-  sandbags(x, z, rot, length, rows = 3) {
-    // Lumpy stacked sandbag wall (vaultable ~0.95 m).
-    const bagW = 0.62, bagH = 0.21, bagD = 0.38;
+  sandbags(x, z, rot, length, rows = 3, opt = {}) {
+    // Lumpy stacked sandbag wall (vaultable ~0.95 m). opt: y (base), single (one bag deep), collide/blob/map.
+    const bagW = 0.62, bagH = 0.21, bagD = 0.38, y0 = opt.y ?? 0;
     const n = Math.max(1, Math.round(length / bagW));
     const c = Math.cos(rot), s = Math.sin(rot);
     const m = this.mats.get('sandbag');
@@ -390,7 +430,7 @@ export class Level {
     for (let r = 0; r < rows + 1; r++) {
       const off = r % 2 ? bagW / 2 : 0;
       for (let i = 0; i < n - (r % 2); i++) {
-        for (const lz of [-bagD / 2, bagD / 2]) {
+        for (const lz of opt.single ? [0] : [-bagD / 2, bagD / 2]) {
           const lx = -length / 2 + bagW / 2 + i * bagW + off;
           const g = new THREE.SphereGeometry(0.5, 10, 6);
           g.scale(bagW * 1.02, bagH * 1.25, bagD * 1.1);
@@ -402,7 +442,7 @@ export class Level {
           }
           g.computeVertexNormals();
           const jitter = (rnd() - 0.5) * 0.1;
-          g.applyMatrix4(new THREE.Matrix4().makeRotationY(rot + jitter).setPosition(x + lx * c + lz * s, bagH * 0.5 + r * bagH * 0.95, z - lx * s + lz * c));
+          g.applyMatrix4(new THREE.Matrix4().makeRotationY(rot + jitter).setPosition(x + lx * c + lz * s, y0 + bagH * 0.5 + r * bagH * 0.95, z - lx * s + lz * c));
           geos.push(g);
         }
       }
@@ -414,12 +454,22 @@ export class Level {
     merged.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     this._push(m, merged, true);
     const h = (rows + 1) * bagH * 0.95 + 0.02;
-    this.game.physics.addStaticBox(V(x, h / 2, z), V(length / 2, h / 2, bagD + 0.05), new THREE.Quaternion().setFromAxisAngle(UP, rot), { surface: 'dirt' });
-    const proxy = new THREE.BoxGeometry(length, h, bagD * 2 + 0.1);
-    proxy.applyMatrix4(new THREE.Matrix4().makeRotationY(rot).setPosition(x, h / 2, z));
-    this.navGeos.push(proxy);
-    this.blob(x, z, length + 0.8, bagD * 2 + 0.9, rot);
-    this.minimapShapes.push({ x, z, w: length, d: bagD * 2, rot, fill: 'rgba(200,180,140,0.45)' });
+    const dd = opt.single ? bagD / 2 + 0.03 : bagD + 0.05;
+    if (opt.collide !== false) {
+      this.game.physics.addStaticBox(V(x, y0 + h / 2, z), V(length / 2, h / 2, dd), new THREE.Quaternion().setFromAxisAngle(UP, rot), { surface: 'dirt' });
+      const proxy = new THREE.BoxGeometry(length, h, dd * 2);
+      proxy.applyMatrix4(new THREE.Matrix4().makeRotationY(rot).setPosition(x, y0 + h / 2, z));
+      this.navGeos.push(proxy);
+    }
+    if (opt.blob !== false && y0 < 0.05) this.blob(x, z, length + 0.8, bagD * 2 + 0.9, rot);
+    if (opt.map !== false) this.minimapShapes.push({ x, z, w: length, d: bagD * 2, rot, fill: 'rgba(200,180,140,0.45)' });
+  }
+
+  /** Thin sheet (corrugated panel, plank) as a free-rotated box: centre p, yaw, slight lean (rad) and roll. */
+  sheet(mat, p, w, h, t, yaw, lean = 0, roll = 0, uvScale = 1.2) {
+    const g = new THREE.BoxGeometry(w, h, t);
+    g.applyMatrix4(new THREE.Matrix4().compose(p, new THREE.Quaternion().setFromEuler(new THREE.Euler(lean, yaw, roll, 'YXZ')), V(1, 1, 1)));
+    return this.mesh(mat, g, { worldUV: uvScale });
   }
 
   /** Wooden pallet (1.2 x 0.8 x 0.144); stack of n. Single collider for the stack. */
@@ -615,6 +665,7 @@ export class Level {
     this.buildRuins();
     this.buildCourtyard();
     this.buildBackdrop();
+    this.dressDecals();
     this.defineSpawns();
     this.finalize();
   }
@@ -871,6 +922,30 @@ export class Level {
     this.box('steel', x, y + 0.5, z, 0.02, 1, 0.02, { collide: false, nav: false, map: false, cast: false });
   }
 
+  /** Small backlit EXIT box (emissive canvas texture) over a doorway; ry = facing yaw. */
+  exitSign(x, y, z, ry = 0, wallT = 0) {
+    if (!this.mats.mats.exitSign) {
+      const c = document.createElement('canvas'); c.width = 128; c.height = 48;
+      const g = c.getContext('2d');
+      g.fillStyle = '#0a2a12'; g.fillRect(0, 0, 128, 48);
+      g.fillStyle = '#7dffa0'; g.font = 'bold 30px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText('EXIT', 64, 26);
+      g.strokeStyle = '#3c9e58'; g.lineWidth = 3; g.strokeRect(3, 3, 122, 42);
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+      const m = new THREE.MeshStandardMaterial({ color: 0x050505, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 3.2, roughness: 0.5 });
+      m.name = 'exitSign'; m.userData.noUnify = true;
+      this.mats.mats.exitSign = m;
+    }
+    const dep = wallT + 0.07;
+    this.box('metalDark', x, y, z, 0.42, 0.18, dep, { rot: ry, map: false, nav: false, collide: false, cast: false });
+    const g = new THREE.PlaneGeometry(0.38, 0.14);
+    for (const side of [1, -1]) {
+      const gg = g.clone();
+      gg.applyMatrix4(new THREE.Matrix4().compose(V(x, y, z).add(V(Math.sin(ry), 0, Math.cos(ry)).multiplyScalar(side * (dep / 2 + 0.002))), new THREE.Quaternion().setFromAxisAngle(UP, ry + (side < 0 ? Math.PI : 0)), V(1, 1, 1)));
+      this.mesh(this.mats.mats.exitSign, gg, { cast: false });
+    }
+  }
+
   interiorLight(x, y, z, color = 0xffe2b0, intensity = 40, dist = 26, flicker = false) {
     const l = new THREE.PointLight(color, intensity, dist, 1.7);
     l.position.set(x, y, z);
@@ -915,8 +990,8 @@ export class Level {
     this.box(slab, (x0 + 6.6) / 2, floorY - 0.12, 38, 6.6 - x0, 0.24, 11.6, { map: false, uv: 3 });
     this.box(slab, (6.6 + x1) / 2, floorY - 0.12, 42.2, x1 - 6.6, 0.24, 3.6, { map: false, uv: 3 });
     // Ceilings (plaster underside) for both floors.
-    this.box('plasterWhite', (x0 + 6.6) / 2, floorY - 0.245, 38, 6.6 - x0 - 0.3, 0.01, 11.4, { map: false, nav: false, collide: false, uv: 2 });
-    this.box('plasterWhite', -2, F * 2 - 0.005, 38, 23.6, 0.01, 11.6, { map: false, nav: false, collide: false, uv: 2 });
+    this.box('ceilingTile', (x0 + 6.6) / 2, floorY - 0.245, 38, 6.6 - x0 - 0.3, 0.01, 11.4, { map: false, nav: false, collide: false, uv: 10 });
+    this.box('ceilingTile', -2, F * 2 - 0.005, 38, 23.6, 0.01, 11.6, { map: false, nav: false, collide: false, uv: 10 });
     // Roof slab + parapet + coping.
     this.box('concrete', -2, F * 2 + 0.15, 38, 24.4, 0.3, 12.4, { map: false, nav: false });
     this.wall('brick', x0, z0, x1, z0, F * 2 + 0.3, 0.9, t);
@@ -939,10 +1014,10 @@ export class Level {
     this.box('concrete', -2.4, 2.75, z0 - 0.7, 3.2, 0.14, 1.4, { map: false, nav: false, collide: false });
     // Interior partitions (plaster) with door casings.
     const pw = { doorFrame: 'woodDark', wainscot: 'plasterGreen' };
-    this.wall('plasterWhite', -4, z0 + 0.15, -4, z1 - 0.15, 0, F - 0.25, 0.15, [{ at: 3, w: 1.2, y0: 0, y1: 2.2 }, { at: 9, w: 1.2, y0: 0, y1: 2.2 }], pw);
-    this.wall('plasterWhite', x0 + 0.15, 38, -4, 38, 0, F - 0.25, 0.15, [{ at: 5, w: 1.2, y0: 0, y1: 2.2 }], pw);
-    this.wall('plasterWhite', -2, z0 + 0.15, -2, z1 - 0.15, F, F - 0.25, 0.15, [{ at: 6, w: 1.2, y0: F, y1: F + 2.2 }], pw);
-    this.wall('plasterWhite', 5.8, z0 + 0.15, 5.8, 40.4, F, F - 0.25, 0.15, [{ at: 4, w: 1.2, y0: F, y1: F + 2.2 }], pw);
+    this.wall('wornPlaster', -4, z0 + 0.15, -4, z1 - 0.15, 0, F - 0.25, 0.15, [{ at: 3, w: 1.2, y0: 0, y1: 2.2 }, { at: 9, w: 1.2, y0: 0, y1: 2.2 }], pw);
+    this.wall('wornPlaster', x0 + 0.15, 38, -4, 38, 0, F - 0.25, 0.15, [{ at: 5, w: 1.2, y0: 0, y1: 2.2 }], pw);
+    this.wall('wornPlaster', -2, z0 + 0.15, -2, z1 - 0.15, F, F - 0.25, 0.15, [{ at: 6, w: 1.2, y0: F, y1: F + 2.2 }], pw);
+    this.wall('wornPlaster', 5.8, z0 + 0.15, 5.8, 40.4, F, F - 0.25, 0.15, [{ at: 4, w: 1.2, y0: F, y1: F + 2.2 }], pw);
     // Skirting boards along partitions.
     // Stairs at x≈8, rising south (+z) from z=33 to z=40.2.
     this.stairs('concrete', 8, 33.1, 0, 2.2, F, 7.1, 0);
@@ -1003,7 +1078,16 @@ export class Level {
     for (const [x, z] of [[-10, 35], [-10, 41], [-1, 35], [-1, 41], [4, 41]]) this.prop('fluoro', x, z, 0, { y: F - 0.32, mount: true });
     for (const [x, z] of [[-9, 35], [-9, 41], [2, 35], [2, 41], [-5, 38]]) this.prop('fluoro', x, z, Math.PI / 2, { y: 2 * F - 0.07, mount: true });
     this.interiorLight(-6, F - 0.5, 38, 0xdbe8ff, 18, 15, true);
-    this.interiorLight(-4, 2 * F - 0.5, 38, 0xdbe8ff, 20, 16);
+    // Upper floor: cool fluorescent wash in the east rooms, a warm work lamp hanging in the west room (warm/cool
+    // split leads the eye down the corridor), plus the sun pouring through the south windows (shafts below).
+    this.interiorLight(1.5, 2 * F - 0.55, 37.5, 0xdbe8ff, 22, 14);
+    this.prop('hangLamp', -9.5, 38.6, 0.4, { y: 2 * F - 1.36 - 0.02, mount: true });
+    this.interiorLight(-9.5, 2 * F - 1.55, 38.6, 0xffad62, 16, 10);
+    // Emissive exit signs over the doorways (practicals that read in bloom, no light cost).
+    for (const [x, y, z, ry, wt] of [[-2.4, 2.7, z0, Math.PI, 0.3], [-2, F + 2.42, 38.15, Math.PI / 2, 0.15], [-4, 2.42, 35.15, Math.PI / 2, 0.15], [5.8, F + 2.42, 36.15, Math.PI / 2, 0.15]]) this.exitSign(x, y, z, ry, wt);
+    // Sun shafts through the south (sun-side) windows of both floors, short so they stop at the floor.
+    for (const x of [6, -2]) this.shaftOpenings.push({ center: V(x, 1.65, z1), w: 1.4, h: 1.1, normal: V(0, 0, -1), length: 6.5 });
+    for (const x of [6, -2, -9]) this.shaftOpenings.push({ center: V(x, F + 1.65, z1), w: 1.4, h: 1.1, normal: V(0, 0, -1), length: 6.5 });
     // Exterior: AC units on the roof and wall, lamps over doors, downpipes, leak streaks.
     this.prop('aircon', -9, z1 - 2.5, 0.0, { y: 2 * F + 0.3 }); this.prop('aircon', -5.4, z1 - 2.5, 0.0, { y: 2 * F + 0.3 });
     this.prop('aircon2', 3.5, z1 - 2.2, Math.PI, { y: 2 * F + 0.3 });
@@ -1095,10 +1179,7 @@ export class Level {
       this.beam('woodDark', V(tx - 1.6, 0.4, tz + s * 1.6), V(tx + 1.6, ty - 0.4, tz + s * 1.6), 0.1, 0.14);
       this.beam('woodDark', V(tx + s * 1.6, 0.4, tz - 1.6), V(tx + s * 1.6, ty - 0.4, tz + 1.6), 0.1, 0.14);
     }
-    this.box('woodDark', tx, ty - 0.1, tz, 3.8, 0.2, 3.8, { uv: 1.5, map: true });
-    for (const [dx, dz, w, d] of [[0, -1.85, 3.8, 0.1], [-1.85, 0, 0.1, 3.8], [1.85, 0, 0.1, 3.8]]) this.box('woodDark', tx + dx, ty + 0.5, tz + dz, w, 1.0, d, { map: false, uv: 1.2 });
-    this.box('corrugated', tx, ty + 2.6, tz, 4.4, 0.12, 4.4, { nav: false, map: false });
-    for (const [dx, dz] of [[-1.85, -1.85], [1.85, -1.85], [-1.85, 1.85], [1.85, 1.85]]) this.box('woodDark', tx + dx, ty + 1.3, tz + dz, 0.12, 2.6, 0.12, { map: false, nav: false });
+    this.buildTowerTop(tx, tz, ty);
     this.stairs('woodDark', tx, tz + 1.95 + 6.2, Math.PI, 1.2, ty, 6.2, 0, { open: true, tread: 'wood', rail: true });
     this.prop('wallLamp', tx, tz - 1.7, Math.PI, { y: ty + 2.0, mount: true });
     // Dressing.
@@ -1107,6 +1188,62 @@ export class Level {
     this.prop('trashbag', -40.2, -9.6, 0.4, { nav: false }); this.prop('trashbag', -40.8, -9.2, 2.4, { nav: false });
     this.prop('stove', -45.2, 26.6, 0);
     this.patrolPoints.push(V(-44, 0, -16), V(-42, 0, 18), V(-38, 0, 34), V(-48, ty, -40), V(-30, 0, -10), V(-50, 0, 10));
+  }
+
+  /**
+   * Guard-tower platform: weathered plank deck on joists; a parapet of sandbags on the deck, rusty corrugated
+   * sheets nailed outside the posts (overlapping, a little bent, one torn short), timber rails and braces; a
+   * pitched rusty sheet roof on rafters. Collision is one clean box per side (same as before: 1.05 m).
+   */
+  buildTowerTop(tx, tz, ty) {
+    const nc = { map: false, nav: false, collide: false, uv: 1 };
+    this.box('planks', tx, ty - 0.1, tz, 3.8, 0.2, 3.8, { uv: 1.8, map: true });
+    for (const dz of [-1.5, -0.5, 0.5, 1.5]) this.box('woodDark', tx, ty - 0.29, tz + dz, 3.7, 0.18, 0.1, nc);   // joists
+    for (const s of [-1, 1]) this.box('woodDark', tx + s * 1.86, ty - 0.12, tz, 0.08, 0.24, 3.9, nc);         // rim boards
+    // Corner + mid posts carrying the roof.
+    const posts = [[-1.85, -1.85], [1.85, -1.85], [-1.85, 1.85], [1.85, 1.85]];
+    for (const [dx, dz] of posts) { const ph = dz > 0 ? 2.87 : 2.6; this.box('woodDark', tx + dx, ty + ph / 2, tz + dz, 0.13, ph, 0.13, { map: false, nav: false, uv: 1 }); }
+    for (const [dx, dz] of [[0, -1.85], [-1.85, 0], [1.85, 0]]) this.box('woodDark', tx + dx, ty + 0.55, tz + dz, 0.1, 1.1, 0.1, nc);
+    const sides = [
+      { n: V(0, 0, -1), rot: 0, len: 3.7, bagLen: 3.5, bagOff: 0 },
+      { n: V(-1, 0, 0), rot: Math.PI / 2, len: 3.7, bagLen: 2.9, bagOff: 0.3 },
+      { n: V(1, 0, 0), rot: Math.PI / 2, len: 3.7, bagLen: 2.9, bagOff: 0.3 },
+    ];
+    sides.forEach((sd, si) => {
+      const along = V(Math.cos(sd.rot), 0, -Math.sin(sd.rot));
+      const edge = V(tx, 0, tz).addScaledVector(sd.n, 1.85);
+      // Collision: one clean parapet slab per side.
+      this.game.physics.addStaticBox(V(edge.x, ty + 0.53, edge.z), V(1.9, 0.53, 0.08), new THREE.Quaternion().setFromAxisAngle(UP, sd.rot), { surface: 'wood' });
+      // Sandbag course on the deck (inside the posts).
+      const bz = V(tx, 0, tz + sd.bagOff).addScaledVector(sd.n, 1.58);
+      this.sandbags(bz.x, bz.z, sd.rot, sd.bagLen, 2, { y: ty, single: true, collide: false, blob: false, map: false });
+      // Corrugated sheets outside the posts: two overlapping panels, leaning a touch, the second torn short.
+      const out = edge.clone().addScaledVector(sd.n, 0.1);
+      for (let k = 0; k < 2; k++) {
+        const off = (k - 0.5) * 1.75 + rand(-0.06, 0.06);
+        const hh = k === 1 && si === 0 ? 0.92 : 1.18;
+        const p = out.clone().addScaledVector(along, off).addScaledVector(sd.n, k * 0.025).add(V(0, ty - 0.22 + hh / 2, 0));
+        this.sheet('rustSheet', p, 2.0, hh, 0.02, sd.rot, rand(-0.03, 0.03) * (sd.n.z !== 0 ? 1 : 0), rand(-0.015, 0.015), 1.1);
+      }
+      // Timber rails on the posts (top + mid) and a diagonal brace.
+      const rIn = edge.clone().addScaledVector(sd.n, -0.02);
+      this.box('woodDark', rIn.x, ty + 1.02, rIn.z, sd.len + 0.1, 0.1, 0.07, { ...nc, rot: sd.rot });
+      this.box('woodDark', rIn.x, ty + 0.62, rIn.z, sd.len, 0.07, 0.05, { ...nc, rot: sd.rot });
+      const a = rIn.clone().addScaledVector(along, -1.75).add(V(0, ty + 0.05, 0)), b = rIn.clone().addScaledVector(along, -0.1).add(V(0, ty + 0.98, 0));
+      this.beam('woodDark', a.addScaledVector(sd.n, -0.06), b.addScaledVector(sd.n, -0.06), 0.06, 0.09);
+    });
+    // Open (stair) side: just the rails, a gap for the stair head, hazard tape on the top rail.
+    for (const s of [-1, 1]) this.box('woodDark', tx + s * 1.3, ty + 1.02, tz + 1.86, 1.1, 0.1, 0.07, nc);
+    // Roof: rafters + a pitched rusty sheet roof (falls to the north), with drip edge.
+    for (const dx of [-1.85, 0, 1.85]) this.beam('woodDark', V(tx + dx, ty + 2.967, tz + 2.15), V(tx + dx, ty + 2.493, tz - 2.15), 0.09, 0.14);
+    this.sheet('rustSheet', V(tx, ty + 2.82, tz), 4.6, 4.7, 0.03, 0, Math.PI / 2 - 0.11, 0, 1.4);
+    this.box('woodDark', tx, ty + 2.52, tz - 2.33, 4.6, 0.12, 0.05, nc);
+    // Dressing on the deck: ammo cans, a jerrycan, stencil on the north sheet, hazard sign on the stair post.
+    this.prop('ammo', tx - 1.1, tz - 1.05, 0.3, { y: ty, nav: false, collide: false, blob: false });
+    this.prop('ammo', tx - 0.75, tz - 1.1, 0.1, { y: ty, nav: false, collide: false, blob: false });
+    this.prop('jerrycan', tx + 1.15, tz - 1.0, 1.9, { y: ty, nav: false, collide: false, blob: false });
+    this.decalA('st07', V(tx + 0.4, ty + 0.5, tz - 1.85 - 0.16), V(0, 0, -1), 0.9, 0.4, 0, { lift: 0.03 });
+    this.decalA('sign1', V(tx - 1.85 + 0.0, ty + 1.45, tz + 1.85 + 0.08), V(0, 0, 1), 0.34, 0.34, 0, { lift: 0.02 });
   }
 
   buildCourtyard() {
@@ -1161,8 +1298,11 @@ export class Level {
   buildBackdrop() {
     const o = { collide: false, nav: false, map: false };
     const bld = (x, z, w, h, d, mat = 'concreteWall', rot = 0) => {
-      this.box(mat, x, h / 2, z, w, h, d, { ...o, rot, uv: 4 });
+      // Facade scans (ambientCG, 13 m per tile) carry real window grids; plain sets get punched dark openings.
+      const facade = mat.startsWith('facade');
+      this.box(mat, x, h / 2, z, w, h, d, { ...o, rot, uv: facade ? 13 : 4 });
       this.box('metalDark', x, h + 0.25, z, w + 0.3, 0.5, d + 0.3, { ...o, rot, uv: 4 });
+      if (facade) return;
       // Window bands on the face toward the depot (dark openings; some lit later by fires).
       const c = Math.cos(rot), sn = Math.sin(rot);
       const toC = V(-x, 0, -z).normalize();
@@ -1180,7 +1320,7 @@ export class Level {
       }
     };
     // North: factory block with saw-tooth roofs & chimneys.
-    bld(-30, -95, 40, 14, 22, 'brick'); bld(15, -105, 30, 20, 26, 'concreteWall'); bld(48, -92, 20, 10, 18, 'corrugated');
+    bld(-30, -95, 40, 14, 22, 'brick'); bld(15, -105, 30, 20, 26, 'facadeB'); bld(48, -92, 20, 10, 18, 'corrugated');
     for (let i = 0; i < 6; i++) this.beam('corrugated', V(-48 + i * 6.5, 14, -95 + 11), V(-48 + i * 6.5 + 3.2, 17, -95 + 11), 6.5, 0.2, { uv: 4 });
     this.cyl('brick', V(-8, 0, -112), V(-8, 46, -112), 2.4, 16, { r2: 1.7, uv: 3 });
     this.cyl('concrete', V(30, 0, -125), V(30, 38, -125), 2.8, 16, { r2: 2.0, uv: 3 });
@@ -1192,13 +1332,13 @@ export class Level {
     this.beam('rackBeam', V(cx - 12, 30, cz), V(cx + 30, 30, cz), 1.2, 1.4, { uv: 2 });
     this.beam('rackBeam', V(cx - 12, 33, cz), V(cx + 30, 31, cz), 0.3, 0.3, { uv: 2 });
     // South: apartment blocks (shelled) + water tower.
-    bld(-20, 100, 26, 22, 14, 'concreteWall', -0.05); bld(18, 108, 22, 30, 16, 'concrete', 0.08); bld(-60, 92, 18, 12, 14, 'brick');
+    bld(-20, 100, 26, 22, 14, 'facadeA', -0.05); bld(18, 108, 22, 30, 16, 'facadeB', 0.08); bld(-60, 92, 18, 12, 14, 'facadeA');
     const wt = V(55, 0, 95);
     for (const [dx, dz] of [[-3, -3], [3, -3], [-3, 3], [3, 3]]) this.beam('steel', wt.clone().add(V(dx * 1.3, 0, dz * 1.3)), wt.clone().add(V(dx, 18, dz)), 0.4, 0.4);
     this.cyl('steel', wt.clone().add(V(0, 18, 0)), wt.clone().add(V(0, 25, 0)), 5.5, 20, { uv: 3 });
     this.cyl('steel', wt.clone().add(V(0, 25, 0)), wt.clone().add(V(0, 27.5, 0)), 0.5, 20, { r2: 5.5, uv: 3 });
     // West: low sheds + tree line silhouettes (dark boxes read as hedges in haze).
-    bld(-100, -30, 18, 7, 30, 'corrugated', 0.2); bld(-96, 25, 14, 9, 20, 'brick', -0.15);
+    bld(-100, -30, 18, 7, 30, 'corrugated', 0.2); bld(-96, 25, 14, 9, 20, 'facadeA', -0.15);
     // Outside power line marching along the north and east.
     const pts = []; for (let x = -120; x <= 120; x += 30) pts.push(V(x, 0, -72));
     this.powerLine(pts, 10, { noCollide: true, transformers: false });
@@ -1206,6 +1346,88 @@ export class Level {
     this.powerLine(pts2, 10, { noCollide: true, transformers: false });
     // Earth berms hiding the ground seam beyond the walls.
     for (const [x, z, w, d] of [[0, -66, 140, 6], [0, 66, 140, 6], [-66, 0, 6, 140], [66, 0, 6, 140]]) this.box('ground', x, 0.2, z, w, 0.8, d, { ...o, uv: 4 });
+  }
+
+  /**
+   * Storytelling + anti-tiling decal pass (all from the one decal atlas): graffiti, hazard/stencil signage and leak
+   * streaks on walls; oil stains, cracks, asphalt patches, tyre tracks and shell scorch marks on the ground.
+   */
+  dressDecals() {
+    const B = this.bounds, D = (k, p, n, w, h, sp, o) => this.decalA(k, p, n, w, h, sp, o);
+    const graf = () => 'graf' + Math.floor(rnd() * 16);
+    // --- Perimeter wall inner faces: one panel in ~3 tagged, leak streaks under the coping, the odd sign.
+    const sides = [[-B, -B, B, -B], [B, B, -B, B], [-B, B, -B, -B], [B, -B, B, B]];
+    sides.forEach(([x1, z1, x2, z2], si) => {
+      const len = Math.hypot(x2 - x1, z2 - z1), dir = V((x2 - x1) / len, 0, (z2 - z1) / len), inward = V(-dir.z, 0, dir.x);
+      for (let d = 3, k = 0; d < len - 2; d += 6, k++) {
+        const p = V(x1, 0, z1).addScaledVector(dir, d).addScaledVector(inward, 0.25);
+        const r = rnd();
+        if (r < 0.34) {
+          const w = rand(2.2, 3.2);
+          D(graf(), p.clone().add(V(0, rand(1.2, 1.7), 0)).addScaledVector(dir, rand(-0.8, 0.8)), inward, w, w, rand(-0.06, 0.06), { flip: rnd() < 0.3 });
+        } else if (r < 0.4) {
+          D(rnd() < 0.5 ? 'stNoEntry' : 'stZone', p.clone().add(V(0, 1.9, 0)), inward, 2.4, rnd() < 0.5 ? 0.6 : 0.75, 0);
+        } else if (r < 0.46) {
+          D('sign' + Math.floor(rnd() * 3), p.clone().add(V(0, 1.75, 0)), inward, 0.55, 0.55, rand(-0.05, 0.05));
+        }
+        if (rnd() < 0.55) D('leak' + Math.floor(rnd() * 4), p.clone().add(V(0, 3.4 - 1.35, 0)).addScaledVector(dir, rand(-1.8, 1.8)), inward, rand(0.8, 1.3), 2.7, 0, { lift: 0.016 });
+        void si; void k;
+      }
+    });
+    // --- Warehouse: big stencilled unit number by the main door (landmark), hazard tape at the door edges,
+    // yellow aisle lines between the racks, leaks under the windows.
+    D('st07', V(-14.45, 3.3, -26.83), V(0, 0, 1), 4.6, 2.0, 0);
+    D('stZone', V(3.5, 2.6, -26.83), V(0, 0, 1), 3.4, 1.06, 0);
+    for (const x of [-12.1, -5.9]) D('tape', V(x, 1.4, -26.83), V(0, 0, 1), 2.8, 0.35, Math.PI / 2);
+    for (const z of [-35.25, -41.2, -28.9]) this.groundDecal('tape', 0, z, 23, 0.16, 0, { flip: false });
+    for (const x of [-15, -2, 3, 14]) D('leak' + Math.floor(rnd() * 4), V(x + rand(-0.6, 0.6), 5.0, -26.83), V(0, 0, 1), 1.1, 2.6, 0);
+    for (const x of [-10, 5, 15]) D('leak' + Math.floor(rnd() * 4), V(x, 5.0, -49.17), V(0, 0, -1), 1.2, 2.8, 0);
+    D(graf(), V(-18.17, 1.5, -42), V(-1, 0, 0), 2.6, 2.6, 0);
+    D(graf(), V(18.17, 1.4, -42), V(1, 0, 0), 2.8, 2.8, 0);
+    // --- Office: tags on the shelled facade, a hazard sign by the side door, leaks under the upper windows.
+    D(graf(), V(-9.0, 1.4, 31.83), V(0, 0, -1), 2.0, 2.0, 0.03);
+    D(graf(), V(8.0, 1.3, 31.83), V(0, 0, -1), 2.0, 2.0, -0.04);
+    D(graf(), V(-14.17, 1.6, 41), V(-1, 0, 0), 2.6, 2.6, 0);
+    D(graf(), V(3.5, 1.4, 44.17), V(0, 0, 1), 2.6, 2.6, 0);
+    for (const x of [-11, 1.5]) D('leak' + Math.floor(rnd() * 4), V(x + 0.3, 3.0, 31.83), V(0, 0, -1), 0.9, 2.0, 0);
+    D(graf(), V(-3.92, 1.5, 38.6), V(1, 0, 0), 1.9, 1.9, 0);    // inside, ground floor partition
+    D(graf(), V(-1.92, 3.4 + 1.5, 41.5), V(1, 0, 0), 1.7, 1.7, 0);
+    // --- Pump house / utility boxes / loading dock signage.
+    D('sign0', V(15, 1.7, -13.33), V(0, 0, 1), 0.5, 0.5, 0);
+    D('tape', V(9, 0.95, -22.98), V(0, 0, 1), 5.8, 0.18, 0);
+    D(graf(), V(13.0, 1.25, -18.67), V(0, 0, -1), 1.9, 1.9, 0);
+    D('stNoEntry', V(15, 2.4, -18.67), V(0, 0, -1), 2.2, 0.55, 0);
+    // --- Ruins: tags + leaks on the houses.
+    D(graf(), V(-47.6, 1.4, -19.69), V(0, 0, -1), 1.6, 1.6, 0);
+    D(graf(), V(-46.19, 1.3, 15.6), V(-1, 0, 0), 1.6, 1.6, 0.05);
+    D(graf(), V(-41.69, 1.3, 32.2), V(-1, 0, 0), 1.4, 1.4, 0);
+    D('stNoEntry', V(-38.5, 2.65, 30.82), V(0, 0, -1), 1.8, 0.45, 0);
+    // --- Ground: oil under vehicles/generators, cracks + patches on the road and courtyard, tyre tracks,
+    // shell scorch marks (the burning wrecks bring their own).
+    const G = (k, x, z, w, h, sp = rand(0, 6.28)) => this.groundDecal(k, x, z, w, h, sp);
+    for (const [x, z, s] of [[17.4, 31.2, 2.2], [-32, -31.3, 2.0], [13.6, -45.2, 1.3], [-1.2, 5.2, 1.4], [12.5, 2.8, 1.1], [-24.5, -8, 1.6], [31.5, 1.5, 1.8], [44.2, -6.2, 1.5], [9.2, -20.6, 1.5], [-18.5, 6.2, 1.0], [36.5, 12.8, 1.3], [0.5, -33.5, 1.6], [-7.5, -40.5, 1.2]]) {
+      G('oil' + (rnd() < 0.5 ? 0 : 1), x, z, s, s * rand(0.7, 1));
+      if (rnd() < 0.5) G('oil' + (rnd() < 0.5 ? 0 : 1), x + rand(-0.8, 0.8), z + rand(-0.8, 0.8), s * 0.45, s * 0.4);
+    }
+    for (let x = -B + 4; x < B - 4; x += rand(5, 11)) G(rnd() < 0.6 ? 'crack' : 'patch', x, rand(0.8, 7.2), rand(2.2, 3.4), rand(1.2, 2.4));
+    for (let z = -19; z < 8; z += rand(5, 9)) G(rnd() < 0.5 ? 'crack' : 'patch', -24 + rand(-2.5, 2.5), z, rand(2.0, 3.0), rand(1.2, 2.2));
+    for (const [x, z] of [[30, -14], [38, 18], [46, 6], [28, 10], [50, -18], [37, -20], [-10, -30], [12, -29.5], [6, -46.5], [-2, 25.5], [-12, 27]]) G(rnd() < 0.5 ? 'crack' : 'patch', x, z, rand(2.2, 3.4), rand(1.4, 2.4));
+    // Tyre tracks: trucks swinging off the road into the container yard and up to the warehouse door.
+    const track = (pts, w = 0.55) => {
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const [ax, az] = pts[i], [bx, bz] = pts[i + 1], len = Math.hypot(bx - ax, bz - az);
+        const yaw = Math.atan2(bz - az, bx - ax);
+        for (const off of [-0.95, 0.95]) {
+          const ox = -Math.sin(yaw) * off, oz = Math.cos(yaw) * off;
+          this.groundDecal('tyre', (ax + bx) / 2 + ox, (az + bz) / 2 + oz, len + 0.6, w, -yaw, { y: 0.001 * i });
+        }
+      }
+    };
+    track([[14, 5.5], [19, 4.6], [24, 1.5], [28.5, -3.0], [33, -6.5]]);
+    track([[-11, 3.2], [-11.8, -3], [-12.2, -10], [-11.2, -17], [-9.5, -24.5]]);
+    track([[-24, 6], [-24.6, -2], [-24, -12], [-23.2, -20]]);
+    // Shell scorch marks (impacts) in the open.
+    for (const [x, z, s] of [[3.5, 6.2, 3.2], [-19, -14, 2.6], [27.5, 30, 3.0], [-30, 10, 2.4], [45, -30, 2.8], [-12, 22, 2.2]]) G('scorch', x, z, s, s);
   }
 
   placeProps() {
@@ -1275,7 +1497,7 @@ export class Level {
         merged.computeBoundingSphere();
         const mesh = new THREE.Mesh(merged, mat);
         mesh.castShadow = cast && !mat.transparent;
-        mesh.receiveShadow = !mat.transparent || mat === this.mats.get('leakDecal');
+        mesh.receiveShadow = !mat.transparent || mat === this.mats.get('leakDecal') || mat === this.mats.get('decals');
         mesh.matrixAutoUpdate = false;
         mesh.updateMatrix();
         mesh.name = 'lvl_' + (mat.name || 'mat');
@@ -1372,7 +1594,8 @@ export class Level {
     this.shaftOpenings.push({ center: V(-9, 2.4, -27), w: 5.6, h: 4.6, normal: V(0, 0, 1), length: 14 });
     const shafts = buildLightShafts(this.shaftOpenings, sunDir, new THREE.Color(1.0, 0.72, 0.45), { length: 24, intensity: 0.22 });
     this.group.add(shafts);
-    const dust = buildDust([new THREE.Box3(V(-17, 0.5, -44), V(17, 7.5, -28))], 700, new THREE.Color(1.0, 0.8, 0.6).multiplyScalar(0.55), sunDir);
+    const whBox = new THREE.Box3(V(-17, 0.5, -44), V(17, 7.5, -28));
+    const dust = buildDust([whBox, whBox, new THREE.Box3(V(-13.5, 0.4, 36), V(9.5, 2.9, 43.6)), new THREE.Box3(V(-13.5, 3.8, 36), V(9.5, 6.4, 43.6))], 1100, new THREE.Color(1.0, 0.8, 0.6).multiplyScalar(0.55), sunDir);
     this.group.add(dust);
     // Per-frame animation driven from the sky's render callback (always drawn).
     const t0 = performance.now();
@@ -1408,10 +1631,13 @@ export class Level {
 }
 
 function INDOOR_VOLUMES() {
+  // userData.fill: linear RGB bounce fill (≈ irradiance/π) added inside the volume by the unify pass — the
+  // warm sodium + sun bounce in the warehouse, a neutral-warm bounce from the sunlit floors in the office.
+  const box = (a, b, fill) => { const bx = new THREE.Box3(a, b); bx.userData = { fill }; return bx; };
   return [
-    new THREE.Box3(V(-18, -1, -49), V(18, 9.1, -27)),
-    new THREE.Box3(V(-14, -1, 32), V(10, 6.95, 44)),
-    new THREE.Box3(V(12, -1, -18.5), V(18, 3.1, -13.5)),
+    box(V(-18, -1, -49), V(18, 9.1, -27), [0.035, 0.026, 0.017]),
+    box(V(-14, -1, 32), V(10, 6.95, 44), [0.06, 0.052, 0.044]),
+    box(V(12, -1, -18.5), V(18, 3.1, -13.5), [0.02, 0.018, 0.016]),
   ];
 }
 

@@ -56,7 +56,7 @@ export class PlayerBody {
     const a = this.actor;
     // Stand the body a little behind the eye so looking straight down frames the feet, not the
     // chest (and the clipped edge never comes near the near plane).
-    const back = 0.2;
+    const back = 0.1;
     a.position.set(p.position.x + Math.sin(p.yaw) * back, p.position.y, p.position.z + Math.cos(p.yaw) * back);
     a.velocity.set(p.velocity.x, 0, p.velocity.z);
     a.yaw = p.yaw;
@@ -65,7 +65,7 @@ export class PlayerBody {
     a.crouch = this.crouch;
     a.weapon = g.currentWeapon;
     // Upper-body cut: just below the collarbones, following crouch/slide eye height.
-    this.clipY.value = p.position.y + p.eyeHeight.x - 0.42;
+    this.clipY.value = p.position.y + p.eyeHeight.x - 0.48;
     ch.update(dt, a);
   }
 }

@@ -516,6 +516,7 @@ export class Game {
 
   // ------------------------------------------------------------------ main loop
   update(dt) {
+    if (!(dt > 0)) dt = 0; // never step backwards (slow first frame / clock skew)
     const inp = this.input, p = this.player, s = this.settings;
     this.time += dt;
     this.frame++;

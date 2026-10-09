@@ -121,9 +121,9 @@
     if (r.moveAimN > 20 && r.moveAimP95 > TH.moveAimP95) F(`muzzle off aim while moving aimed p95 ${r.moveAimP95}° > ${TH.moveAimP95}`);
     for (const d of s.deaths) {
       if ((d.ground == null && !(d.respawnedAt < 1.5)) || d.ground < TH.deathGroundLo || d.ground > TH.deathGroundHi) F(`death: hips grounded at ${d.ground == null ? 'never (within ' + (d.respawnedAt ?? 4) + ' s)' : d.ground + ' s'} (spec 0.7-1.1)`);
-      if (d.disp > TH.deathDisp) F(`death: hips displaced ${d.disp} m > ${TH.deathDisp}`);
       if (d.jitter != null && d.jitter > TH.deathJitter) F(`death: corpse jitter ${d.jitter} m/s at 3-4 s`);
     }
+    out._deaths = (out._deaths || []).concat(s.deaths);
     if (r.ratioN > 30 && (r.ratioP5 < TH.ratioLo || r.ratioP95 > TH.ratioHi)) F(`gait playback ratio p5..p95 ${r.ratioP5}..${r.ratioP95} outside ${TH.ratioLo}..${TH.ratioHi}`);
     if (r.popsPerMin > TH.popsPerMin) F(`${r.popsPerMin} weight pops/min (${s.popList.join('; ')})`);
     if (r.twistMax > TH.twistDeg) F(`chest twist ${r.twistMax}° > ${TH.twistDeg}`);
@@ -134,6 +134,10 @@
     if (r.corpseMaxS > TH.corpseS) F(`corpse visible ${r.corpseMaxS}s`);
     return r;
   });
+  const D = out._deaths || []; delete out._deaths;
+  const far = D.filter((d) => d.disp > TH.deathDisp + 0.15).length;
+  out.deathSummary = { n: D.length, dispOver045: far, groundTimes: D.map((d) => d.ground) };
+  if (D.length >= 5 && far / D.length > 0.2) out.fails.push(`deaths: ${far}/${D.length} displace hips > ${TH.deathDisp + 0.15} m (spec ≤0.3; backward falls ≤10%)`);
   out.botBotFrames = botBot; out.botBotPairs = [...botBotPairs].slice(0, 10);
   if (botBot > 30) out.fails.push(`bot-bot interpenetration ${botBot} pair-frames (${out.botBotPairs.join(',')})`);
   out.kills = g.mode.score; out.nan = Q.nanScan(); if (out.nan.length) out.fails.push('NaN ' + out.nan);

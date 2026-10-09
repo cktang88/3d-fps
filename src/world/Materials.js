@@ -41,6 +41,32 @@ const DEFS = {
   sandbag: { set: 'Fabric083', tint: 0x9a8865, normal: 2, surface: 'dirt', grime: 0.5, wet: 1, rmin: 0.6 },
   paving: { set: 'PavingStones138', tint: 0xaca598, normal: 1.2, surface: 'concrete', grime: 0.5, wet: 1, puddle: 1, rmin: 0.35 },
   concreteWall: { set: 'Concrete048', tint: 0xbab2a5, normal: 1, surface: 'concrete', grime: 0.5, wet: 0.9, rmin: 0.45 },
+  // Round-2 sets (Poly Haven / ambientCG, CC0) — see README credits.
+  planks: { set: 'WeatheredPlanks', tint: 0xb3a998, normal: 1.3, surface: 'wood', grime: 0.4, wet: 0.9, rmin: 0.5 },
+  rustSheet: { set: 'RustyCorrugated', tint: 0xb9aa9c, sat: 0.62, normal: 1.6, metal: 0.55, surface: 'metal', grime: 0.35, wet: 0.75, rmin: 0.32 },
+  ceilingTile: { set: 'OfficeCeiling006', tint: 0xcfc8bb, normal: 1, surface: 'concrete', grime: 0.3, wet: 0, rmin: 0.6 },
+  wornPlaster: { set: 'WornPlaster', tint: 0xcfc6b4, normal: 1.2, surface: 'concrete', grime: 0.35, wet: 0.5, rmin: 0.5 },
+  facadeA: { set: 'Facade018A', tint: 0xa89d92, sat: 0.8, normal: 1, surface: 'concrete', grime: 0.5, wet: 0.6, rmin: 0.2 },
+  facadeB: { set: 'Facade020A', tint: 0xa89d92, sat: 0.8, normal: 1, surface: 'concrete', grime: 0.5, wet: 0.6, rmin: 0.2 },
+};
+
+/**
+ * Decal atlas (public/assets/textures/DecalAtlas, built by the level art pass from CC0 sources + our own procedural
+ * cells): pixel rects [x, y, w, h] in the 2048² atlas. All decals share ONE material → one draw call.
+ */
+export const DECAL_ATLAS = {
+  size: 2048,
+  rects: {
+    graf0: [0, 0, 256, 256], graf1: [256, 0, 256, 256], graf2: [512, 0, 256, 256], graf3: [768, 0, 256, 256],
+    graf4: [0, 256, 256, 256], graf5: [256, 256, 256, 256], graf6: [512, 256, 256, 256], graf7: [768, 256, 256, 256],
+    graf8: [0, 512, 256, 256], graf9: [256, 512, 256, 256], graf10: [512, 512, 256, 256], graf11: [768, 512, 256, 256],
+    graf12: [0, 768, 256, 256], graf13: [256, 768, 256, 256], graf14: [512, 768, 256, 256], graf15: [768, 768, 256, 256],
+    leak0: [1024, 0, 256, 1024], leak1: [1280, 0, 256, 1024], leak2: [1536, 0, 256, 1024], leak3: [1792, 0, 256, 1024],
+    sign0: [0, 1024, 512, 512], sign1: [512, 1024, 512, 512], sign2: [0, 1536, 512, 512],
+    stZone: [512, 1536, 512, 160], stNoEntry: [512, 1696, 512, 128], st07: [512, 1824, 512, 224],
+    patch: [1024, 1024, 512, 512], tyre: [1024, 1792, 512, 128], tape: [1536, 1792, 512, 64],
+    oil0: [1024, 1536, 256, 256], oil1: [1280, 1536, 256, 256], scorch: [1536, 1024, 512, 512], crack: [1536, 1536, 512, 256],
+  },
 };
 
 /** Tileable 4-channel noise (R macro fbm, G detail fbm, B very low-freq puddle field, A streak noise). */
@@ -97,12 +123,17 @@ varying vec3 vUWP; varying vec3 vUWN;
 uniform sampler2D uNoise; uniform float uWet; uniform float uRain; uniform float uTime;
 uniform vec4 uUni; uniform vec4 uUni2;
 uniform vec3 indoorMin[4]; uniform vec3 indoorMax[4]; uniform int indoorCount; uniform float indoorAmount;
+uniform vec3 indoorFill[4];
+vec3 uFillAcc;
 float indoorFactor(vec3 p) {
   float k = 0.0;
+  uFillAcc = vec3(0.0);
   for (int i = 0; i < 4; i++) {
     if (i >= indoorCount) break;
     vec3 a = smoothstep(indoorMin[i] - 0.05, indoorMin[i] + 0.6, p) * (1.0 - smoothstep(indoorMax[i] - 0.6, indoorMax[i] + 0.05, p));
-    k = max(k, a.x * a.y * a.z);
+    float ki = a.x * a.y * a.z;
+    k = max(k, ki);
+    uFillAcc += indoorFill[i] * ki;
   }
   return k;
 }
@@ -176,6 +207,9 @@ const UNIFY_FRAG = /* glsl */`
   }
   roughnessFactor = clamp(roughnessFactor, 0.02, 1.0);
   uIndoorK = ind;
+  // Motivated bounce fill inside buildings (sunlit floors / practicals bouncing back): a little more on
+  // down-facing surfaces (ceilings, undersides) which only see the floor.
+  uIndoorFillC = uFillAcc * (1.0 + 0.6 * max(-N.y, 0.0));
 }`;
 
 // Re-paint: replace the scan's (red) paint with uPaint while keeping rust/grime areas of the texture.
@@ -202,6 +236,7 @@ export class Materials {
     indoorMax: { value: [0, 1, 2, 3].map(() => new THREE.Vector3(-1e5, -1e5, -1e5)) },
     indoorCount: { value: 0 },
     indoorAmount: { value: 0.62 },
+    indoorFill: { value: [0, 1, 2, 3].map(() => new THREE.Vector3(0, 0, 0)) },
   };
   static get indoor() { return Materials.unify; }
 
@@ -223,7 +258,7 @@ export class Materials {
 
   async load() {
     const sets = [...new Set(Object.values(DEFS).map((d) => d.set))];
-    const alphaSets = ['Fence006', 'MetalWalkway013', 'Leaking003'];
+    const alphaSets = ['Fence006', 'MetalWalkway013', 'Leaking003', 'DecalAtlas'];
     const alpha = {};
     await Promise.all([
       ...sets.map((s) => this.assets.materialSet(s)),
@@ -282,6 +317,18 @@ export class Materials {
       depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
     });
     this.mats.leakDecal.name = 'leakDecal';
+    // Decal atlas (graffiti, leaks, signage, oil, scorch, cracks, tyre tracks, tape): one material, one draw call.
+    // Goes through the unify pass (alphaOK) so decals get the same grade, grime, wetness and puddles as the
+    // surfaces they sit on.
+    const da = alpha.DecalAtlas;
+    for (const t of [da.map, da.normalMap, da.roughnessMap]) { if (t) { t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.anisotropy = 8; } }
+    this.mats.decals = new THREE.MeshStandardMaterial({
+      map: da.map, normalMap: da.normalMap, roughnessMap: da.roughnessMap, roughness: 1, metalness: 0,
+      transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
+      normalScale: new THREE.Vector2(0.8, 0.8),
+    });
+    this.mats.decals.name = 'decals';
+    this.applyUnify(this.mats.decals, { grime: 0.12, wet: 0.85, puddle: 1, rmin: 0.08, sat: 0.8, contact: 0, streaks: 0, alphaOK: true });
     // Window glass: dirty, slightly reflective, see-through.
     this.mats.glass = new THREE.MeshPhysicalMaterial({
       color: 0x6f7f84, roughness: 0.12, metalness: 0, transparent: true, opacity: 0.32, envMapIntensity: 1.6,
@@ -303,7 +350,10 @@ export class Materials {
 
   setIndoorVolumes(boxes) {
     const u = Materials.unify;
-    boxes.slice(0, 4).forEach((b, i) => { u.indoorMin.value[i].copy(b.min); u.indoorMax.value[i].copy(b.max); });
+    boxes.slice(0, 4).forEach((b, i) => {
+      u.indoorMin.value[i].copy(b.min); u.indoorMax.value[i].copy(b.max);
+      const f = b.userData?.fill; u.indoorFill.value[i].set(f?.[0] ?? 0, f?.[1] ?? 0, f?.[2] ?? 0);
+    });
     u.indoorCount.value = Math.min(4, boxes.length);
   }
 
@@ -343,12 +393,13 @@ export class Materials {
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', '#include <common>' + UNIFY_FRAG_PARS)
         .replace('#include <map_fragment>', uPaint ? REPAINT_FRAG : '#include <map_fragment>')
-        .replace('#include <emissivemap_fragment>', 'float uIndoorK = 0.0;' + UNIFY_FRAG + '\n#include <emissivemap_fragment>')
+        .replace('#include <emissivemap_fragment>', 'float uIndoorK = 0.0; vec3 uIndoorFillC = vec3(0.0);' + UNIFY_FRAG + '\n#include <emissivemap_fragment>')
         .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
           {
             float ik = 1.0 - uIndoorK * indoorAmount;
             reflectedLight.indirectDiffuse *= ik;
             reflectedLight.indirectSpecular *= mix(ik, 1.0, 0.2);
+            reflectedLight.indirectDiffuse += material.diffuseColor * uIndoorFillC;
           }`);
     };
     mat.customProgramCacheKey = () => (prevKey ? prevKey() : '') + '|unify' + (uPaint ? 'P' : '');

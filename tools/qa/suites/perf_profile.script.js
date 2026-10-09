@@ -34,7 +34,7 @@
     for (const [k, p] of Object.entries(f.passes)) passes[k] = `${p.calls} calls / ${Math.round(p.tris / 1000)}k tris (x${p.n})`;
     out.views[v.name] = {
       total: `${f.total.calls} calls / ${Math.round(f.total.tris / 1000)}k tris`, calls: f.total.calls, tris: f.total.tris,
-      botsHidden: g.botOcclusion?.hiddenCount, shadow: `${f.shadow.calls} calls / ${Math.round(f.shadow.tris / 1000)}k tris (x${f.shadow.n})`, passes, cpuMs: f.cpuMs, wallMs: Math.round(performance.now() - t0),
+      botsHidden: g.botOcclusion?.hiddenCount, fov: +g.renderer.camera.fov.toFixed(2), botsLow: g.bots.filter((b) => b.model?._geoLod?.low).length, shadow: `${f.shadow.calls} calls / ${Math.round(f.shadow.tris / 1000)}k tris (x${f.shadow.n})`, passes, cpuMs: f.cpuMs, wallMs: Math.round(performance.now() - t0),
     };
     window.__perfLegacy = false;
     if (v.scar) Q.down('Mouse2', false);

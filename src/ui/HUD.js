@@ -512,7 +512,7 @@ export class HUD {
       } else {
         ctx.fillStyle = '#ff4d5a';
         ctx.beginPath(); ctx.arc(x, z, firing ? 7 : 6, 0, Math.PI * 2); ctx.fill();
-        if (firing) { ctx.strokeStyle = 'rgba(255,77,90,0.5)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, z, 7 + ((g.time * 20) % 10), 0, Math.PI * 2); ctx.stroke(); }
+        if (firing) { ctx.strokeStyle = 'rgba(255,77,90,0.5)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, z, 7 + (((g.time * 20) % 10 + 10) % 10), 0, Math.PI * 2); ctx.stroke(); }
       }
     }
     ctx.restore();
