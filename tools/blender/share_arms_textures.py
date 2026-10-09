@@ -26,29 +26,29 @@ def write_glb(p, j, bin_):
         f.write(struct.pack('<I4s', len(bin_), b'BIN\0')); f.write(bin_)
 
 
-def compact(j, bin_):
-    used = set()
-    for a in j.get('accessors', []):
-        if 'bufferView' in a: used.add(a['bufferView'])
-        sp = a.get('sparse')
-        if sp: used.add(sp['indices']['bufferView']); used.add(sp['values']['bufferView'])
-    for im in j.get('images', []):
-        if 'bufferView' in im: used.add(im['bufferView'])
-    for ext in (j.get('extensions') or {}).values():
-        pass
-    remap, views, out = {}, [], bytearray()
+def compact(j, bin_, drop_views):
+    """Remove the byte ranges of `drop_views` (buffer 0) from the BIN chunk and shift every buffer-0 offset that
+    follows (plain bufferViews and EXT_meshopt_compression payloads), then drop those bufferViews."""
+    ranges = sorted((j['bufferViews'][i].get('byteOffset', 0), j['bufferViews'][i]['byteLength']) for i in drop_views)
+    def shift(off):
+        return off - sum(l for (o, l) in ranges if o + l <= off)
+    out = bytearray(); last = 0
+    for o, l in ranges:
+        out += bin_[last:o]; last = o + l
+    out += bin_[last:]
     for i, v in enumerate(j['bufferViews']):
-        if i not in used: continue
-        while len(out) % 4: out += b'\0'
-        start = v.get('byteOffset', 0)
-        data = bin_[start:start + v['byteLength']]
-        nv = dict(v); nv['byteOffset'] = len(out)
-        out += data
-        remap[i] = len(views); views.append(nv)
-    j['bufferViews'] = views
-    for a in j.get('accessors', []):
-        if 'bufferView' in a: a['bufferView'] = remap[a['bufferView']]
-        sp = a.get('sparse')
+        if v.get('buffer', 0) == 0 and i not in drop_views:
+            v['byteOffset'] = shift(v.get('byteOffset', 0))
+        ext = (v.get('extensions') or {}).get('EXT_meshopt_compression')
+        if ext and ext.get('buffer', 0) == 0:
+            ext['byteOffset'] = shift(ext.get('byteOffset', 0))
+    # drop the views and remap indices
+    keep = [i for i in range(len(j['bufferViews'])) if i not in drop_views]
+    remap = {old: new for new, old in enumerate(keep)}
+    j['bufferViews'] = [j['bufferViews'][i] for i in keep]
+    for acc in j.get('accessors', []):
+        if 'bufferView' in acc: acc['bufferView'] = remap[acc['bufferView']]
+        sp = acc.get('sparse')
         if sp: sp['indices']['bufferView'] = remap[sp['indices']['bufferView']]; sp['values']['bufferView'] = remap[sp['values']['bufferView']]
     for im in j.get('images', []):
         if 'bufferView' in im: im['bufferView'] = remap[im['bufferView']]
@@ -64,7 +64,7 @@ def main():
         if not mat:
             print('skip (no arms material)', p); continue
         slots = {'basecolor': (mat.get('pbrMetallicRoughness') or {}).get('baseColorTexture'), 'normal': mat.get('normalTexture')}
-        moved = 0
+        moved = 0; drop = []
         for slot, tref in slots.items():
             if not tref: continue
             tex = j['textures'][tref['index']]
@@ -80,9 +80,9 @@ def main():
                 name = f'arms_{slot}_{hashlib.md5(data).hexdigest()[:8]}.{ext}'; fp = os.path.join(d, name)
             if not os.path.exists(fp):
                 open(fp, 'wb').write(data)
-            im.pop('bufferView'); im['uri'] = name
+            drop.append(im.pop('bufferView')); im['uri'] = name
             moved += 1
-        bin_ = compact(j, bin_)
+        bin_ = compact(j, bin_, set(drop))
         write_glb(p, j, bin_)
         print(os.path.basename(p), 'shared', moved, 'maps ->', round(os.path.getsize(p) / 1e6, 2), 'MB')
 

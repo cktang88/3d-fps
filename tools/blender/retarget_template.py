@@ -134,7 +134,7 @@ def rot_yxz(pitch, yaw, roll):
 def qmat(q):
     x, y, z, w = q
     return np.array([[1-2*(y*y+z*z), 2*(x*y-z*w), 2*(x*z+y*w)], [2*(x*y+z*w), 1-2*(x*x+z*z), 2*(y*z-x*w)], [2*(x*z-y*w), 2*(y*z+x*w), 1-2*(x*x+y*y)]])
-RESHAPE = dict(off=(-0.025, -0.055, -0.02), pitch=math.radians(-6), roll_k=0.5, roll_max=math.radians(27), yaw_k=0.5)
+RESHAPE = dict(off=(-0.025, -0.025, -0.02), pitch=math.radians(-4), roll_k=0.6, roll_max=math.radians(30), yaw_k=0.5)
 g0 = base['hip'][:3, 3]
 rl = out['clips']['Reload']
 angs = [2 * math.acos(min(1, abs(f[6]))) for f in rl['gun']]
@@ -150,7 +150,7 @@ for f, a in zip(rl['gun'], angs):
     new.append(r([*t, *quat(Rn)]))
 rl['gun'] = new
 rl['reshaped'] = {k: (round(math.degrees(v), 1) if 'pitch' in k or 'max' in k else v) for k, v in RESHAPE.items()}
-out['metrics']['Reload_reshaped'] = RESHAPE | {'pitch': -6, 'roll_max': 27}
+out['metrics']['Reload_reshaped'] = RESHAPE | {'pitch': -4, 'roll_max': 30}
 # Base poses (for docs): template gun grip in camera space.
 for b in ('hip', 'ads'):
     m = base[b]

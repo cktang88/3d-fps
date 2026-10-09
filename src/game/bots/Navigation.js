@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { init as recastInit, NavMeshQuery, Crowd } from '@recast-navigation/core';
+import { init as recastInit, NavMeshQuery, Crowd, importNavMesh, exportNavMesh } from '@recast-navigation/core';
 import { threeToSoloNavMesh } from '@recast-navigation/three';
 
 /** Recast navmesh (generated at load from level geometry) + Detour crowd for bot movement. */
@@ -7,8 +7,46 @@ export class Navigation {
   static async create(level) {
     await recastInit();
     const nav = new Navigation(level);
-    nav.build();
+    // Perf: load the baked navmesh (tools/perf/bake_nav.mjs) when the nav input geometry hash matches;
+    // otherwise build at boot as before.
+    if (!(await nav.loadBaked())) nav.build();
     return nav;
+  }
+
+  /** Hash of the navmesh input (rounded positions of level.navGeos), so a stale bake is never used. */
+  inputHash() {
+    let h = 0x811c9dc5;
+    const mix = (v) => { h ^= v; h = Math.imul(h, 16777619); };
+    for (const g of this.level.navGeos) {
+      const p = g.attributes.position.array;
+      for (let i = 0; i < p.length; i++) mix(Math.round(p[i] * 100) | 0);
+      mix(g.index ? g.index.count : -1);
+    }
+    return (h >>> 0).toString(16);
+  }
+
+  async loadBaked(url = './assets/nav/level') {
+    const t0 = performance.now();
+    try {
+      const meta = await (await fetch(url + '.json')).json();
+      if (meta.hash !== this.inputHash()) { console.warn('navmesh bake is stale (level changed); building at boot. Run node tools/perf/bake_nav.mjs'); return false; }
+      const bin = new Uint8Array(await (await fetch(url + '.bin')).arrayBuffer());
+      const { navMesh } = importNavMesh(bin);
+      this._init(navMesh);
+      this.buildTime = performance.now() - t0;
+      this.baked = true;
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /** For the bake tool: serialised navmesh + input hash. */
+  exportBaked() { return { hash: this.inputHash(), bin: exportNavMesh(this.navMesh) }; }
+
+  _init(navMesh) {
+    this.navMesh = navMesh;
+    this.query = new NavMeshQuery(navMesh);
+    this.crowd = new Crowd(navMesh, { maxAgents: 24, maxAgentRadius: 0.6 });
+    this.halfExtents = { x: 2, y: 3, z: 2 };
   }
 
   constructor(level) {
@@ -35,12 +73,9 @@ export class Navigation {
       bounds: [[-60, -1, -60], [60, 12, 60]],
     });
     if (!success) throw new Error('navmesh failed: ' + error);
-    this.navMesh = navMesh;
-    this.query = new NavMeshQuery(navMesh);
-    this.crowd = new Crowd(navMesh, { maxAgents: 24, maxAgentRadius: 0.6 });
+    this._init(navMesh);
     this.buildTime = performance.now() - t0;
     console.info(`navmesh built in ${this.buildTime.toFixed(0)}ms`);
-    this.halfExtents = { x: 2, y: 3, z: 2 };
   }
 
   addAgent(pos) {
