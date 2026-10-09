@@ -163,8 +163,10 @@ export class ViewModel {
     this.vmSunTarget = new THREE.Object3D();
     this.vmSunTarget.position.set(0.15, -0.22, -0.55);
     this.vmSun.target = this.vmSunTarget;
-    if (q >= 1) {
-      this.vmSun.castShadow = true;
+    // Built on every quality (render owner): presets / adaptive quality / the benchmark toggle it at runtime
+    // (applyFeatures), and a Low boot can be raised later without rebuilding the lighting rig.
+    {
+      this.vmSun.castShadow = q >= 1;
       const sh = this.vmSun.shadow;
       sh.mapSize.setScalar(q >= 2 ? 1024 : 512);
       Object.assign(sh.camera, { left: -0.75, right: 0.75, top: 0.75, bottom: -0.75, near: 0.05, far: 4 });
@@ -188,7 +190,7 @@ export class ViewModel {
     s.add(this.vmSun, this.vmSunTarget, this.vmHemi, this.vmProbe, this.vmRim);
     // Local light probe (Medium+): a 32 px cube rendered one face per frame at the eye, read back
     // asynchronously into L0/L1 spherical harmonics (world space; rotated into view space per frame).
-    if (q >= 1) {
+    {
       this.probeRT = new THREE.WebGLCubeRenderTarget(32, { type: THREE.HalfFloatType, generateMipmaps: false });
       this.probeCams = [];
       // Same face set-up as THREE.CubeCamera (WebGL coordinate system, negative fov flip).
@@ -201,7 +203,7 @@ export class ViewModel {
       }
       this.probeFace = 0;
       this.probeInterval = q >= 2 ? 0.25 : 0.5;
-      this.probeEvery = q >= 2 ? 2 : 4; // render one cube face every Nth frame
+      this.probeEvery = q >= 2 ? 2 : q >= 1 ? 4 : 0; // render one cube face every Nth frame (0 = probe off)
       this._probeTick = 0;
       this.probeTimer = 0;
       this.shTarget = null; // world-space SH from the last readback
@@ -1529,11 +1531,13 @@ export class ViewModel {
         this.scopeCam.updateMatrixWorld();
         const r2 = g.renderer.renderer;
         // Perf: PiP resolution per quality (Low 256 / Med 384 / High 512 / Ultra 768); skipped on QA sim-only frames.
-        const res = [256, 384, 512, 768][g.settings.quality] ?? 512;
-        if (this.scopeRT.width !== res) this.scopeRT.setSize(res, res);
+        // (render owner: from Renderer.features — presets, adaptive quality, benchmark; 0 = PiP off)
+        const res = g.renderer.features?.pip ?? [256, 384, 512, 768][g.settings.quality] ?? 512;
+        if (res > 0 && this.scopeRT.width !== res) this.scopeRT.setSize(res, res);
+        const every = g.renderer.features?.pipEvery ?? ((g.settings.quality ?? 2) >= 2 ? 1 : 2);
         // Perf: on Medium and Low the PiP refreshes every 2nd frame (the lens image is small and mostly static while aiming).
         this._scopeTick = (this._scopeTick || 0) + 1;
-        if (!window.__qaSkipRender && ((g.settings.quality ?? 2) >= 2 || (this._scopeTick & 1) === 0 || !this._scopeFresh)) {
+        if (!window.__qaSkipRender && res > 0 && (every <= 1 || (this._scopeTick & 1) === 0 || !this._scopeFresh)) {
           this._scopeFresh = true;
           const prevTarget = r2.getRenderTarget();
           // Reuse this frame's shadow maps (the main pass already updated them).
@@ -1597,14 +1601,14 @@ export class ViewModel {
     this.vmSun.position.copy(this.vmSunTarget.position).addScaledVector(sunV, 2);
     this.vmSun.color.copy(lvl.sun.color);
     this.vmSun.intensity = Math.min(lvl.sun.intensity, 4) * 0.85 * this._sunK;
-    this.vmSun.castShadow = !!this._shadowRT && this._sunK > 0.15;
+    this.vmSun.castShadow = !!this._shadowRT && this.vmShadowOn !== false && this._sunK > 0.15;
 
     // ---- IBL: the sky env map is world-oriented; the view scene lives in camera space.
     this.viewScene.environmentRotation.setFromQuaternion(camQi);
 
     // ---- Local light probe (round-robin cube faces + async SH readback).
     const skip = !!window.__qaSkipRender;
-    if (this.probeRT && !skip && (this._probeTick = (this._probeTick + 1) % this.probeEvery) === 0) {
+    if (this.probeRT && this.probeEvery > 0 && !skip && (this._probeTick = (this._probeTick + 1) % this.probeEvery) === 0) {
       if (!this._probeTagged) this._tagProbeLayer();
       const sm = r.shadowMap, au = sm.autoUpdate, nu = sm.needsUpdate;
       sm.autoUpdate = false; sm.needsUpdate = false;
@@ -1680,6 +1684,23 @@ export class ViewModel {
       r.render(this.viewScene, this.viewCam);
       r.setRenderTarget(prevT);
       sm.autoUpdate = au; sm.needsUpdate = nu;
+    }
+  }
+
+  /**
+   * Graphics features (render owner; Renderer.features via Game.applyGraphicsFeatures): light-probe rate
+   * (0 = off, the hemisphere fill takes over) and the viewmodel sun-shadow map size (0 = off).
+   */
+  applyFeatures(f) {
+    const every = f.probe | 0;
+    if (every !== this.probeEvery) {
+      this.probeEvery = every;
+      this._probeTick = 0;
+      if (!every) { this.shTarget = null; this.vmProbe.intensity = 0; }
+    }
+    this.vmShadowOn = f.vmShadow > 0;
+    if (f.vmShadow > 0 && this.vmSun.shadow.mapSize.x !== f.vmShadow) {
+      this.vmSun.shadow.mapSize.setScalar(f.vmShadow); // three resizes the map on its next shadow render
     }
   }
 

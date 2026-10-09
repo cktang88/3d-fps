@@ -7,6 +7,7 @@ import { BotOcclusion } from '../render/Occlusion.js';
 import { LightPool } from '../render/LightPool.js';
 import { StaticShadowCache } from '../render/ShadowCache.js';
 import { Pvs } from '../render/Pvs.js';
+import { AdaptiveQuality } from '../render/Adaptive.js';
 import { Physics, G } from '../core/Physics.js';
 import { Input } from '../core/Input.js';
 import { Audio } from '../core/Audio.js';
@@ -124,8 +125,12 @@ export class Game {
     this.buildLoadout();
     this.perf.tag(this.renderer.scene, 'effects+viewmodel');
     // Perf: N physical point lights (by quality) stand in for every logical PointLight (render/LightPool.js).
-    this.lightPool = new LightPool(this.renderer.scene, this.renderer.camera, [3, 4, 6, 8][s.quality] ?? 6);
+    // Built with the maximum (8); the active count follows the graphics features (presets / adaptive / benchmark).
+    this.lightPool = new LightPool(this.renderer.scene, this.renderer.camera, 8);
     this.lightPool.adopt();
+    this.renderer.onFeatures = (f) => this.applyGraphicsFeatures(f);
+    this.adaptive = new AdaptiveQuality(this);
+    this.applyGraphicsFeatures(this.renderer.features);
 
     // Patch every material for indoor IBL attenuation (after all scene content exists).
     this.level.applyInteriorOcclusion();
@@ -184,6 +189,37 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ loadout
+  /**
+   * Graphics features owned outside the Renderer (render owner; Renderer.computeFeatures): point-light pool size,
+   * viewmodel probe / sun shadow, material cohesion path, fog, transparent particles. Called on every applySettings.
+   */
+  applyGraphicsFeatures(f) {
+    if (!f) return;
+    this.lightPool?.setActive(f.lights ?? 6);
+    this.viewmodel?.applyFeatures?.(f);
+    Materials.unify.uUnifyMode.value = f.unify === 'off' ? 2 : f.unify === 'lite' ? 1 : 0;
+    const scene = this.renderer.scene;
+    if (scene.fog) this._fog = scene.fog;
+    const fog = f.fog === false ? null : this._fog ?? null;
+    if (scene.fog !== fog) scene.fog = fog;
+    // Transparent particles (benchmark toggle): moved off layer 0 so no camera draws them; systems keep updating.
+    const partsOn = f.particles !== false;
+    if (partsOn !== (this._particlesOn ?? true)) {
+      this._particlesOn = partsOn;
+      if (!partsOn) {
+        this._hiddenParticles = [];
+        scene.traverse((o) => {
+          const m = o.material;
+          if (!m || Array.isArray(m) || !m.transparent || !o.layers.isEnabled(0)) return;
+          if (o.isPoints || o.isSprite || m.blending === THREE.AdditiveBlending || (m.isShaderMaterial && !m.depthWrite)) { o.layers.disable(0); this._hiddenParticles.push(o); }
+        });
+      } else {
+        for (const o of this._hiddenParticles || []) o.layers.enable(0);
+        this._hiddenParticles = null;
+      }
+    }
+  }
+
   buildLoadout() {
     const lo = this.settings.loadout;
     const mk = (id) => {
@@ -685,6 +721,7 @@ export class Game {
     const lowHealth = p.alive ? clamp(1 - p.health / 40, 0, 1) : 0.6;
     this.audio.setMuffle(live || !this.started ? lowHealth * 0.55 : 0.75, dt);
     // QA harness hook: skip GPU work on frames that are only advancing the simulation.
+    this.adaptive?.update(live);
     if (!window.__qaSkipRender) this.renderer.render(dt, lowHealth);
     inp.endFrame();
   }

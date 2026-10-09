@@ -1,0 +1,2 @@
+{"tag":"bench_smoke","w":480,"h":270,"match":false,"renderScript":true,"setupFiles":["tools/qa/suites/lib.js"],
+ "script":"(async()=>{const g=window.__game;window.__qaSkipRender=false;const r=await window.__bench.run(g,{stepMs:1500,settleMs:300,steps:[0,1,4,7,9,10,12,13,15,17]});const txt=window.__bench.text(r);const el=document.getElementById('gfxBench');return {txt, overlay: !!el, started:g.started, paused:g.paused, primary:g.settings.loadout.primary, bench:g.renderer.bench, lights:g.lightPool.active, fog:!!g.renderer.scene.fog, unify:g.renderer.features.unify};})()"}

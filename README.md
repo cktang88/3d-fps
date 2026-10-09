@@ -9,6 +9,17 @@ npm run dev      # http://localhost:5173
 npm run build    # static build in dist/
 ```
 
+![Team deathmatch in the courtyard](docs/screenshots/action.jpg)
+
+| | |
+|---|---|
+| ![Golden-hour sun over the office block](docs/screenshots/sun.jpg) | ![Warehouse interior under sodium lamps](docs/screenshots/warehouse.jpg) |
+| *Low storm sun, god rays and wet asphalt* | *Warehouse: practical lamps, light shafts, dust* |
+| ![Warehouse catwalk](docs/screenshots/catwalk.jpg) | ![Container yard](docs/screenshots/containers.jpg) |
+| *Catwalk over the racking* | *Container yard after the rain* |
+
+*In-engine captures at 1600x900, High quality (no post-edit).*
+
 ## Features
 
 - **Movement** (Source-style accel/friction): walk, sprint, tactical sprint (double-tap Shift), crouch, slide,
@@ -64,7 +75,14 @@ tools/        headless playtest harness + audio prep scripts
 
 ## Credits & licences
 
-Code is original except where noted. Third-party assets:
+Code is original except where noted:
+
+- **AMD FidelityFX Super Resolution 1.0** (EASU upscaling + RCAS sharpening): GLSL port of `ffx_fsr1.h` from
+  [GPUOpen-Effects/FidelityFX-FSR](https://github.com/GPUOpen-Effects/FidelityFX-FSR), Copyright (c) 2021 Advanced
+  Micro Devices, Inc. — MIT licence (`src/render/Fsr.js`). The CAS sharpen used with upscaling off follows AMD
+  FidelityFX CAS (MIT).
+
+Third-party assets:
 
 - **Weapon models** (M4A1, AK-47, MP5A5, VSS, M24, AWM, P226, M1911, optics) and the first-person
   arm-pose / reload-timing data: [AetherRadar/operation-steel-tide](https://github.com/AetherRadar/operation-steel-tide)

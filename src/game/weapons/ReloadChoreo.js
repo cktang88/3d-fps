@@ -14,14 +14,14 @@
 // Tactical rifle reload (template timeline unchanged).
 export const RIFLE_TAC = [
   [0.00, 0, 0, 0, 0, 0, 0],
-  [0.10, -1.6, 1.6, 0.4, 3.5, 5, -18],
-  [0.15, -1.6, 0.6, 0.4, 1.5, 5, -23], // old magazine stripped: the gun is tugged down
-  [0.24, -1.8, 1.7, 0.4, 4, 6, -20],
-  [0.50, -2.0, 2.0, 0.4, 5, 6, -21],
-  [0.565, -2.0, 1.1, 0.4, 3, 6, -23], // new magazine pushed up into the well
-  [0.60, -2.0, 2.9, 0.4, 6.5, 6, -19], // seat: slap jolts the gun up
-  [0.68, -1.8, 1.8, 0.3, 4, 5, -18],
-  [0.82, -0.2, 0.2, 0, 0.5, 1, -2],
+  [0.10, -3.0, 3.0, -1.0, 7, 8, -28], // tilt in: magazine well rolled toward the eye and lifted into frame
+  [0.15, -3.0, 2.0, -1.0, 5, 8, -33], // old magazine stripped: the gun is tugged down
+  [0.24, -3.3, 3.2, -1.0, 8, 9, -30],
+  [0.50, -3.5, 3.5, -1.0, 9, 9, -31],
+  [0.565, -3.5, 2.5, -1.0, 7, 9, -33], // new magazine pushed up into the well
+  [0.60, -3.5, 4.4, -1.0, 10.5, 9, -28], // seat: slap jolts the gun up
+  [0.68, -3.2, 3.3, -0.8, 8, 8, -27],
+  [0.82, -0.3, 0.3, 0, 1, 1, -3],
   [0.92, 0, 0, 0, 0, 0, 0],
 ];
 
@@ -34,21 +34,21 @@ export function rifleEmptyKeys(action, rackRoll = 12) {
   if (action === 'rack') {
     const r = rackRoll;
     return [...head,
-      [0.62, -1.6, 1.8, 0.4, 4, 4, (r - 19) / 2],
-      [0.66, -1.5, 1.6, 0.4, 3, 4, r],
-      [0.71, -1.2, 1.3, 1.4, 2, 4, r], // handle run back: the rifle is tugged toward the shoulder
-      [0.735, -1.4, 2.5, 0.2, 5, 4, r * 0.9], // released: bolt slams home
-      [0.79, -1.2, 1.4, 0.3, 3, 3, r * 0.6],
-      [0.90, -0.2, 0.2, 0, 0.5, 1, -1],
+      [0.62, -3.0, 3.2, -1.0, 8, 7, (r - 30) / 2],
+      [0.66, -2.8, 3.0, -1.0, 7, 6, r],
+      [0.71, -2.5, 2.7, 0.2, 6, 6, r], // handle run back: the rifle is tugged toward the shoulder
+      [0.735, -2.7, 4.0, -1.0, 9, 6, r * 0.9], // released: bolt slams home
+      [0.79, -2.4, 2.8, -0.8, 7, 5, r * 0.6],
+      [0.90, -0.3, 0.3, 0, 1, 1, -1],
       [0.97, 0, 0, 0, 0, 0, 0],
     ];
   }
   return [...head, // bolt release
-    [0.61, -1.8, 1.8, 0.4, 4, 7, -25],
-    [0.655, -1.8, 1.3, 0.4, 3, 8, -27],
-    [0.675, -1.8, 2.7, 0.4, 6, 7, -23], // palm hits the release: bolt slams home
-    [0.74, -1.5, 1.6, 0.3, 3.5, 5, -18],
-    [0.86, -0.2, 0.2, 0, 0.5, 1, -2],
+    [0.61, -3.2, 3.3, -1.0, 8, 10, -34],
+    [0.655, -3.2, 2.7, -1.0, 7, 11, -36],
+    [0.675, -3.2, 4.2, -1.0, 10, 10, -31], // palm hits the release: bolt slams home
+    [0.74, -2.8, 3.0, -0.8, 7, 7, -25],
+    [0.86, -0.3, 0.3, 0, 1, 1, -3],
     [0.95, 0, 0, 0, 0, 0, 0],
   ];
 }
@@ -62,20 +62,20 @@ export const BOLT_PHASE = {
 // Pistol gun keys (same layout).
 export const PISTOL_TAC = [
   [0.00, 0, 0, 0, 0, 0, 0],
-  [0.09, -1.0, 1.4, 0.4, 8, 6, -20],
-  [0.13, -1.0, 1.9, 0.4, 10, 6, -23], // thumb on the release, magazine drops
-  [0.40, -1.2, 1.8, 0.4, 9, 7, -24],
-  [0.52, -1.2, 1.3, 0.4, 8, 7, -25],
-  [0.575, -1.2, 2.8, 0.4, 13, 7, -21], // palm slap
-  [0.66, -1.0, 1.6, 0.4, 8, 6, -18],
-  [0.82, -0.1, 0.1, 0, 0.5, 0.5, -1],
+  [0.09, -3.0, 2.8, 0, 4, 10, -42], // tilt in: butt swung toward the support hand, magazine well in frame
+  [0.13, -3.0, 3.3, 0, 6, 10, -46], // thumb on the release, magazine drops
+  [0.40, -3.2, 3.2, 0, 5, 11, -47],
+  [0.52, -3.2, 2.6, 0, 4, 11, -48], // new magazine pushed in
+  [0.575, -3.2, 4.2, 0, 8, 11, -42], // palm slap
+  [0.66, -2.8, 3.0, 0, 5, 9, -36],
+  [0.82, -0.2, 0.2, 0, 0.5, 0.5, -2],
   [0.90, 0, 0, 0, 0, 0, 0],
 ];
 export const PISTOL_EMPTY = [
   ...PISTOL_TAC.slice(0, 7),
-  [0.705, -0.9, 1.3, 0.4, 7, 5, -13],
-  [0.73, -0.7, 2.4, 0.6, 12, 4, -10], // slide release: slide slams forward
-  [0.80, -0.4, 0.8, 0.2, 4, 2, -5],
+  [0.705, -2.2, 2.4, 0.2, 4, 7, -26],
+  [0.73, -2.0, 3.4, 0.6, 9, 6, -22], // slide release: slide slams forward
+  [0.80, -1.0, 1.2, 0.2, 3, 3, -10],
   [0.92, 0, 0, 0, 0, 0, 0],
 ];
 /** Pistol phases: magazine out / gone / new one in hand / seated; hand path keys (offsets, see ViewModel). */

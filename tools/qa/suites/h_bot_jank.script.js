@@ -12,7 +12,7 @@
   const park = [-48, 4.3, -40.5];
   const V = g.player.position.constructor;
   const bots = g.bots;
-  const tplFR = g.charTemplate?.forceFullRate; if (g.charTemplate) g.charTemplate.forceFullRate = true; // every Character incl. respawn spares animates fully
+  const TPL = bots[0]?.model?.tpl || g.charTemplate; const tplFR = TPL?.forceFullRate; if (TPL) TPL.forceFullRate = true; out.tplSame = TPL === g.charTemplate; // every Character incl. respawn spares animates fully
   const S = bots.map(() => ({ stance: [[], []], stanceAcc: [0, 0], stanceOn: [false, false], support: [], yawRate: [], lastChestYaw: null, moveAim: [], deaths: [], dth: null, ratio: [], slide: [], pops: 0, popList: [], twistMax: 0, aimErr: [], apartT: 0, apartMax: 0, tpose: 0, floatT: 0, floatMax: 0, sinkMin: 0, floatEv: 0, inside: 0, deadT: 0, corpseMax: 0, lastToe: null, lastW: new Map(), aliveT: 0 }));
   for (const b of bots) if (b.model) { b.model._qaLod = b.model._lodInterval; b.model._lodInterval = () => 0; }
   const wp = (o, v = new V()) => o.getWorldPosition(v);
@@ -43,6 +43,7 @@
       }
       if (s.dth && !s.dth.done && s.dth.t > 1.5) s.deaths.push({ ground: s.dth.ground, disp: +(s.dth.disp || 0).toFixed(2), jitter: null, respawnedAt: +s.dth.t.toFixed(1) });
       s.dth = null; s.deadT = 0; s.aliveT += dt;
+      if (m._hidden) { s.hiddenF = (s.hiddenF || 0) + 1; s.lastToe = null; return; } // LOD-hidden: no aim/IK pass by design
       m.root.updateMatrixWorld(true);
       const B = m.bones;
       // Ground reference: raycast down from the hips (nav y can be off on stairs / ramps).
@@ -108,19 +109,19 @@
       const c = new V(b.position.x, b.position.y + 1.0, b.position.z);
       for (const d of DIRS) { const h = g.physics.raycast(c, d, 0.2); if (h && h.distance < 0.005) { s.inside++; break; } }
     });
-    if (tick++ % 30 === 0) bots.forEach((b, i) => { const c = b.model; if (!c || dumps[i].length > 70) return; dumps[i].push({ t: +g.time.toFixed(0), same: c === b.spareModel, hasWrap: !!c.weaponObj, wrapParentIsRoot: c.weaponObj?.parent === c.root, rootInScene: !!c.root?.parent, hidden: c._hidden, osw: c.oneShotW, oneShot: c.oneShot?.name, reloadW: c.reloadW, wstate: b.weapon?.state, alive: b.alive, lodAcc: c._lodAcc, animDt: c._animDt, frame: c._frame, matrixFrame: c._matrixFrame, deadTime: c.deadTime, dying: !!c.dying, grip: !!c.lGripWorld }); });
+    if (tick++ % 30 === 0) bots.forEach((b, i) => { const c = b.model; if (!c || dumps[i].length > 70) return; dumps[i].push({ t: +g.time.toFixed(0), same: c === b.spareModel, hasWrap: !!c.weaponObj, wrapParentIsRoot: c.weaponObj?.parent === c.root, rootInScene: !!c.root?.parent, hidden: c._hidden, osw: c.oneShotW, oneShot: c.oneShot?.name, reloadW: c.reloadW, wstate: b.weapon?.state, alive: b.alive, lodAcc: c._lodAcc, animDt: c._animDt, frame: c._frame, matrixFrame: c._matrixFrame, deadTime: c.deadTime, dying: !!c.dying, grip: !!c.lGripWorld, wrapParentType: c.weaponObj?.parent?.type, handOff: c.handOff, rootVisible: c.root?.visible }); });
     // Bot-bot interpenetration
     for (let i = 0; i < bots.length; i++) for (let j = i + 1; j < bots.length; j++) {
       const a = bots[i], b = bots[j]; if (!a.alive || !b.alive) continue;
       if (Math.hypot(a.position.x - b.position.x, a.position.z - b.position.z) < TH.botBotM && Math.abs(a.position.y - b.position.y) < 1) { botBot++; botBotPairs.add(i + '-' + j); }
     }
   });
-  if (g.charTemplate) g.charTemplate.forceFullRate = tplFR;
+  if (TPL) TPL.forceFullRate = tplFR;
   for (const b of bots) for (const m of [b.model, b.spareModel, b.corpse]) if (m?._qaLod) { m._lodInterval = m._qaLod; delete m._qaLod; }
   const pct = (arr, p) => { if (!arr.length) return 0; const a = arr.slice().sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(p * a.length))]; };
   out.bots = S.map((s, i) => {
     const stance = s.stance[0].concat(s.stance[1]);
-    const r = { i, team: bots[i].team, weapon: bots[i].weapon?.id, stanceSlideP95: Q.r(pct(stance, 0.95), 3), stanceN: stance.length, supportP95: Q.r(pct(s.support, 0.95), 3), supportN: s.support.length, yawRateP99: Q.r(pct(s.yawRate, 0.99), 0), moveAimP95: Q.r(pct(s.moveAim, 0.95), 1), moveAimN: s.moveAim.length, deaths: s.deaths, ratioP5: Q.r(pct(s.ratio, 0.05)), ratioP95: Q.r(pct(s.ratio, 0.95)), ratioN: s.ratio.length, aliveS: Q.r(s.aliveT, 1), slideP95: Q.r(pct(s.slide, 0.95)), slideN: s.slide.length, popsPerMin: Q.r(s.pops / Math.max(1e-3, s.aliveT) * 60, 1), pops: s.popList, twistMax: Q.r(s.twistMax, 0), aimP90: Q.r(pct(s.aimErr, 0.9), 1), aimN: s.aimErr.length, handsApartMax: Q.r(s.apartMax), tposeEvents: s.tpose, floatMax: Q.r(s.floatMax), sinkMin: Q.r(s.sinkMin), floatEvents: s.floatEv, insideFrames: s.inside, corpseMaxS: Q.r(s.corpseMax, 1) };
+    const r = { i, hiddenFrames: s.hiddenF || 0, team: bots[i].team, weapon: bots[i].weapon?.id, stanceSlideP95: Q.r(pct(stance, 0.95), 3), stanceN: stance.length, supportP95: Q.r(pct(s.support, 0.95), 3), supportN: s.support.length, yawRateP99: Q.r(pct(s.yawRate, 0.99), 0), moveAimP95: Q.r(pct(s.moveAim, 0.95), 1), moveAimN: s.moveAim.length, deaths: s.deaths, ratioP5: Q.r(pct(s.ratio, 0.05)), ratioP95: Q.r(pct(s.ratio, 0.95)), ratioN: s.ratio.length, aliveS: Q.r(s.aliveT, 1), slideP95: Q.r(pct(s.slide, 0.95)), slideN: s.slide.length, popsPerMin: Q.r(s.pops / Math.max(1e-3, s.aliveT) * 60, 1), pops: s.popList, twistMax: Q.r(s.twistMax, 0), aimP90: Q.r(pct(s.aimErr, 0.9), 1), aimN: s.aimErr.length, handsApartMax: Q.r(s.apartMax), tposeEvents: s.tpose, floatMax: Q.r(s.floatMax), sinkMin: Q.r(s.sinkMin), floatEvents: s.floatEv, insideFrames: s.inside, corpseMaxS: Q.r(s.corpseMax, 1) };
     const F = (m) => out.fails.push(`bot${i}: ${m}`);
     if (r.slideP95 > TH.slideP95) F(`planted-foot slide p95 ${r.slideP95} m/s > ${TH.slideP95}`); else if (r.slideP95 > TH.slideWarn) out.warn.push(`bot${i}: foot slide p95 ${r.slideP95}`);
     if (r.stanceN > 10 && r.stanceSlideP95 > TH.stanceSlideP95) F(`stance foot slide p95 ${r.stanceSlideP95} m per contact > ${TH.stanceSlideP95} (spec ≤0.02)`); else if (r.stanceN > 10 && r.stanceSlideP95 > TH.stanceSlideWarn) out.warn.push(`bot${i}: stance slide p95 ${r.stanceSlideP95} m`);

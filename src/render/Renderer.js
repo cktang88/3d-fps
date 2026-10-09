@@ -5,12 +5,13 @@ import {
   Effect, EffectAttribute, KernelSize,
 } from 'postprocessing';
 import { N8AOPostPass } from 'n8ao';
+import { FsrPass } from './Fsr.js';
+import { GpuTimer } from './GpuTimer.js';
 
 /* ------------------------------------------------------------------------------------------------
  * Custom effects
  * ---------------------------------------------------------------------------------------------- */
 
-/** Final colour grade (the "glue"): split toning, lift/gamma/gain, filmic contrast, saturation. Runs after tonemapping. */
 /** Contrast-adaptive sharpening (after AMD FidelityFX CAS). Restores the crispness lost to SMAA, TAA-free
  * upscaling (dynamic resolution / render scale) and half-res effects, without ringing on hard edges. */
 class SharpenEffect extends Effect {
@@ -36,6 +37,8 @@ class SharpenEffect extends Effect {
   }
 }
 
+/** Final colour grade (the "glue"): split toning, lift/gamma/gain, filmic contrast, saturation. Runs after tonemapping.
+ * Keep in sync with grade() in render/Fsr.js (output-res viewmodel composite). */
 class GradeEffect extends Effect {
   constructor() {
     super('GradeEffect', /* glsl */`
@@ -144,12 +147,60 @@ function lensDirtTexture(w = 1024, h = 576) {
   return t;
 }
 
+/* ------------------------------------------------------------------------------------------------
+ * Quality presets (render owner). One table drives every graphics cost; adaptive quality and the benchmark apply
+ * overrides on top (Renderer.features). Keys consumed outside the Renderer (Game.applyGraphicsFeatures):
+ * lights, probe, vmShadow, unify, pip, particles, fog.
+ * ---------------------------------------------------------------------------------------------- */
+export const QUALITY_PRESETS = [
+  { // Low: genuinely cheap. One-tap PCF, no AO / god rays / probe / viewmodel shadow, 2 point lights, lite materials.
+    name: 'Low', ao: null, aoHalf: true, godRays: 0, bloom: true, bloomLevels: 4, lens: true, shadow: 1024, pcfLite: true,
+    probe: 0, vmShadow: 0, lights: 2, unify: 'lite', pip: 256, pipEvery: 2, smaa: true, particles: true, fog: true,
+  },
+  { // Medium (default on Apple / integrated GPUs).
+    name: 'Medium', ao: 'Low', aoHalf: true, godRays: 32, bloom: true, bloomLevels: 5, lens: true, shadow: 2048, pcfLite: false,
+    probe: 4, vmShadow: 512, lights: 4, unify: 'full', pip: 384, pipEvery: 2, smaa: true, particles: true, fog: true,
+  },
+  {
+    name: 'High', ao: 'Medium', aoHalf: true, godRays: 48, bloom: true, bloomLevels: 7, lens: true, shadow: 4096, pcfLite: false,
+    probe: 2, vmShadow: 1024, lights: 6, unify: 'full', pip: 512, pipEvery: 1, smaa: true, particles: true, fog: true,
+  },
+  {
+    name: 'Ultra', ao: 'High', aoHalf: false, godRays: 48, bloom: true, bloomLevels: 7, lens: true, shadow: 4096, pcfLite: false,
+    probe: 2, vmShadow: 1024, lights: 8, unify: 'full', pip: 768, pipEvery: 1, smaa: true, particles: true, fog: true,
+  },
+];
+/** Pixel-ratio cap per quality. With FSR on it caps the *internal* ratio (the expensive part); the output is native. */
+const PR_CAP = [0.75, 1, 1.5, 2];
+
+/** Adaptive quality: cumulative step-downs, in order (src/render/Adaptive.js). */
+export const ADAPTIVE_STEPS = [
+  { label: 'ambient occlusion off', apply: () => ({ ao: null }) },
+  { label: 'god rays off', apply: () => ({ godRays: 0 }) },
+  { label: 'smaller shadow map', apply: (f) => ({ shadow: Math.max(1024, f.shadow / 2), pcfLite: true }) },
+  { label: 'viewmodel light probe off', apply: () => ({ probe: 0, vmShadow: 0 }) },
+  { label: 'lighter bloom', apply: () => ({ bloomLevels: 3 }) },
+  { label: 'lower render resolution', apply: (f, s) => (s.upscalingAuto === false ? {} : { scaleMul: 0.75 }) },
+];
+
+/** Upscaling modes → internal scale of the output (FSR 1 presets; 'dynamic' = dynamic resolution, 0.5–1). */
+export const UPSCALING = { off: 1, quality: 0.77, balanced: 0.67, performance: 0.5, dynamic: 1 };
+
+// PCF "lite" (Low preset / adaptive): one hardware-filtered (2x2 bilinear compare) tap instead of five when
+// shadow.radius < 0.5. Uniform branch, so no extra program variants.
+{
+  const k = 'shadowmap_pars_fragment', src = THREE.ShaderChunk[k];
+  const from = '\t\t\t\tshadow = (\n\t\t\t\t\ttexture( shadowMap, vec3( shadowCoord.xy + vogelDiskSample( 0, 5, phi )';
+  if (src.includes(from)) THREE.ShaderChunk[k] = src.replace(from, '\t\t\t\tif ( shadowRadius < 0.5 ) shadow = texture( shadowMap, shadowCoord.xyz ); else\n' + from);
+  else console.info('[render] PCF-lite patch skipped (three shadow chunk changed)');
+}
+
 /**
  * Owns the WebGL renderer + post stack.
- * Pipeline: world RenderPass -> N8AO -> [HDR] god rays + bloom + lens (dirt/sun glare; need world depth)
- *   -> viewmodel RenderPass (depth cleared, own FOV)
- *   -> [tonemap] ACES filmic + grade (split tone / LGG / contrast) + vignette + edge CA (damage) + fine grain
- *   -> SMAA (on display-referred image).
+ * Pipeline (all at the internal resolution): world RenderPass -> N8AO -> [HDR] god rays + bloom + lens (need world
+ *   depth) -> viewmodel RenderPass (depth cleared, own FOV) -> [tonemap] ACES + grade + vignette + CA + grain -> SMAA
+ *   -> CAS (upscaling Off only) -> FSR 1 (EASU to the output size + RCAS; render/Fsr.js) -> canvas.
+ * With upscaling Off and no dynamic-res drop, internal == output and the FSR pass is skipped entirely.
  * Effects are motivated & subtle; each can be toggled via settings: fxBloom, fxGodRays, fxLens, fxCA, fxGrain.
  */
 export class Renderer {
@@ -220,6 +271,7 @@ export class Renderer {
     this.aaPass = new EffectPass(this.camera, this.smaa);
     this.sharpen = new SharpenEffect(0.55);
     this.sharpenPass = new EffectPass(this.camera, this.sharpen);
+    this.fsrPass = new FsrPass();
 
     // HDR effects that read scene depth (god rays, sun-glare occlusion) must run BEFORE the viewmodel pass,
     // which clears depth — otherwise the sun "shines through" walls and ceilings.
@@ -228,31 +280,77 @@ export class Renderer {
     this.composer.addPass(this.gradePass);
     this.composer.addPass(this.aaPass);
     this.composer.addPass(this.sharpenPass);
+    this.composer.addPass(this.fsrPass);
+    this.composer.autoRenderToScreen = false; // routed by _route(): the last *enabled* pass draws to the canvas
+
+    // Effects whose blend is "off" still ran their internal passes every frame (postprocessing calls
+    // effect.update() for every effect regardless of opacity): Low paid for god rays + the bloom mip chain.
+    // _setEffectActive() SKIPs the blend and the update.
+    for (const e of [this.godRays, this.bloom, this.lens]) {
+      const u = e.update.bind(e);
+      e._blendOn = e.blendMode.blendFunction;
+      e.update = (...a) => { if (e._active !== false) u(...a); };
+    }
+
+    // GPU timing per pass (EXT_disjoint_timer_query_webgl2; off unless gpuTimer.enabled).
+    this.gpuTimer = new GpuTimer(r.getContext());
+    this._installGpuTimer();
 
     this.damagePulse = 0;
     this.ads = 0;
     this._v = new THREE.Vector3();
+    this.bench = {};          // benchmark overrides (render/Benchmark.js)
+    this.dynScale = 1;
     this.autoQuality();
     this.applySettings();
-    this.resize();
     addEventListener('resize', () => this.resize());
   }
 
+  _installGpuTimer() {
+    const t = this.gpuTimer, r = this.renderer;
+    if (!t.available) return;
+    const names = new Map([[this.worldPass, 'world'], [this.aoPass, 'ao_n8ao'], [this.hdrPass, 'hdr_godrays_bloom_lens'], [this.viewPass, 'viewmodel'],
+      [this.gradePass, 'grade_tonemap'], [this.aaPass, 'smaa'], [this.sharpenPass, 'cas'], [this.fsrPass, 'fsr_easu_rcas']]);
+    for (const [p, label] of names) {
+      const orig = p.render.bind(p);
+      p.render = (...a) => { t.push(label); try { return orig(...a); } finally { t.pop(); } };
+    }
+    const sm = r.shadowMap, origSm = sm.render.bind(sm);
+    sm.render = (...a) => {
+      const will = sm.enabled && (sm.autoUpdate || sm.needsUpdate);
+      if (!will || !t.on) return origSm(...a);
+      t.push('shadow_map'); try { return origSm(...a); } finally { t.pop(); }
+    };
+    // Renders outside the composer (viewmodel update: scope PiP, light-probe face, viewmodel sun shadow).
+    const origRender = r.render.bind(r);
+    r.render = (scene, camera) => {
+      if (!t.on || t.stack.length) return origRender(scene, camera);
+      const rt = r.getRenderTarget();
+      const label = scene === this.viewScene ? 'vm_sun_shadow' : scene === this.scene ? (rt?.isWebGLCubeRenderTarget ? 'vm_light_probe' : camera === this.camera ? 'world_extra' : 'pip_scope') : 'other';
+      t.push(label); try { return origRender(scene, camera); } finally { t.pop(); }
+    };
+  }
+
   /**
-   * Perf: GPU tier guess from the unmasked renderer string. Until the player picks a quality themselves
-   * (settings.qualityAuto), integrated / mobile / software GPUs default to Medium (Low for software and phones);
-   * dynamic resolution then fine-tunes. Result in this.gpuInfo (shown in docs/PERF.md; QA can read it).
+   * GPU tier from the unmasked renderer string. Until the player picks a quality / upscaling mode themselves
+   * (settings.qualityAuto / upscalingAuto): software + phones → Low + FSR Performance; integrated (Apple M-series,
+   * Intel Iris/UHD, Radeon APUs) → Medium + FSR Balanced; discrete → High + FSR Quality. Result in this.gpuInfo.
    */
   autoQuality() {
     const s = this.settings, gl = this.renderer.getContext();
     let name = '';
     try { const ext = gl.getExtension('WEBGL_debug_renderer_info'); name = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)); } catch { /* ignore */ }
+    const touch = navigator.maxTouchPoints > 1;
     const software = /swiftshader|llvmpipe|softpipe|microsoft basic render/i.test(name);
-    const mobile = /mali|adreno|powervr|apple gpu/i.test(name) || (navigator.maxTouchPoints > 1 && /android|iphone|ipad/i.test(navigator.userAgent));
-    const integrated = /intel|uhd graphics|iris|radeon\(tm\) graphics|radeon graphics|vega \d+ graphics/i.test(name);
+    // Chrome/ANGLE: "ANGLE (Apple, ANGLE Metal Renderer: Apple M2, …)"; Safari masks it as "Apple GPU" (Mac and iOS).
+    const apple = /apple m\d|apple gpu/i.test(name) && !(touch && /iphone|ipad|mobile/i.test(navigator.userAgent)) && !(touch && /apple gpu/i.test(name) && !/mac/i.test(navigator.platform || ''));
+    const mobile = !apple && (/mali|adreno|powervr|apple gpu/i.test(name) || (touch && /android|iphone|ipad/i.test(navigator.userAgent)));
+    const integrated = apple || /intel|uhd graphics|iris|radeon\(tm\) graphics|radeon graphics|vega \d+ graphics/i.test(name);
     const tier = software || mobile ? 0 : integrated ? 1 : 2;
-    this.gpuInfo = { name, tier, software, mobile, integrated };
-    if (s.qualityAuto !== false && !window.__qaFixedDt && !navigator.webdriver) s.quality = tier;
+    this.gpuInfo = { name, tier, software, mobile, integrated, apple };
+    if (window.__qaFixedDt || navigator.webdriver) return;
+    if (s.qualityAuto !== false) s.quality = tier;
+    if (s.upscalingAuto !== false) s.upscaling = ['performance', 'balanced', 'quality'][tier];
   }
 
   /** Called by the level once the sun is known. dir = unit vector toward the sun. */
@@ -261,45 +359,124 @@ export class Renderer {
     if (color) { this.sunSource.material.color.copy(color); this.lens.uniforms.get('sunColor').value.copy(color); }
   }
 
+  /** Preset for the current quality, plus adaptive step-downs, plus benchmark overrides. */
+  computeFeatures() {
+    const s = this.settings, q = THREE.MathUtils.clamp(s.quality | 0, 0, 3);
+    const f = { ...QUALITY_PRESETS[q], scaleMul: 1 };
+    const lvl = s.qualityAuto !== false && s.adaptiveQuality !== false ? Math.min(ADAPTIVE_STEPS.length, s.adaptiveLevel | 0) : 0;
+    for (let i = 0; i < lvl; i++) Object.assign(f, ADAPTIVE_STEPS[i].apply(f, s));
+    return Object.assign(f, this.bench);
+  }
+
+  _setEffectActive(e, on) {
+    if ((e._active !== false) === on) return;
+    e._active = on;
+    e.blendMode.blendFunction = on ? e._blendOn : BlendFunction.SKIP; // dispatches "change" → pass recompiles once
+  }
+
   applySettings() {
     const s = this.settings;
-    const q = s.quality; // 0 low, 1 medium, 2 high, 3 ultra
     const on = (k) => s[k] !== false;
-    this.basePixelRatio = Math.min(devicePixelRatio, [0.75, 1, 1.5, 2][q]) * s.renderScale;
-    this.sharpenPass.enabled = s.sharpen !== false;
-    this.dynScale ??= 1;
-    if (s.dynamicRes === false) this.dynScale = 1;
-    this.renderer.setPixelRatio(this.basePixelRatio * this.dynScale);
-    this.aoPass.enabled = q >= 1;
-    this.aoPass.setQualityMode(['Performance', 'Low', 'Medium', 'High'][q]);
-    this.aoPass.configuration.halfRes = q < 3;
-    this.bloom.blendMode.opacity.value = q >= 1 && on('fxBloom') ? 1 : 0;
-    this.godRays.blendMode.opacity.value = q >= 1 && on('fxGodRays') ? 1 : 0;
-    this.godRays.samples = q >= 2 ? 48 : 32;
-    this.lensOn = on('fxLens');
+    const f = this.features = this.computeFeatures();
+    this.aoPass.enabled = !!f.ao;
+    if (f.ao) { this.aoPass.setQualityMode(f.ao); this.aoPass.configuration.halfRes = !!f.aoHalf; }
+    const bloomOn = !!f.bloom && on('fxBloom');
+    this._setEffectActive(this.bloom, bloomOn);
+    if (bloomOn && this.bloom.mipmapBlurPass.levels !== f.bloomLevels) this.bloom.mipmapBlurPass.levels = f.bloomLevels;
+    this._setEffectActive(this.godRays, f.godRays > 0 && on('fxGodRays'));
+    if (f.godRays > 0) this.godRays.samples = f.godRays;
+    this.lensOn = on('fxLens') && f.lens !== false;
+    this._setEffectActive(this.lens, this.lensOn || bloomOn);
     this.caOn = on('fxCA');
     this.noise.blendMode.opacity.value = on('fxGrain') ? 0.02 : 0;
-    this.renderer.shadowMap.enabled = true;
-    // Perf: sun shadow-map size per quality (Low 1024 / Medium 2048 / High+ 4096), applied live.
-    const shadowSize = [1024, 2048, 4096, 4096][q];
+    this.aaPass.enabled = f.smaa !== false;
+    const r = this.renderer;
+    r.shadowMap.enabled = f.shadow > 0;
+    // Sun shadow-map size per quality, applied live. PCF-lite = one tap (radius 0, see the chunk patch above).
     this.scene.traverse((o) => {
-      if (!o.isDirectionalLight || !o.castShadow || o.shadow.mapSize.x === shadowSize) return;
-      // three resizes the existing map on its next shadow render. Don't dispose it: a null map makes the
-      // array shadow-sampler fall back to an empty depth texture without compare mode (GL sampler mismatch).
-      o.shadow.mapSize.set(shadowSize, shadowSize);
+      if (!o.isDirectionalLight || !o.castShadow) return;
+      o.userData.baseShadowRadius ??= o.shadow.radius;
+      o.shadow.radius = f.pcfLite ? 0 : o.userData.baseShadowRadius;
+      if (f.shadow > 0 && o.shadow.mapSize.x !== f.shadow) {
+        // three resizes the existing map on its next shadow render. Don't dispose it: a null map makes the
+        // array shadow-sampler fall back to an empty depth texture without compare mode (GL sampler mismatch).
+        o.shadow.mapSize.set(f.shadow, f.shadow);
+      }
     });
+    // Upscaling + sharpening.
+    const mode = UPSCALING[s.upscaling] !== undefined ? s.upscaling : 'off';
+    this.upscaling = mode;
+    const sharp = THREE.MathUtils.clamp(s.sharpness ?? 0.8, 0, 1);
+    this.fsrPass.sharpness = sharp;
+    this.sharpen.uniforms.get('sharpness').value = sharp * 0.7;
+    this._casBase = sharp * 0.7;
+    if (s.dynamicRes === false && mode !== 'dynamic') this.dynScale = 1;
+    if (mode === 'dynamic' && this._lastMode !== 'dynamic' && !(window.__qaFixedDt || navigator.webdriver)) this.dynScale = 0.77;
+    this._lastMode = mode;
     this.resize();
+    this.onFeatures?.(f);
+  }
+
+  /** Effective internal scale bounds for the current mode (used by resize and dynamic resolution). */
+  _scaleTarget(outPR) {
+    const s = this.settings, q = THREE.MathUtils.clamp(s.quality | 0, 0, 3), mode = this.upscaling;
+    const f = this.features;
+    let t = mode === 'off' ? 1 : Math.min(UPSCALING[mode], PR_CAP[q] / outPR);
+    t *= f.scaleMul ?? 1;
+    if (f.renderScale) t *= f.renderScale; // benchmark "render scale 0.5"
+    return Math.min(1, t);
   }
 
   resize() {
-    const w = innerWidth, h = innerHeight;
-    this.renderer.setSize(w, h, false);
-    this.composer.setSize(w, h);
+    const w = innerWidth, h = innerHeight, s = this.settings;
+    const q = THREE.MathUtils.clamp(s.quality | 0, 0, 3), fsrOn = this.upscaling !== 'off';
+    const dpr = devicePixelRatio || 1;
+    // Output (canvas) ratio: native (≤ 2) with FSR; the quality cap × render scale otherwise (as before).
+    const outPR = fsrOn ? Math.min(dpr, 2) : Math.min(dpr, PR_CAP[q]) * (s.renderScale ?? 1);
+    const r = this.renderer;
+    if (r.getPixelRatio() !== outPR) r.setPixelRatio(outPR);
+    r.setSize(w, h, false);
+    const out = r.getDrawingBufferSize(new THREE.Vector2());
+    const target = this._scaleTarget(outPR);
+    // Floors for dynamic resolution: 50% of the output with FSR (33% on Retina-class outputs), 55% without.
+    this._effFloor = fsrOn ? (outPR >= 1.5 ? 0.33 : 0.5) : 0.55;
+    this._dynFloor = Math.min(1, this._effFloor / target);
+    const eff = THREE.MathUtils.clamp(target * this.dynScale, Math.min(target, this._effFloor), 1);
+    const iw = Math.max(1, Math.round(out.x * eff)), ih = Math.max(1, Math.round(out.y * eff));
+    const c = this.composer;
+    c.inputBuffer.setSize(iw, ih);
+    c.outputBuffer.setSize(iw, ih);
+    c.depthRenderTarget?.setSize(iw, ih);
+    for (const p of c.passes) p.setSize(iw, ih);
+    const upscale = iw !== out.x || ih !== out.y;
+    const fsr = this.fsrPass;
+    fsr.setOutputSize(out.x, out.y);
+    fsr.upscale = upscale;
+    fsr.rcas = fsrOn;
+    fsr.enabled = fsrOn || upscale;
+    // CAS only with upscaling Off (RCAS replaces it); sharper while dynamic resolution has dropped.
+    this.sharpenPass.enabled = !fsrOn && (s.sharpness ?? 0.8) > 0 && s.sharpen !== false;
+    this.sharpen.uniforms.get('sharpness').value = Math.min(1, (this._casBase ?? 0.55) + (1 - eff) * 0.9);
+    // Viewmodel at output resolution (composited in the RCAS pass) or through the internal chain (default).
+    const vmOut = fsr.enabled && upscale && s.fsrViewmodel === 'output';
+    this.viewPass.enabled = !vmOut;
+    fsr.viewmodel = vmOut ? { scene: this.viewScene, camera: this.viewCamera, grade: this.grade, vignette: this.vignette } : null;
+    this._route();
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.viewCamera.aspect = w / h;
     this.viewCamera.updateProjectionMatrix();
     this.lens.uniforms.get('aspect').value = w / h;
+    this.internalSize = { w: iw, h: ih, scale: +eff.toFixed(3) };
+    this.outputSize = { w: out.x, h: out.y, pixelRatio: outPR };
+  }
+
+  /** The last enabled pass renders to the canvas; every other pass to the internal ping-pong buffers. */
+  _route() {
+    const passes = this.composer.passes;
+    let last = null;
+    for (const p of passes) if (p.enabled) last = p;
+    for (const p of passes) { const want = p === last; if (p.renderToScreen !== want) p.renderToScreen = want; }
   }
 
   /** Render the shadow maps once (via an empty 1x1 view) so no pass ever samples a not-yet-created map. */
@@ -328,14 +505,18 @@ export class Renderer {
     const onScreen = v.z < 1 && Math.abs(v.x) < 1.3 && Math.abs(v.y) < 1.3 && facing > 0;
     lu.get('sunUV').value.set(v.x * 0.5 + 0.5, v.y * 0.5 + 0.5);
     lu.get('sunOn').value = onScreen && this.lensOn ? THREE.MathUtils.smoothstep(facing, 0.4, 0.9) : 0;
-    lu.get('dirtK').value = this.lensOn ? 0.55 : 0;
+    lu.get('dirtK').value = this.lensOn && this.bloom._active !== false ? 0.55 : 0;
   }
 
-  /** Dynamic resolution: hold ~60 fps by trading pixel ratio (55–100%) on slow GPUs. */
+  /**
+   * Dynamic resolution: hold ~60 fps by trading the *internal* render scale (FSR upscales to the output). Active in
+   * the 'dynamic' upscaling mode, or with the Dynamic resolution option on top of a fixed mode (down to the floor).
+   */
   _updateDynRes() {
+    const dynOn = this.upscaling === 'dynamic' || this.settings.dynamicRes !== false;
     // Off when disabled, in QA (fixed-step / automation: 1-fps software rendering would ratchet it down) — reset to 100%.
-    if (this.settings.dynamicRes === false || window.__qaFixedDt || navigator.webdriver) {
-      if (this.dynScale !== 1) { this.dynScale = 1; this.renderer.setPixelRatio(this.basePixelRatio); this.resize(); }
+    if (!dynOn || window.__qaFixedDt || navigator.webdriver || this.benchRunning) {
+      if (this.dynScale !== 1) { this.dynScale = 1; this.resize(); }
       return;
     }
     const now = performance.now();
@@ -351,6 +532,7 @@ export class Renderer {
     // within 2 s, step back down and double the wait before the next probe (4 s → 60 s): no oscillation,
     // but resolution recovers after a heavy moment passes. (perf, docs/PERF.md)
     let sc = this.dynScale;
+    const floor = this._dynFloor ?? 0.55;
     const probing = now - (this._drLastUp ?? -1e9) < 2500;
     if (ms > 19) {
       if (probing) {
@@ -360,7 +542,7 @@ export class Renderer {
         this._drHoldUntil = now + this._drBackoff;
         this._drBackoff = Math.min(60000, this._drBackoff * 2);
         this._drLastUp = -1e9;
-      } else sc = Math.max(0.55, sc - (ms > 40 ? 0.15 : 0.08));
+      } else sc = Math.max(floor, sc - (ms > 40 ? 0.15 : 0.08));
       this._drOkSince = now;
     } else if (ms <= 17.6) {
       if (now > this._drHoldUntil) this._drCeil = 2;
@@ -374,8 +556,6 @@ export class Renderer {
     } else this._drOkSince = now;
     if (sc !== this.dynScale) {
       this.dynScale = sc;
-      this.renderer.setPixelRatio(this.basePixelRatio * sc);
-      this.sharpen.uniforms.get('sharpness').value = Math.min(1, 0.55 + (1 - sc) * 0.9); // sharper when upscaling
       this.resize();
     }
   }
@@ -398,5 +578,6 @@ export class Renderer {
     sm.autoUpdate = !!window.__perfLegacy; // QA A/B switch (docs/PERF.md)
     sm.needsUpdate = true;
     this.composer.render(dt);
+    this.gpuTimer.endFrame();
   }
 }

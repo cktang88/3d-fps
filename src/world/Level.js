@@ -258,6 +258,8 @@ export class Level {
     for (const hl of hs) {
       const c = at(hl.at);
       const isWin = hl.y0 > y0 + 0.1;
+      // Doorway registry for the level audit (tools/qa/suites/level_audit.script.js).
+      if (!isWin && opt.collide !== false && !opt.noWall) (this.doors ||= []).push({ name: opt.name ?? (typeof mat === 'string' ? mat : mat.name), x: c.x, z: c.z, nx: nrm.x, nz: nrm.z, y0, top: hl.y1 - y0, w: hl.w });
       // Lintel / sill trim.
       if (opt.trim) {
         if (isWin) this.box(opt.trim, c.x, hl.y0 - 0.04, c.z, hl.w + 0.2, 0.08, thick + 0.12, { rot, map: false, nav: false, collide: false });
@@ -330,6 +332,7 @@ export class Level {
     const sh = rise / steps, sr = run / steps;
     const fwd = V(Math.sin(dirAngle), 0, Math.cos(dirAngle));
     const side = V(fwd.z, 0, -fwd.x);
+    (this.stairsAudit ||= []).push({ name: opt.name ?? (typeof mat === 'string' ? mat : 'stairs') + '@' + x.toFixed(1) + ',' + z.toFixed(1), start: [x - fwd.x * 0.7, yBase + 0.05, z - fwd.z * 0.7], dir: [fwd.x, fwd.z], top: yBase + rise });
     for (let i = 0; i < steps; i++) {
       const top = yBase + sh * (i + 1);
       const c = V(x, 0, z).addScaledVector(fwd, sr * (i + 0.5));

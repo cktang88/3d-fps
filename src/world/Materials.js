@@ -121,6 +121,7 @@ const UNIFY_VERT = /* glsl */`
 const UNIFY_FRAG_PARS = /* glsl */`
 varying vec3 vUWP; varying vec3 vUWN;
 uniform sampler2D uNoise; uniform float uWet; uniform float uRain; uniform float uTime;
+uniform float uUnifyMode; // render owner: 0 full, 1 lite (no streaks / puddles / ripples: Low preset), 2 off (benchmark)
 uniform vec4 uUni; uniform vec4 uUni2;
 uniform vec3 indoorMin[4]; uniform vec3 indoorMax[4]; uniform int indoorCount; uniform float indoorAmount;
 uniform vec3 indoorFill[4];
@@ -154,7 +155,7 @@ vec2 uRipple(vec2 p, float t) {
   return acc;
 }`;
 const UNIFY_FRAG = /* glsl */`
-{
+if (uUnifyMode < 1.5) {
   vec3 P = vUWP; vec3 N = normalize(vUWN); vec3 aN = abs(N);
   vec2 tp = aN.y > 0.5 ? P.xz : (aN.x > aN.z ? P.zy : P.xy);
   vec4 n1 = texture2D(uNoise, tp * 0.021);
@@ -182,12 +183,12 @@ const UNIFY_FRAG = /* glsl */`
   // 3. wetness
   float wetK = uWet * uUni.y * outside;
   float sx = aN.x > aN.z ? P.z : P.x;
-  float streak = texture2D(uNoise, vec2(sx * 0.11, P.y * 0.035 + n1.r * 0.08)).a;
+  float streak = uUnifyMode > 0.5 ? 0.0 : texture2D(uNoise, vec2(sx * 0.11, P.y * 0.035 + n1.r * 0.08)).a;
   streak = smoothstep(0.42, 0.78, streak) * (1.0 - up) * uUni2.z;
   float wet = wetK * clamp(up * 0.8 + streak * 0.75 + (1.0 - up) * (0.12 + 0.3 * smoothstep(0.6, 0.0, P.y)), 0.0, 1.0);
   wet *= mix(0.3, 1.0, smoothstep(0.3, 0.72, g));            // damp vs drying patches
   float pud = 0.0;
-  if (uUni.z > 0.0 && up > 0.5) {
+  if (uUni.z > 0.0 && up > 0.5 && uUnifyMode < 0.5) {
     float pf = texture2D(uNoise, P.xz * 0.0105 + 0.13).b * 0.75 + n1.r * 0.25 - P.y * 1.5;
     float rim = smoothstep(0.46, 0.55, pf);
     pud = smoothstep(0.55, 0.585, pf) * up * outside * uUni.z * uWet;
@@ -229,6 +230,7 @@ export class Materials {
   /** Shared uniforms for the unify pass (other systems may animate uWet / uRain / uTime). */
   static unify = {
     uNoise: { value: null },
+    uUnifyMode: { value: 0 },
     uWet: { value: 1 },
     uRain: { value: 0 },
     uTime: { value: 0 },

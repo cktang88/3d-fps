@@ -26,11 +26,25 @@ export class LightPool {
       scene.add(l);
       this.slots.push({ light: l, src: null, fade: 0 });
     }
+    this.all = this.slots;
+    this.active = n;
     this._frustum = new THREE.Frustum();
     this._m = new THREE.Matrix4();
     this._sph = new THREE.Sphere();
     this._p = new THREE.Vector3();
     this.enabled = true;
+  }
+
+  /**
+   * Use only the first n physical lights (graphics presets / adaptive quality / benchmark). The others are hidden,
+   * so the shader light loop shrinks; this recompiles lit programs once, so call it on settings changes only.
+   */
+  setActive(n) {
+    n = Math.max(0, Math.min(this.all.length, n | 0));
+    if (n === this.active) return;
+    this.active = n;
+    this.all.forEach((s, i) => { s.light.visible = i < n; if (i >= n) { s.src = null; s.fading = false; s.light.intensity = 0; } });
+    this.slots = this.all.slice(0, n);
   }
 
   /** Take over every PointLight currently in the scene (call after all content exists; again if lights are added). */

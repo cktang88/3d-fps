@@ -1,6 +1,7 @@
 import { WEAPONS, ATTACHMENTS, SLOTS, PRIMARY_LIST, SECONDARY_LIST, computeStats } from '../game/weapons/WeaponDefs.js';
 import { DIFFICULTY } from '../game/bots/Bot.js';
 import { MEDALS, medalSvg } from './HUD.js';
+import { runBenchmark } from '../render/Benchmark.js';
 
 const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstChild; };
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -10,6 +11,10 @@ export const DEFAULT_SETTINGS = {
   volume: 0.8, fpsCounter: true, dynamicRes: true, crosshairColor: '#ffffff', holdCrouch: false, toggleAds: false, reduceMotion: false,
   botDifficulty: 'regular', botCount: 6, godMode: false,
   qualityAuto: true, // perf: first boot picks Medium on weak GPUs (Renderer.autoQuality); false once the player picks
+  // Render: FSR 1 upscaling ('off' | 'quality' | 'balanced' | 'performance' | 'dynamic'), picked by GPU tier until the
+  // player chooses (upscalingAuto). sharpness drives RCAS (FSR on) or CAS (Off). Adaptive quality steps features
+  // down on slow machines while qualityAuto is still true (src/render/Adaptive.js); adaptiveLevel persists.
+  upscaling: 'off', upscalingAuto: true, sharpness: 0.8, adaptiveQuality: true, adaptiveLevel: 0,
   loadout: { primary: 'm4', secondary: 'p226', attachments: {} },
   career: { xp: 0, matches: 0, wins: 0, kills: 0, deaths: 0 },
 };
@@ -212,8 +217,12 @@ export class Menu {
     <div class="card"><h3>Video</h3><div class="opts">
       ${range('fov', 'Field of view', 70, 120, 1)}${range('viewmodelFov', 'Viewmodel FOV', 40, 70, 1)}
       ${sel('quality', 'Quality', [[0, 'Low'], [1, 'Medium'], [2, 'High'], [3, 'Ultra']])}
-      ${range('renderScale', 'Render scale', 0.5, 1, 0.05, (v) => Math.round(v * 100) + '%')}
-      ${check('fpsCounter', 'Show FPS')}${check('dynamicRes', 'Dynamic resolution')}${check('reduceMotion', 'Reduce camera motion')}
+      ${sel('upscaling', 'Upscaling (FSR 1)', [['off', 'Off'], ['quality', 'Quality'], ['balanced', 'Balanced'], ['performance', 'Performance'], ['dynamic', 'Dynamic']])}
+      ${range('sharpness', 'Sharpness', 0, 1, 0.05, (v) => Math.round(v * 100) + '%')}
+      <label>Render resolution</label><span class="val resinfo" data-resinfo>${this.resInfo()}</span><span></span>
+      ${range('renderScale', 'Render scale (upscaling off)', 0.5, 1, 0.05, (v) => Math.round(v * 100) + '%')}
+      ${check('fpsCounter', 'Show FPS')}${check('dynamicRes', 'Dynamic resolution')}${check('adaptiveQuality', 'Adaptive quality')}${check('reduceMotion', 'Reduce camera motion')}
+      <label>Graphics benchmark</label><div class="seg"><button data-bench>Run graphics benchmark</button></div><span></span>
       <label>Crosshair colour</label><div class="swatches">${['#ffffff', '#7dff6a', '#3fe0ff', '#ffd23f', '#ff4df0'].map((c) => `<button class="${s.crosshairColor === c ? 'on' : ''}" data-color="${c}" style="--c:${c}"></button>`).join('')}</div><span></span>
     </div></div>
     <div class="card"><h3>Audio</h3><div class="opts">${range('volume', 'Master volume', 0, 1, 0.01, (v) => Math.round(v * 100))}</div></div>
@@ -270,8 +279,18 @@ export class Menu {
     </div>`;
   }
 
+  /** "1232×693 → 1600×900 (FSR Quality)" for the settings page (render owner). */
+  resInfo() {
+    const R = this.game.renderer, i = R?.internalSize, o = R?.outputSize;
+    if (!i || !o) return '';
+    const up = i.w !== o.w || i.h !== o.h;
+    const mode = { off: 'native', quality: 'FSR Quality', balanced: 'FSR Balanced', performance: 'FSR Performance', dynamic: 'FSR Dynamic' }[R.upscaling] || '';
+    return up ? `${i.w}×${i.h} → ${o.w}×${o.h} · ${mode}` : `${o.w}×${o.h} · ${R.upscaling === 'off' ? 'native' : mode + ' (100%)'}`;
+  }
+
   bindPage() {
     const m = this.main, s = this.s, g = this.game;
+    const refreshRes = () => { const el = m.querySelector('[data-resinfo]'); if (el) el.textContent = this.resInfo(); };
     m.querySelectorAll('input[data-set]').forEach((el) => {
       const key = el.dataset.set;
       el.addEventListener('input', () => {
@@ -279,9 +298,10 @@ export class Menu {
         s[key] = v;
         if (el.type === 'range') el.style.setProperty('--p', `${((v - el.min) / (el.max - el.min)) * 100}%`);
         const lbl = m.querySelector(`[data-val="${key}"]`);
-        if (lbl) lbl.textContent = key === 'volume' ? Math.round(v * 100) : key === 'renderScale' ? Math.round(v * 100) + '%' : v;
+        if (lbl) lbl.textContent = key === 'volume' ? Math.round(v * 100) : key === 'renderScale' || key === 'sharpness' ? Math.round(v * 100) + '%' : v;
         if (key === 'volume') g.audio.setVolume(v);
-        if (key === 'renderScale') g.renderer.applySettings();
+        if (key === 'adaptiveQuality' && !v) s.adaptiveLevel = 0;
+        if (['renderScale', 'sharpness', 'dynamicRes', 'adaptiveQuality'].includes(key)) { g.renderer.applySettings(); refreshRes(); }
         if (el.type === 'checkbox') g.audio.ui('click');
         saveSettings(s);
       });
@@ -289,12 +309,23 @@ export class Menu {
     m.querySelectorAll('[data-seg]').forEach((el) => el.addEventListener('click', () => {
       const key = el.dataset.seg;
       s[key] = key === 'quality' ? parseInt(el.dataset.v, 10) : el.dataset.v;
-      if (key === 'quality') s.qualityAuto = false;
+      if (key === 'quality') {
+        // A manual pick ends automatic quality (GPU tier + adaptive step-downs). Upscaling follows the preset until
+        // the player picks an upscaling mode themselves.
+        s.qualityAuto = false; s.adaptiveLevel = 0;
+        if (s.upscalingAuto !== false) s.upscaling = ['performance', 'balanced', 'quality', 'off'][s.quality];
+      }
+      if (key === 'upscaling') s.upscalingAuto = false;
       el.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === el));
-      if (key === 'quality') g.renderer.applySettings();
+      if (key === 'quality' || key === 'upscaling') {
+        g.renderer.applySettings();
+        m.querySelectorAll('[data-seg="upscaling"]').forEach((b) => b.classList.toggle('on', b.dataset.v === s.upscaling));
+        refreshRes();
+      }
       g.audio.ui('click');
       saveSettings(s);
     }));
+    m.querySelector('[data-bench]')?.addEventListener('click', () => { g.audio.ui('click'); runBenchmark(g); });
     m.querySelectorAll('[data-color]').forEach((el) => el.addEventListener('click', () => {
       s.crosshairColor = el.dataset.color;
       el.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === el));
