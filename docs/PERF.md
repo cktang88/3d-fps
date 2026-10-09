@@ -95,7 +95,42 @@ See the *Results* table for per-view numbers.
 
 (QA runner, High, warm page; `calls / tris` for the whole frame including shadow, AO, viewmodel, PiP, post.)
 
-RESULTS_TABLE
+Per-pass capture (`perf_profile`, fresh page, warm frame first). The light-probe frames (every 2nd frame on High)
+add about 35 calls / 105k tris on top of the numbers below.
+
+| view | baseline (20:24, before) | after (job `1791484000041_perf_profile`) | shadow pass | PiP scope |
+|---|---|---|---|---|
+| courtyard | 788 / 3.11 M | **343 / 1.01 M** | 36 / 349k | – |
+| looking at sun | 609 / 2.26 M | **363 / 0.89 M** | 35 / 346k | – |
+| warehouse | 840 / 3.29 M | **249 / 1.06 M** | 34 / 343k | – |
+| containers | 766 / 3.04 M | **252 / 0.92 M** | 35 / 346k | – |
+| office | 604 / 2.28 M | **259 / 0.88 M** | 34 / 343k | – |
+| scope ADS (SCAR, ACOG) | – | **356 / 1.37 M** (over on tris) | 35 / 346k | 101 / 346k |
+
+Full-res 960x540 screenshot job `tools/qa/suites/perf_visual.json` (`1791484000040_perf_visual`), renderer.info after one
+frame: courtyard 318 / 0.98 M, sun 358 / 0.87 M, warehouse 249 / 1.03 M, containers 332 / 0.98 M, office 256 / 0.85 M,
+bot close-up 187 / 0.56 M, bot far 329 / 0.81 M, scope 258 / 1.01 M.
+
+Shadow pass: ~170 calls / 735k tris x 3–4 renders per frame → **35 calls / ~345k tris x 1**.
+
+Load (QA runner, contended llvmpipe, local server): 48–100 s → **13–23 s to menu**. Init marks for the last run:
+assets 5.9 s → level built 10.0 s → ambience 10.4 s → navmesh 10.8 s → shaders 12.7 s. Network payload before
+the menu: JS 6.5 MB (split into 5 chunks; rapier's base64 WASM is 4.2 MB of it), HDR 6.3 MB, GLB 36.6 MB (30 MB of it
+FP rigs, see open items), WebP 23 MB, audio 1.2 MB.
+
+CPU (`perf_cpu`, live TDM, 11 bots fighting, fixed 60 Hz, container CPU): **game.update 2.75 ms/frame**. Bots AI
+1.1 ms, Character animation 0.8 ms, HUD 0.37 ms, viewmodel 0.30 ms, physics 0.28 ms, ambience 0.21 ms, player 0.12 ms,
+occlusion 0.11 ms, nav 0.10 ms. Expect 2–3x on a mid laptop (~6–8 ms). Render submission (~340 draws plus 34 post
+passes) is the other main-thread cost.
+
+### Open items (owners notified)
+* FP rigs (`models/fp`, FP art lead): 30 MB, `ak47` 130k tris, the arms textures duplicated in every file, no meshopt.
+  Lazy-load the non-equipped rigs after the menu (viewmodel owner).
+* Scope ADS is over on tris (1.37 M): the PiP re-renders the scene (346k). Options: PiP every 2nd frame on Medium,
+  or a PiP-only far LOD.
+* `models/weapons/ak47.glb` (97k tris) is still the player viewmodel source where no FP rig exists.
+* QA warm pages: `FPCamera.fovCurrent` can carry a huge value between jobs (seen 2e33), which corrupts warm per-view
+  numbers. perf jobs use `fresh: true`. Reported to the QA lead.
 
 ## Quality presets (what each level costs)
 
