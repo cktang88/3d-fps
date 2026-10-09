@@ -46,6 +46,20 @@ export class LightPool {
 
   update(dt) {
     if (!this.enabled) return;
+    // Amortised: re-select every 3rd frame; the copy/fade below runs every frame (flicker, muzzle flashes).
+    this._tick = (this._tick || 0) + 1;
+    if (this._tick % 3 === 0 || this._newLit()) this._select();
+    this._apply(dt);
+  }
+
+  // A logical light that just turned on (muzzle flash, flare) shouldn't wait for the next selection.
+  _newLit() {
+    let changed = false;
+    for (const l of this.logical) { const on = l.intensity > 0; if (on && !l.userData._poolOn) changed = true; l.userData._poolOn = on; }
+    return changed;
+  }
+
+  _select() {
     const cam = this.camera;
     this._frustum.setFromProjectionMatrix(this._m.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
     const cp = cam.position;
@@ -74,6 +88,9 @@ export class LightPool {
       s.fading = false;
       s.pos = c.pos;
     }
+  }
+
+  _apply(dt) {
     for (const s of this.slots) {
       const L = s.light;
       if (!s.src) { L.intensity = 0; continue; }
@@ -83,7 +100,7 @@ export class LightPool {
       L.intensity = src.intensity * Math.max(0, Math.min(1, s.fade));
       L.distance = src.distance;
       L.decay = src.decay;
-      if (s.pos) L.position.copy(s.pos);
+      if (s.fading && s.pos) L.position.copy(s.pos); else src.getWorldPosition(L.position); // movers (flares) track every frame
     }
   }
 }

@@ -328,6 +328,9 @@ export class DistantBattle {
     this.tracers.update(dt, null, null, this.scene, null);
     this.fireballs.update(dt, ctx.wind, null, this.scene, null);
     this.blasts.update(dt, ctx.wind, null, this.scene, null);
-    this.smoke.update(dt, ctx.wind, ctx.camera, this.scene, light);
+    // Slow, distant smoke: simulate + re-sort every 2nd frame with accumulated dt (amortised CPU).
+    this._sDt = (this._sDt ?? 0) + dt;
+    this._sFrame = (this._sFrame ?? 0) + 1;
+    if (this._sFrame % 2 === 0) { this.smoke.update(this._sDt, ctx.wind, ctx.camera, this.scene, light); this._sDt = 0; }
   }
 }

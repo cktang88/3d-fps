@@ -124,8 +124,10 @@ export class Game {
     // Perf/robustness: create the sun shadow map now. Passes that run before the first world pass (scope, light
     // probe) never update shadows, and a null map binds a compare-less fallback (GL sampler mismatch).
     this.renderer.primeShadows();
-    this.renderer.renderer.compile(this.renderer.scene, this.renderer.camera);
-    this.renderer.renderer.compile(this.renderer.viewScene, this.renderer.viewCamera);
+    // Perf: compileAsync lets the driver compile/link programs in parallel (KHR_parallel_shader_compile) instead
+    // of stalling on each one; every material is still warmed before the menu (no first-use hitches).
+    const R = this.renderer, rr = R.renderer;
+    await Promise.all([rr.compileAsync(R.scene, R.camera), rr.compileAsync(R.viewScene, R.viewCamera)]);
     this.perf.mark('shaders compiled');
     onProgress?.(1, 'Ready');
     // Stream the remaining FP weapon rigs while the menu is up (startMatch awaits them).

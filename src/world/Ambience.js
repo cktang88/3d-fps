@@ -74,6 +74,21 @@ export class Ambience {
     if (f > 0) L.ambient.add(new THREE.Color(0.35, 0.38, 0.45).multiplyScalar(f));
   }
 
+  _fireHot() {
+    const cam = this.camera, pvs = this.game.pvs;
+    this._frustum ??= new THREE.Frustum(); this._pm ??= new THREE.Matrix4(); this._sph ??= new THREE.Sphere();
+    this._pm.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    this._frustum.setFromProjectionMatrix(this._pm);
+    for (const s of this.fires.sites) {
+      const p = s.lightPos;
+      if (p.distanceTo(cam.position) < 40) return true;
+      if (pvs?.visiblePoint && !pvs.visiblePoint(p)) continue;
+      // Plume extends ~20 m up/downwind: test a generous sphere.
+      if (this._frustum.intersectsSphere(this._sph.set(p, 22))) return true;
+    }
+    return false;
+  }
+
   _ctx(dt) {
     const q = this.game.settings?.quality ?? this.quality;
     return { dt, wind: this.wind, camera: this.camera, light: this.light, particleScale: [0.4, 0.65, 1, 1.25][q] ?? 1 };
@@ -89,8 +104,12 @@ export class Ambience {
     this.wind.copy(this.windBase).applyAxisAngle(new THREE.Vector3(0, 1, 0), head).multiplyScalar(gust);
     this._updateLight();
     const ctx = this._ctx(dt);
+    // Amortised simulation: fires tick at full rate only when one is near (<40 m) or in view, otherwise
+    // every 3rd frame; the battle's big sorted smoke system ticks every 2nd frame (see DistantBattle).
+    this._frame = (this._frame ?? 0) + 1;
     this.battle.update(dt, ctx);
-    this.fires.update(dt, ctx);
+    this._fDt = (this._fDt ?? 0) + dt;
+    if (this._fireHot() || this._frame % 3 === 0) { this.fires.update(this._fDt, this._ctx(this._fDt)); this._fDt = 0; }
     this.weather.update(dt, ctx);
     this.flyover.update(dt, ctx);
     const cam = this.camera.position;

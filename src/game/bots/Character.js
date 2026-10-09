@@ -846,13 +846,16 @@ export class Character {
     const dx = bot.position.x - cam.position.x, dy = bot.position.y - cam.position.y, dz = bot.position.z - cam.position.z;
     const d2 = dx * dx + dy * dy + dz * dz;
     if (!this.tpl.camera) this._geoLod?.update(Math.sqrt(d2) * Math.tan(cam.fov * DEG * 0.5));
-    if (d2 < 15 * 15) return 0; // close: every frame
+    const occluded = !!(this.root._occHidden || this.model._occHidden); // set by render/Occlusion.js
+    this._hidden = false;
+    if (d2 < 15 * 15 && !occluded) return 0; // close: every frame
     const d = Math.sqrt(d2);
     cam.getWorldDirection(_v7);
     const facing = (dx * _v7.x + dy * _v7.y + dz * _v7.z) / d;
-    if (facing < 0.3) return d < 30 ? 1 / 15 : 1 / 8; // off-screen (shadows still read fine)
-    if (d < 35) return 1 / 30;
-    if (d < 60) return 1 / 20;
+    if (facing < 0.3 || occluded) { this._hidden = true; return d < 30 ? 1 / 15 : 1 / 8; } // off-screen / occluded: no IK, low rate
+    const k = d * Math.tan(cam.fov * DEG * 0.5); // apparent-size metric (zoom aware)
+    if (k < 12) return 1 / 30;
+    if (k < 24) return 1 / 20;
     return 1 / 12;
   }
 
@@ -973,8 +976,12 @@ export class Character {
       }
     }
     this.oneShotW = osw;
-    this.upperActions.aim.setEffectiveWeight((1 - c) * (1 - osw));
-    this.upperActions.aimCrouch.setEffectiveWeight(c * (1 - osw));
+    // (crouch upper pose glides like the lower layer)
+    const ua = this.upperActions.aim, uc = this.upperActions.aimCrouch, lamU = 1 - Math.exp(-14 * dt);
+    let wa = ua.getEffectiveWeight(), wc = uc.getEffectiveWeight();
+    wa += ((1 - c) * (1 - osw) - wa) * lamU; wc += (c * (1 - osw) - wc) * lamU;
+    const sU = (wa + wc) > 1e-4 ? (1 - osw) / (wa + wc) : 1;
+    ua.setEffectiveWeight(wa * sU); uc.setEffectiveWeight(wc * sU);
     this.hitAction.setEffectiveWeight(clamp(this.hitJerk, 0, 1) * 0.8);
     this.mixer.update(dt);
     this._animated = true;
@@ -984,6 +991,7 @@ export class Character {
   /** Procedural layer applied on top of the sampled pose, then weapon + IK + matrices. */
   _afterPose(bot, fresh) {
     if (!fresh) { this._matrixFrame = -1; return; } // matrices refreshed lazily (hitboxes) / by the renderer
+    if (this._hidden) { this._matrixFrame = -1; return; } // off-screen / occluded: mixer pose only, no aim/IK pass
     const root = this.root, b = this.bones;
     this._saveProc();
     // Dead blending over discrete switches (run/walk regime, crouch, one-shots, carry state).
@@ -1427,7 +1435,7 @@ export class Character {
       for (const t of [0, 0.5, -0.5, 1.0, -1.0]) if (clear(yaw + t, 1.6)) { yaw += t; break; }
       d.fallYaw = yaw; // world yaw of fall direction (vector (sin, 0, cos))
       d.angVel = explosive ? 2.5 : 0.5 + Math.random() * 0.4;
-      d.kneel = explosive ? 0.05 : headshot ? 0.08 : 0.2 + Math.random() * 0.15; // time spent buckling before the topple
+      d.kneel = explosive ? 0.05 : headshot ? 0.06 : 0.14 + Math.random() * 0.1; // time spent buckling before the topple
       d.forward = true;
     }
     // Knockback slide distance, clipped by walls.
@@ -1454,7 +1462,7 @@ export class Character {
       if (this.proneAction) { const pr = this.proneAction; pr.reset(); pr.play(); pr.time = 0.3; pr.timeScale = 0; pr.setEffectiveWeight(0); }
       // Knee-buckle collapse: the body folds where it stood and pitches onto its front, often with a
       // twist toward the hit side.
-      d.fallDur = headshot ? 0.32 : 0.42 + Math.random() * 0.15;
+      d.fallDur = headshot ? 0.3 : 0.36 + Math.random() * 0.1;
       d.spin = clamp(wrapPi(d.fallYaw - (this.bodyYaw + Math.PI)), -0.7, 0.7) * (0.5 + Math.random() * 0.5);
     }
     this.hitAction.setEffectiveWeight(0);
@@ -1559,7 +1567,7 @@ export class Character {
     // down onto it (the authored clip / topple can leave it hovering a few cm).
     const settled = d.mode === 'clip' ? d.t * d.rate > this.tpl.death.duration * 0.8 : d.landed;
     if (err < 0) d.lift -= err;
-    else if (settled && d.lift > 0) d.lift -= Math.min(err, d.lift, dt * 0.8);
+    else if (d.lift > 0) d.lift -= Math.min(err, d.lift, dt * (settled ? 2.5 : 1.2));
     this.pivot.position.y = d.lift;
   }
 

@@ -15,7 +15,13 @@ for id in $IDS; do
   npx gltf-transform resize "$t/b.glb" "$t/c.glb" --width 1024 --height 1024 >/dev/null
   npx gltf-transform weld "$t/c.glb" "$t/d.glb" >/dev/null
   npx gltf-transform quantize "$t/d.glb" "$t/e.glb" >/dev/null   # KHR_mesh_quantization: no decoder needed
-  npx gltf-transform webp "$t/e.glb" "$OUT/$id.glb" --quality 88 >/dev/null
+  if [ "${MESHOPT:-0}" = 1 ]; then   # needs GLTFLoader.setMeshoptDecoder (src/core/Assets.js)
+    npx gltf-transform webp "$t/e.glb" "$t/f.glb" --quality 88 >/dev/null
+    npx gltf-transform meshopt "$t/f.glb" "$OUT/$id.glb" >/dev/null
+  else
+    npx gltf-transform webp "$t/e.glb" "$OUT/$id.glb" --quality 88 >/dev/null
+  fi
+  python3 "$(dirname "$0")/share_arms_textures.py" "$OUT/$id.glb" >/dev/null   # arms maps -> shared fp/arms_*.webp
   echo "$id $(du -h "$IN/$id.glb" | cut -f1) -> $(du -h "$OUT/$id.glb" | cut -f1)"
   rm -rf "$t"
 done

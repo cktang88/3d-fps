@@ -58,10 +58,14 @@ export class BotOcclusion {
     const g = this.game, cam = g.renderer.camera;
     let hidden = 0;
     const eye = this._o.setFromMatrixPosition(cam.matrixWorld);
-    for (const b of g.bots) {
+    // Amortised: visible bots are re-tested every 2nd frame (alternating halves; hiding late is harmless), hidden
+    // bots every frame (so a bot coming round a corner is never drawn late).
+    this._tick = (this._tick || 0) + 1;
+    g.bots.forEach((b, i) => {
       const m = b.model;
-      if (!m?.root) continue;
-      if (!this.enabled || !b.alive || !m.root.visible) { this._setHidden(m, false); m._occFrames = 0; continue; }
+      if (!m?.root) return;
+      if (!this.enabled || !b.alive || !m.root.visible) { this._setHidden(m, false); m._occFrames = 0; return; }
+      if (((i + this._tick) & 1) && !m._occHidden && m._occFrames !== undefined) return;
       // Right vector perpendicular to the view ray, for the shoulder samples.
       const base = b.position, top = b.head.y - base.y;
       const r = this._r.subVectors(base, eye).setY(0);
@@ -76,7 +80,7 @@ export class BotOcclusion {
       m._occFrames = allBlocked ? (m._occFrames || 0) + 1 : 0;
       this._setHidden(m, m._occFrames >= 2);
       if (m._occHidden) hidden++;
-    }
+    });
     this.hiddenCount = hidden;
   }
 }

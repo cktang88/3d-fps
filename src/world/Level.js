@@ -614,9 +614,11 @@ export class Level {
           const updateLod = () => {
             if (fovK.fov !== cam.fov) { fovK.fov = cam.fov; fovK.t = Math.tan(cam.fov * Math.PI / 360); }
             const cp = cam.position;
+            // Distances re-evaluated every 3rd frame (perf: amortised); ids re-applied every render because the
+            // shadow pass swaps them to the shadow LOD.
+            const fresh = (this.game.frame + bm.id) % 3 === 0;
             for (let i = 0; i < pos.length; i++) {
-              const kk = pos[i].distanceTo(cp) * fovK.t;
-              low[i] = (low[i] ? kk > 24 : kk > 28) ? 1 : 0;
+              if (fresh) { const kk = pos[i].distanceTo(cp) * fovK.t; low[i] = (low[i] ? kk > 24 : kk > 28) ? 1 : 0; }
               bm.setGeometryIdAt(i, low[i] ? idLod : ids[0]);
             }
           };

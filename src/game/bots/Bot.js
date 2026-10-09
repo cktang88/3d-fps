@@ -320,7 +320,7 @@ export class Bot {
     this.suppression = Math.max(0, this.suppression - dt * 0.4);
 
     this.perceiveTimer -= dt;
-    if (this.perceiveTimer <= 0) { this.perceive(0.1 - this.perceiveTimer); this.perceiveTimer = 0.1; }
+    if (this.perceiveTimer <= 0) { this.perceive(0.12 - this.perceiveTimer); this.perceiveTimer = 0.12; } // ~8 Hz, staggered by the random initial phase
     this.thinkTimer -= dt;
     if (this.thinkTimer <= 0) { this.think(); this.thinkTimer = 0.4 + Math.random() * 0.2; }
     this.goalTimer += dt;
