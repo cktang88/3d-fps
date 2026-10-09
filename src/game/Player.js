@@ -124,6 +124,10 @@ export class Player {
   }
 
   setHeight(h) {
+    if (!Number.isFinite(h)) {
+      if (!this._nanHReported) { this._nanHReported = true; console.error('Player height non-finite; ignored', new Error().stack); }
+      return;
+    }
     if (Math.abs(h - this.height) < 1e-3) return;
     this.height = h;
     this.collider.setHalfHeight(Math.max(0.05, (h - 2 * MOVE.radius) / 2));
@@ -134,12 +138,14 @@ export class Player {
     const p = this.position, v = this.velocity;
     // A non-finite translation makes Rapier's broad phase spin forever (seen as a hard page hang).
     // Recover to the last good position and report the source once.
-    if (!(Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z))) {
+    // Also catch absurd-but-finite values (e.g. 1e30) that blow up the broad phase the same way.
+    if (!(Math.abs(p.x) < 1e4 && Math.abs(p.y) < 1e4 && Math.abs(p.z) < 1e4)) {
       if (!this._nanReported) { this._nanReported = true; console.error('Player position non-finite; restored', new Error().stack); }
       if (this._goodPos) p.copy(this._goodPos); else p.set(0, 0, 0);
       v.set(0, 0, 0);
     } else (this._goodPos ||= p.clone()).copy(p);
     if (!(Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z))) v.set(0, 0, 0);
+    if (!Number.isFinite(this.height)) this.height = MOVE.standHeight;
     this.collider.setTranslation({ x: p.x, y: p.y + this.height / 2, z: p.z });
   }
 
