@@ -2,7 +2,7 @@
 
 Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Results: `tools/qa/results/<id>/`.
 
-**Last run:** 2026-10-09 08:41 UTC: `h_jank` 1791534734653 (snapshot 08:32), `core` 1791531597800 (07:47). Perf budget: MET (05:19).
+**Last run:** 2026-10-09 09:05 UTC: `pistol` 1791536340869, `m24spike` 1791536340923, `core` + `e_keyart` 1791535319934/989 (08:45). Perf budget: MET.
 
 ## Pass / fail by area
 
@@ -48,8 +48,9 @@ Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Resu
 | 26 | Runner | coordinator / render | "Renders nothing" 04:48 was a WebGL context loss at ~04:21 that made Chrome block 3D for the origin; not a code bug. Runner now passes --disable-domain-blocking-for-3d-apis and QA added context-loss detection plus browser recycle | c_optics 1791519443222 | RESOLVED 04:58 (smoke clean) |
 | 27 | Bots | bots a77d0883019b11e4c | Moonwalk / skating / yaw spikes FIXED 08:32. Residual: rare backpedal slip (0.2% of samples) | h_jank 1791534734653 | minor |
 | 28 | FP rig | FP viewmodel r2 ae2dabb5f9b0dd692 | M870 reload at 45%: gun out of frame; P226 ADS: oversized support glove, pistol tiny/low | c_wvis_b 1791523688692 | reported |
-| 29 | Render | FP viewmodel r2 ae2dabb5f9b0dd692 | 1160-call / 2.3M-tri frame on the first render after a weapon switch (≈ full light-probe refresh); the shot frame itself is a normal 248 calls | k_m24_spike 1791525779216 | reported |
-| 30 | Weapons | FP viewmodel r2 ae2dabb5f9b0dd692 | Pistols land low on aimed taps at 25 m (P226 MPI −10 cm, M1911 −16 cm; rifles −1 to −4) | w_spray 1791516321026 | assigned |
+| 29 | Render | FP viewmodel r2 ae2dabb5f9b0dd692 | 1160-call / 2.3M-tri frame on the first render after a weapon switch (≈ full light-probe refresh); the shot frame itself is a normal 248 calls | k_m24_spike 1791525779216 | VERIFIED fixed 09:02 (259 calls on the swap frame) |
+| 30 | Weapons | coordinator (design) | Pistol "low zero" was a w_spray compensation artifact: sights true (MPI within 2 cm at 25 m when re-centred). Design question: relaxed taps leave a permanent climb (P226 +0.09°, M1911 +0.17°, M4 +0.06° per shot) | pistol 1791536340869 | reported |
+| 31 | FP rig | coordinator (FP r2 finished) | P226 reload: arms/gun cover 16–20% of the centre box from 6% to 78% of tac and empty reloads (was 0%) | pistol 1791536340869 + arm_coverage.py | reported |
 | 6 | Perf | perf a06576c27e6a80553 | ~1600 calls / 3.5M tris, 75 s load vs budget 400 / 1.2M / 20 s | coordinator | VERIFIED: budget met 03:37 |
 | 17 | UI | gameplay a9c1ad23de29b1b81 | Pause menu opened on last-visited page (Credits) | g_hud_ui g12b_pause | VERIFIED fixed 01:31 |
 | 18 | Weapons/FP art | art lead a03eed672de8192c8 | AK irons still no front post at ADS on fresh build | c_optics o3_ak_irons_ads | open |

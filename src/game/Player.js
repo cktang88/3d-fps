@@ -129,6 +129,9 @@ export class Player {
       if (!this._nanHReported) { this._nanHReported = true; console.error('Player height non-finite; ignored', new Error().stack); }
       return;
     }
+    // Keep the capsule sane: an absurd half-height (e.g. 1e20) makes Rapier panic inside the KCC, and a wasm panic
+    // leaves the whole physics world unusable ("recursive use of an object" on every later call).
+    h = Math.min(Math.max(h, 2 * MOVE.radius + 0.1), 4);
     if (Math.abs(h - this.height) < 1e-3) return;
     this.height = h;
     this.collider.setHalfHeight(Math.max(0.05, (h - 2 * MOVE.radius) / 2));

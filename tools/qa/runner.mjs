@@ -178,6 +178,7 @@ async function runJob(job, buildInfo, worker = 0) {
         result.shots.push(path.join('tools/qa/results', job.id, f));
       }
       (result.viewMs ||= {})[v.name] = Date.now() - tv;
+      result._lastProgressAt = Date.now(); // watchdog liveness: a view just completed
       if (v.release) await page.evaluate((keys) => { const g = window.__game; for (const k of keys) g.input.down.delete(k); }, v.release);
     }
     if (job.script) {
@@ -292,16 +293,24 @@ async function worker(n) {
     log(`[w${n}] run`, job.id, 'for', job.owner, 'snapshot', b.stamp);
     // Watchdog: a job that hangs (e.g. an infinite loop inside page.evaluate) must not block a worker forever.
     const limit = (job.timeoutS || 900) * 1000;
-    // A page that is merely slow (CPU contention: 10+ min boots and 15-40 s views were seen) must not be reported as
-    // hung. At the deadline we first probe liveness (game frame / physics step counters sampled 5 s apart) and grant
-    // up to MAX_EXTENSIONS extra periods of EXTENSION_MS while the page keeps making progress.
-    const EXTENSION_MS = Math.min(limit, 300000), MAX_EXTENSIONS = job.noExtend ? 0 : 2;
+    // A page that is merely slow (CPU contention: 10+ min boots and 15-45 s views were seen) must not be reported as
+    // hung: the five 'Rapier world.step hangs' of 2026-10-09 were exactly that (each job was still finishing views
+    // seconds before the 900 s deadline; re-run with more time they completed). At the deadline we check liveness
+    // (a view completed in the last PROGRESS_WINDOW_MS, else game/physics counters sampled 5 s apart) and grant up to
+    // MAX_EXTENSIONS extra periods of EXTENSION_MS while the page keeps making progress. job.noExtend disables this.
+    const EXTENSION_MS = Math.min(limit, 300000), MAX_EXTENSIONS = job.noExtend ? 0 : 2, PROGRESS_WINDOW_MS = 180000;
     let timer, extensions = 0;
     const r = await Promise.race([
       runJob(job, b, n),
       new Promise((res) => { const onDeadline = async () => {
-        const live = await Promise.race([probeLiveness(warm.get(n)?.page || current.get(n)),
-          new Promise((ok) => setTimeout(() => ok({ alive: false, why: 'liveness probe timed out' }), 40000))]);
+        // Liveness: a view completed recently (cheap, works while a long view script blocks the page's main thread,
+        // when CDP commands can't get through), or the game/physics counters advance under Debugger.pause.
+        const res0 = warm.get(n)?.sink?.result;
+        const sinceView = res0?._lastProgressAt ? Date.now() - res0._lastProgressAt : null;
+        const live = sinceView != null && sinceView < PROGRESS_WINDOW_MS
+          ? { alive: true, why: `last view completed ${Math.round(sinceView / 1000)}s ago (${Object.keys(res0.viewMs || {}).length}/${job.views?.length ?? '?'} views done)` }
+          : await Promise.race([probeLiveness(warm.get(n)?.page || current.get(n)),
+            new Promise((ok) => setTimeout(() => ok({ alive: false, why: `no view completed for ${sinceView == null ? 'the whole job' : Math.round(sinceView / 1000) + 's'} and the liveness probe got no answer in 40 s` }), 40000))]);
         if (live.alive && extensions < MAX_EXTENSIONS) {
           extensions++;
           log(`[w${n}] deadline`, job.id, `reached but page is alive (${live.why}) - extending by ${EXTENSION_MS / 1000}s (${extensions}/${MAX_EXTENSIONS})`);
@@ -315,13 +324,15 @@ async function worker(n) {
         const w = warm.get(n); warm.delete(n); const partial = w?.sink?.result;
         const hungPage = w?.page || current.get(n);
         // Grab the JS stack of the hung page (Debugger.pause interrupts a busy loop; if nothing is running the
-        // page is idle - e.g. waiting for a frame - and we record that instead).
+        // page is idle - e.g. waiting for a frame - and we record that instead). Caveat: Chromium may only service
+        // Debugger.enable/pause once a long-running evaluate returns, so for a slow (not hung) page the stack is a
+        // sample of a LATER rAF frame, not of what was running at the deadline.
         let hangStack = 'no JS running (page idle: likely waiting on requestAnimationFrame / compositor)';
         let hangTrace = null;
         try {
           if (!hungPage) throw new Error('no page (stuck before page creation)');
           const cdp = await hungPage.context().newCDPSession(hungPage);
-          await cdp.send('Debugger.enable');
+          await Promise.race([cdp.send('Debugger.enable'), new Promise((_, no) => setTimeout(() => no(new Error('Debugger.enable got no answer in 30 s (main thread stuck in a script CDP cannot interrupt)')), 30000))]);
           let frames = null;
           hangStack = await Promise.race([
             new Promise((ok) => cdp.once('Debugger.paused', (e) => { frames = e.callFrames; ok(e.callFrames.slice(0, 12).map((f) => `${f.functionName || '(anon)'} @ ${(f.url || '').split('/').pop()}:${f.location.lineNumber + 1}:${f.location.columnNumber + 1}`).join(' <- ')); })),

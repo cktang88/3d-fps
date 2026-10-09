@@ -36,6 +36,8 @@ export class Physics {
     this._trace = [];
     this._cur = this._newTraceFrame();
     this.nColliders = 0; this.nBodies = 0;
+    this.nSimBodies = 0; // non-fixed rigid bodies: while 0 there is nothing for world.step() to simulate
+    this._dirty = false; // colliders/bodies added or removed since the last world.step()
     this.stepsTotal = 0; this.lateCreates = []; // colliders created after the first world.step()
     const w = this.world, self = this;
     const cc = w.createCollider.bind(w), rc = w.removeCollider.bind(w);
@@ -44,12 +46,14 @@ export class Physics {
       self._validateDesc(desc, parent);
       const c = cc(desc, parent);
       self.nColliders++;
+      self._dirty = true;
       if (self.stepsTotal > 0 && self.lateCreates.length < 64) self.lateCreates.push([self.traceFrame, c.handle, desc.shape?.type]);
       if (self._cur.ev.length < 16) self._cur.ev.push(['+c', c.handle, desc.shape?.type, parent ? parent.handle : -1]);
       return c;
     };
     w.removeCollider = (c, wake) => {
       self.nColliders--;
+      self._dirty = true;
       if (self._cur.ev.length < 16) self._cur.ev.push(['-c', c.handle]);
       return rc(c, wake);
     };
@@ -58,11 +62,15 @@ export class Physics {
       if (bad) throw new Error(`Physics: refusing rigid body with ${bad}`);
       const b = cb(desc);
       self.nBodies++;
+      self._dirty = true;
+      if (desc.status !== self.R.RigidBodyType.Fixed) self.nSimBodies++;
       if (self._cur.ev.length < 16) self._cur.ev.push(['+b', b.handle, desc.status]);
       return b;
     };
     w.removeRigidBody = (b) => {
       self.nBodies--;
+      self._dirty = true;
+      if (!b.isFixed()) self.nSimBodies--;
       if (self._cur.ev.length < 16) self._cur.ev.push(['-b', b.handle]);
       return rb(b);
     };
@@ -148,6 +156,13 @@ export class Physics {
     const pc = this.playerCollider;
     if (pc) { const t = pc.translation(); tr.pc = [t.x, t.y, t.z, pc.halfHeight()]; }
     this.accum += Math.min(dt, 0.1);
+    // Nothing to simulate (only fixed bodies + the KCC-driven, parentless player capsule): skip world.step(). The
+    // KCC and all queries read collider poses directly and the static colliders' broad-phase leaves never move, so
+    // stepping would only refresh the player capsule's own leaf, which no query uses (every query filters on
+    // G.WORLD and the KCC excludes the capsule). A step costs ~0.3-0.7 ms here, almost all of it rapier.js's
+    // per-step JS bookkeeping (World.mapNewSoftBodies walks every body and collider handle). One step still runs
+    // after colliders/bodies are added or removed, to insert them into the broad phase.
+    if (this.nSimBodies === 0) this.accum = this._dirty ? Math.max(this.accum, this.world.timestep) : 0;
     tr.accum = this.accum;
     this._trace.push(tr);
     if (this._trace.length > 120) this._trace.shift();
@@ -155,7 +170,8 @@ export class Physics {
     if (rec && this._ck) {
       // Exact replay log: the only world mutation between steps is the player collider's pose/height.
       let a = this.accum, n = 0;
-      while (a >= this.world.timestep && n < 8) { a -= this.world.timestep; n++; }
+      const maxN = this.nSimBodies === 0 ? 1 : 8;
+      while (a >= this.world.timestep && n < maxN) { a -= this.world.timestep; n++; }
       if (n > 0) {
         const e = tr.pc ? [...tr.pc, n] : [null, null, null, null, n];
         this._ck.log.push(e);
@@ -163,9 +179,11 @@ export class Physics {
       }
     }
     let steps = 0;
-    while (this.accum >= this.world.timestep && steps < 8) {
+    const maxSteps = this.nSimBodies === 0 ? 1 : 8;
+    while (this.accum >= this.world.timestep && steps < maxSteps) {
       tr.steps = steps + 1; // written before the call: a hang shows which sub-step never returned
       this.world.step();
+      this._dirty = false;
       this.stepsTotal++;
       this.accum -= this.world.timestep;
       steps++;

@@ -38,6 +38,9 @@ export class AimRecoil {
 
   /** Fraction of a string's climb that settles back by itself, by string length. */
   static settleFrac(rc, n) {
+    // A single deliberate tap returns to the natural point of aim (real shooters do; slow taps shouldn't walk
+    // the group up). Bursts and strings keep the partial settle, so sustained fire still needs pull-down.
+    if (n <= 1) return 1;
     const t = Math.min(1, Math.max(0, (n - 1) / 9));
     return rc.recS + (rc.recL - rc.recS) * t;
   }
