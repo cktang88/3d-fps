@@ -2,7 +2,7 @@
 
 Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Results: `tools/qa/results/<id>/`.
 
-**Last run:** 2026-10-09 06:51 UTC: `core` 1791527531247 and `f_ffa` 1791527531295 (snapshot ~06:44), `h_jank` re-run queued for the foot-lock change. Perf budget: MET.
+**Last run:** 2026-10-09 07:30 UTC: `h_jank` 1791528677015 (snapshot 07:14, foot locking), `core` + `f_ffa` (06:44). Perf budget: MET. Runner host heavily loaded (load avg ~9.6 on 4 cores, fresh loads up to 870 s).
 
 ## Pass / fail by area
 
@@ -17,7 +17,7 @@ Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Resu
 | Recoil / spray (tuned feature) | `w_spray.json` | BASELINE 04:10 | 25 m: tapC 100% torso on every rifle (median 2–4 cm); autoC torso 37–65%; burst3C 53–100%. Pistols tapC land 10–16 cm low at 25 m (p226 MPI −10 cm, m1911 −16 cm), possible sight zeroing |
 | FFA | `f_ffa.json` | PASS | 06:48: spawn, 120 s sim, scoreboard, bot close-up; no NaN, no console messages |
 | HUD / menus / UI flow | `core.json` | PASS | kills/medals/tally, low ammo, cook + drop on death, death card, respawn 1.6/4.5 s, damage arcs, pause opens on home, bullets hit bot, end screen |
-| Bot animation jank metrics | `h_bot_jank.json` / core L4 | PASS* | 06:30: toe slip fwd p50 0.02 / p90 0.12 m/s (76% of samples), strafe 0.01 / 0.36; palm 1.3–2.6 cm; aim OK; 0 pops. *Open: backpedal/turn slip (rare, p90 3.5 m/s), yaw 552°/s on 1 bot, deaths 29% displaced > 0.45 m |
+| Bot animation jank metrics | `h_bot_jank.json` | PASS* | 07:14: toe slip p50 0.01–0.03 / p90 0.10–0.57 on all bots (fwd 0.02 / 0.14); palm 1.2–2.3 cm; aim OK; 0 pops; deaths OK. *Open: backward motion at velRel 140–160° plays the forward gait (backward:false), so it moonwalks (1% of samples, p90 2.3 m/s); chest yaw 590°/s on 1 bot |
 
 ## Open issues
 
@@ -46,7 +46,7 @@ Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Resu
 | 24 | Physics hang | coordinator (Player.js) | Page hang inside Rapier world.step() (captured stack), likely NaN player collider translation via Player._syncBody; proposed 8-line finite guard (QA edit blocked by permissions) | runner log 01:50 fprig_cov | guard applied by coordinator 02:15; origin hunt re-runs queued |
 | 25 | Perf | perf a06576c27e6a80553 | Draw calls regressed (transmission glass + zoning, fixed by owner); PVS 404 (VERIFIED gone 03:07); FPS overlay intentional (user); chunky FP gun = dynamic res at 85% (disabled under QA) | e_keyart 1791509573464 | VERIFIED fixed 03:37 |
 | 26 | Runner | coordinator / render | "Renders nothing" 04:48 was a WebGL context loss at ~04:21 that made Chrome block 3D for the origin; not a code bug. Runner now passes --disable-domain-blocking-for-3d-apis and QA added context-loss detection plus browser recycle | c_optics 1791519443222 | RESOLVED 04:58 (smoke clean) |
-| 27 | Bots | bots a77d0883019b11e4c | Foot slip FIXED for fwd/strafe (06:30). Open: backpedal/turn-in-place not foot-locked; yaw 552°/s on 1 bot; forward collapse displaces > 0.45 m in 29% of deaths | h_jank 1791526404983 | reported |
+| 27 | Bots | bots a77d0883019b11e4c | Foot slip FIXED (07:14). Open: back-diagonal (velRel 140–160°) uses the forward gait, i.e. moonwalk; chest yaw 590°/s spike on 1 bot | h_jank 1791528677015 | reported |
 | 28 | FP rig | FP viewmodel r2 ae2dabb5f9b0dd692 | M870 reload at 45%: gun out of frame; P226 ADS: oversized support glove, pistol tiny/low | c_wvis_b 1791523688692 | reported |
 | 29 | Render | FP viewmodel r2 ae2dabb5f9b0dd692 | 1160-call / 2.3M-tri frame on the first render after a weapon switch (≈ full light-probe refresh); the shot frame itself is a normal 248 calls | k_m24_spike 1791525779216 | reported |
 | 30 | Weapons | FP viewmodel r2 ae2dabb5f9b0dd692 | Pistols land low on aimed taps at 25 m (P226 MPI −10 cm, M1911 −16 cm; rifles −1 to −4) | w_spray 1791516321026 | assigned |

@@ -90,6 +90,7 @@ export class Player {
     this.collider = phys.world.createCollider(
       R.ColliderDesc.capsule(hh, MOVE.radius).setTranslation(0, 5, 0).setCollisionGroups(groups(G.PLAYER, G.WORLD)));
     phys.tag(this.collider, { actor: this });
+    phys.playerCollider = this.collider; // for the hang-forensics trace (Physics._trace)
     this.kcc = phys.world.createCharacterController(0.02);
     this.kcc.setUp({ x: 0, y: 1, z: 0 });
     this.kcc.setMaxSlopeClimbAngle(50 * DEG);
@@ -131,6 +132,7 @@ export class Player {
     if (Math.abs(h - this.height) < 1e-3) return;
     this.height = h;
     this.collider.setHalfHeight(Math.max(0.05, (h - 2 * MOVE.radius) / 2));
+    this.phys.traceKcc('hh', h);
     this._syncBody();
   }
 
@@ -146,7 +148,13 @@ export class Player {
     } else (this._goodPos ||= p.clone()).copy(p);
     if (!(Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z))) v.set(0, 0, 0);
     if (!Number.isFinite(this.height)) this.height = MOVE.standHeight;
-    this.collider.setTranslation({ x: p.x, y: p.y + this.height / 2, z: p.z });
+    const ty = p.y + this.height / 2, l = this._lastSync;
+    if (!l) this._lastSync = { x: p.x, y: ty, z: p.z };
+    else {
+      if (Math.abs(p.x - l.x) + Math.abs(ty - l.y) + Math.abs(p.z - l.z) > 2) this.phys.traceKcc('tp', [l.x, l.y, l.z], [p.x, ty, p.z]);
+      l.x = p.x; l.y = ty; l.z = p.z;
+    }
+    this.collider.setTranslation({ x: p.x, y: ty, z: p.z });
   }
 
   canStand() {
@@ -358,6 +366,7 @@ export class Player {
       groups(0xffff, G.WORLD));
     const mv = this.kcc.computedMovement();
     const m = { x: mv.x, y: mv.y, z: mv.z };
+    this.phys.traceKcc('mv', [desired.x, desired.y, desired.z], [m.x, m.y, m.z], this.kcc.computedGrounded());
     this.wasGrounded = this.grounded;
     this.grounded = this.kcc.computedGrounded();
 

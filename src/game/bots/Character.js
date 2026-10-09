@@ -780,7 +780,7 @@ export class Character {
     for (const [k, a] of Object.entries(this.upperActions)) { a.reset().play(); a.setEffectiveWeight(k === 'aim' ? 1 : 0); if (k === 'reload' || k === 'throw') a.timeScale = 0; }
     this.hitAction.stop(); this.hitAction.setEffectiveWeight(0);
     this.oneShot = null; this.oneShotW = 0;
-    this.hitJerk = 0; this.fireKick = 0;
+    this.hitJerk = 0; this.hitJerkS = 0; this.fireKick = 0;
     this.dblend?.reset(); this._dbSig = undefined; this._procSaved = false;
     this.bodyYaw = bot ? bot.yaw + this.stanceYaw : 0;
     this.twist = 0; this.lean = 0; this.fwdLean = 0; this.yawRate = 0;
@@ -874,11 +874,29 @@ export class Character {
     // With directional mocap cycles the hips stay on the aim (slightly bladed) and the legs pick the
     // walk direction from the blend space; only fast running turns the body into the travel line.
     if (this.tpl.mocap) {
-      const runTarget = sp > 2.15 + (this.runMode ? -0.25 : 0.25);
+      // The run cycle is forward-only: retreating fast stays in the 4-way regime (jog-back cycle) instead
+      // of playing the run backwards (moonwalk).
+      const runTarget = sp > 2.15 + (this.runMode ? -0.25 : 0.25) && relF < (this.runMode ? 125 : 105) * DEG;
       this.runMode = runTarget;
       if (!this.runMode) {
         this.backward = false;
         targetBody = sp > 0.25 ? aimYaw + this.stanceYaw * 0.35 : this._idleBodyYaw(aimYaw + stance);
+        if (sp > 1.2) {
+          // Jog speeds: line the hips up with the travel line (forward or backpedal, ≤85°) so the jog
+          // cycles apply cleanly; the chest twist keeps the weapon on the aim.
+          const rel = wrapPi(Math.atan2(-v.x, -v.z) - aimYaw);
+          // Forward under 60°, backpedal over 120°; in between keep whichever needs less hip rotation
+          // (a lateral reversal switches jog-forward ↔ backpedal instead of swinging the hips 170°).
+          if (Math.abs(rel) < 60 * DEG) this._alBack = false;
+          else if (Math.abs(rel) > 120 * DEG) this._alBack = true;
+          else {
+            const cur = wrapPi(this.bodyYaw - aimYaw - this.stanceYaw * 0.35);
+            const dF = Math.abs(wrapPi(clamp(rel, -85 * DEG, 85 * DEG) - cur)), dB = Math.abs(wrapPi(clamp(wrapPi(rel - Math.PI), -85 * DEG, 85 * DEG) - cur));
+            if (this._alBack ? dF + 25 * DEG < dB : dB + 25 * DEG < dF) this._alBack = !this._alBack;
+          }
+          const al = this._alBack ? wrapPi(rel - Math.PI) : rel;
+          targetBody += clamp(al, -85 * DEG, 85 * DEG) * clamp((sp - 1.2) / 0.5, 0, 1);
+        }
       }
     }
     const prevBody = this.bodyYaw;
@@ -902,6 +920,7 @@ export class Character {
     root.rotation.set(-this.fwdLean, this.bodyYaw, this.lean);
 
     this.hitJerk = Math.max(0, this.hitJerk - dt * 4.5);
+    this.hitJerkS = damp(this.hitJerkS || 0, this.hitJerk, 28, dt); // flinch with a ~40 ms attack (no 1-frame spin)
     this.fireKick = Math.max(0, this.fireKick - dt * 12);
 
     // --- LOD: distant / off-screen bots animate at a reduced rate ---
@@ -1134,11 +1153,11 @@ export class Character {
       _q3.setFromAxisAngle(UP, this.twist * share[i]);
       _q4.setFromAxisAngle(_v5, p);
       _q3.premultiply(_q4);
-      if (i >= 1 && this.hitJerk > 0) {
+      if (i >= 1 && this.hitJerkS > 1e-3) {
         // Flinch by zone: torso hits fold the chest, arm hits spin the shoulders, head hits snap the neck (below).
         const z = this.hitPart === 'arms' ? 0.08 : this.hitPart === 'legs' ? 0.06 : this.hitPart === 'head' ? 0.05 : 0.16;
-        _q4.setFromAxisAngle(this.hitAxis, this.hitJerk * z * (i === 2 ? 1.2 : 0.8)); _q3.premultiply(_q4);
-        if (this.hitPart === 'arms' && i === 2) { _q4.setFromAxisAngle(UP, this.hitJerk * 0.22 * (this.hitAxis.x > 0 ? 1 : -1)); _q3.premultiply(_q4); }
+        _q4.setFromAxisAngle(this.hitAxis, this.hitJerkS * z * (i === 2 ? 1.2 : 0.8)); _q3.premultiply(_q4);
+        if (this.hitPart === 'arms' && i === 2) { _q4.setFromAxisAngle(UP, this.hitJerkS * 0.22 * (this.hitAxis.x > 0 ? 1 : -1)); _q3.premultiply(_q4); }
       }
       if (i === 2 && this.fireKick > 0) { _q4.setFromAxisAngle(UP, this.kickRoll * this.fireKick * 0.03); _q3.premultiply(_q4); }
       this._rotateW(bone, _q3);
@@ -1159,7 +1178,7 @@ export class Character {
         _q3.setFromUnitVectors(_v1, _v2); _q4.identity().slerp(_q3, share * k);
         this._rotateW(bone, _q4);
       }
-      if (this.hitPart === 'head' && this.hitJerk > 0) { this._refreshW(b.neck); _q4.setFromAxisAngle(this.hitAxis, this.hitJerk * 0.45); this._rotateW(b.neck, _q4); }
+      if (this.hitPart === 'head' && this.hitJerkS > 1e-3) { this._refreshW(b.neck); _q4.setFromAxisAngle(this.hitAxis, this.hitJerkS * 0.45); this._rotateW(b.neck, _q4); }
     }
     root.updateMatrixWorld(true);
     this._matrixFrame = this._frame;

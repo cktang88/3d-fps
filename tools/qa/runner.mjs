@@ -268,19 +268,37 @@ async function worker(n) {
         // Grab the JS stack of the hung page (Debugger.pause interrupts a busy loop; if nothing is running the
         // page is idle - e.g. waiting for a frame - and we record that instead).
         let hangStack = 'no JS running (page idle: likely waiting on requestAnimationFrame / compositor)';
+        let hangTrace = null;
         try {
           const cdp = await w.page.context().newCDPSession(w.page);
           await cdp.send('Debugger.enable');
+          let frames = null;
           hangStack = await Promise.race([
-            new Promise((ok) => cdp.once('Debugger.paused', (e) => ok(e.callFrames.slice(0, 12).map((f) => `${f.functionName || '(anon)'} @ ${(f.url || '').split('/').pop()}:${f.location.lineNumber + 1}:${f.location.columnNumber + 1}`).join(' <- ')))),
+            new Promise((ok) => cdp.once('Debugger.paused', (e) => { frames = e.callFrames; ok(e.callFrames.slice(0, 12).map((f) => `${f.functionName || '(anon)'} @ ${(f.url || '').split('/').pop()}:${f.location.lineNumber + 1}:${f.location.columnNumber + 1}`).join(' <- ')); })),
             cdp.send('Debugger.pause').then(() => new Promise((ok) => setTimeout(() => ok(hangStack), 5000))),
           ]);
+          // While paused, read the game's physics ring buffer (window.__physTrace, see src/core/Physics.js) and
+          // anything else cheap that helps diagnose the hang. Evaluate on a JS frame (wasm frames can't run JS).
+          if (frames) {
+            const expr = `JSON.stringify({ physTrace: globalThis.__physTrace?.slice?.(-20), physInfo: globalThis.__physInfo?.() })`;
+            const jsFrame = frames.find((f) => !/wasm/.test(f.url || '') && !/^\$/.test(f.functionName || '') && f.url);
+            try {
+              const ev = jsFrame
+                ? await cdp.send('Debugger.evaluateOnCallFrame', { callFrameId: jsFrame.callFrameId, expression: expr, returnByValue: true, silent: true })
+                : await cdp.send('Runtime.evaluate', { expression: expr, returnByValue: true, silent: true, timeout: 3000 });
+              hangTrace = ev?.result?.value ?? (ev?.exceptionDetails ? 'eval error: ' + JSON.stringify(ev.exceptionDetails).slice(0, 400) : null);
+            } catch (e) { hangTrace = 'hangTrace eval failed: ' + e.message; }
+          }
           await cdp.send('Debugger.resume').catch(() => {});
         } catch (e) { hangStack = 'stack capture failed: ' + e.message; }
         log(`[w${n}] hang stack`, job.id, hangStack.slice(0, 600));
-        if (partial) partial.hangStack = hangStack;
+        if (hangTrace) {
+          log(`[w${n}] hang trace`, job.id, String(hangTrace).length, 'chars (see result.hangTrace)');
+          try { fs.mkdirSync(path.join(RES, job.id), { recursive: true }); fs.writeFileSync(path.join(RES, job.id, 'hangTrace.json'), String(hangTrace)); } catch {}
+        }
+        if (partial) { partial.hangStack = hangStack; partial.hangTrace = hangTrace; }
         // Resolve BEFORE closing the page so the timeout wins the race (closing makes runJob reject with "closed").
-        res({ ...(partial || {}), id: job.id, owner: job.owner, startedAt: partial?.startedAt || new Date(Date.now() - limit).toISOString(), finishedAt: new Date().toISOString(), shots: partial?.shots || [], logs: partial?.logs || [], data: partial?.data || {}, timedOut: true, error: `TIMEOUT after ${limit / 1000}s (page hung - possible infinite loop in game code or job script)` });
+        res({ ...(partial || {}), id: job.id, owner: job.owner, startedAt: partial?.startedAt || new Date(Date.now() - limit).toISOString(), finishedAt: new Date().toISOString(), shots: partial?.shots || [], logs: partial?.logs || [], data: partial?.data || {}, hangStack, hangTrace, timedOut: true, error: `TIMEOUT after ${limit / 1000}s (page hung - possible infinite loop in game code or job script)` });
         w?.page?.close().catch(() => {});
       }, limit); }),
     ]);

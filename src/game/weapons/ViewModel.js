@@ -989,6 +989,7 @@ export class ViewModel {
       const u = clamp(w.stateTime / w.stateDur, 0, 1), empty = w.reloadType === 'empty';
       const keys = rig.sidearm ? (empty ? PISTOL_EMPTY : PISTOL_TAC)
         : empty && this._emptyAction(rig) ? (rig._emptyKeys ||= rifleEmptyKeys(this._emptyAction(rig), rig.tune.rackRoll ?? 12)) : (window.__vmReloadKeys || RIFLE_TAC);
+      rig._reloadQ0 = (rig._reloadQ0 || new THREE.Quaternion()).copy(rig.root.quaternion); // pre-cant (see _bodyRel)
       this._pivotDelta(rig, sampleKeys(keys, u, _k));
     }
 
@@ -1099,17 +1100,30 @@ export class ViewModel {
     const parM = _m.copy(rig.root.matrixWorld).invert().multiply(par.matrixWorld);
     const well = rig.magHome.p.clone().applyMatrix4(parM);
     A.mag(t, R.m);
-    const magRoot = well.clone().addScaledVector(R.m.p, K);
+    const magRoot = well.clone().addScaledVector(this._bodyRel(rig, R.m.p, K), K);
     rig.magazine.position.copy(magRoot.applyMatrix4(parM.clone().invert()));
     rig.magazine.quaternion.copy(R.m.q).multiply(rig.magHome.q);
     rig.magazine.visible = true;
     if (rig.spare) rig.spare.visible = false;
     A.handL(t, R.h);
     const pg = rig.fp.homeL.p.clone().addScaledVector(R.h.dg, K);
-    const pw = well.clone().addScaledVector(R.h.dw, K);
+    const pw = well.clone().addScaledVector(this._bodyRel(rig, R.h.dw, K), K);
     const p = pg.lerp(pw, R.h.w);
     const q = R.h.dq.clone().multiply(rig.fp.homeL.q);
     return { p, q };
+  }
+
+  /**
+   * Template offsets are in gun space. Near the gun (magazine well) they must ride the gun, but the pouch run (~39 cm
+   * away) belongs to the body: with our 35 deg reload cant a gun-space "down-left" pouch turns into "left and up", and the
+   * hand and sleeve swung into the left edge of the frame (round 1's "dark blob"). Far offsets therefore drop the cant.
+   */
+  _bodyRel(rig, v, K) {
+    if (!rig._reloadQ0) return v;
+    const f = smoothstep(clamp((v.length() * K - 0.12) / 0.25, 0, 1));
+    if (f <= 0) return v;
+    const c = _pv.copy(v).applyQuaternion(rig._reloadQ0).applyQuaternion(_q2.copy(rig.root.quaternion).invert());
+    return c.lerp(v, 1 - f);
   }
 
   /** Empty-reload bolt action for this rifle: 'release' (bolt catch), 'rack' (charging handle) or null. */

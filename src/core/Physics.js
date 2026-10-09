@@ -25,16 +25,79 @@ export class Physics {
     this.colliderData = new Map(); // collider handle -> { material, object }
     this.dynamicLinks = []; // { body, object }
     this._ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
+    this._initTrace();
+  }
+
+  // ---------------------------------------------------------------- hang forensics
+  // Cheap ring buffer of the last TRACE_LEN physics frames (window.__physTrace). The QA runner reads it under
+  // CDP Debugger.pause when a page hangs, so it must stay plain data and be complete *before* world.step().
+  _initTrace() {
+    this.traceFrame = 0;
+    this._trace = [];
+    this._cur = this._newTraceFrame();
+    this.nColliders = 0; this.nBodies = 0;
+    this.stepsTotal = 0; this.lateCreates = []; // colliders created after the first world.step()
+    const w = this.world, self = this;
+    const cc = w.createCollider.bind(w), rc = w.removeCollider.bind(w);
+    const cb = w.createRigidBody.bind(w), rb = w.removeRigidBody.bind(w);
+    w.createCollider = (desc, parent) => {
+      const c = cc(desc, parent);
+      self.nColliders++;
+      if (self.stepsTotal > 0 && self.lateCreates.length < 64) self.lateCreates.push([self.traceFrame, c.handle, desc.shape?.type]);
+      if (self._cur.ev.length < 16) self._cur.ev.push(['+c', c.handle, desc.shape?.type, parent ? parent.handle : -1]);
+      return c;
+    };
+    w.removeCollider = (c, wake) => {
+      self.nColliders--;
+      if (self._cur.ev.length < 16) self._cur.ev.push(['-c', c.handle]);
+      return rc(c, wake);
+    };
+    w.createRigidBody = (desc) => {
+      const b = cb(desc);
+      self.nBodies++;
+      if (self._cur.ev.length < 16) self._cur.ev.push(['+b', b.handle, desc.status]);
+      return b;
+    };
+    w.removeRigidBody = (b) => {
+      self.nBodies--;
+      if (self._cur.ev.length < 16) self._cur.ev.push(['-b', b.handle]);
+      return rb(b);
+    };
+    if (typeof window !== 'undefined') {
+      window.__physTrace = this._trace;
+      window.__physInfo = () => ({ frame: this.traceFrame, steps: this.stepsTotal, lateCreates: this.lateCreates, colliders: this.nColliders, bodies: this.nBodies, accum: this.accum, cur: this._cur });
+    }
+  }
+
+  _newTraceFrame() { return { f: this.traceFrame, dt: 0, accum: 0, steps: 0, done: false, nc: 0, nb: 0, pc: null, ev: [], kcc: [] }; }
+
+  /** Player/KCC code reports its calls here (kept to a few entries per frame). */
+  traceKcc(kind, a, b, c) {
+    const k = this._cur.kcc;
+    if (k.length < 12) k.push([kind, a, b, c]);
   }
 
   step(dt) {
+    const tr = this._cur;
+    tr.dt = dt;
+    tr.nc = this.nColliders; tr.nb = this.nBodies;
+    const pc = this.playerCollider;
+    if (pc) { const t = pc.translation(); tr.pc = [t.x, t.y, t.z, pc.halfHeight()]; }
     this.accum += Math.min(dt, 0.1);
+    tr.accum = this.accum;
+    this._trace.push(tr);
+    if (this._trace.length > 120) this._trace.shift();
     let steps = 0;
     while (this.accum >= this.world.timestep && steps < 8) {
+      tr.steps = steps + 1; // written before the call: a hang shows which sub-step never returned
       this.world.step();
+      this.stepsTotal++;
       this.accum -= this.world.timestep;
       steps++;
     }
+    tr.done = true;
+    this.traceFrame++;
+    this._cur = this._newTraceFrame();
     for (const l of this.dynamicLinks) {
       const p = l.body.translation();
       const q = l.body.rotation();
