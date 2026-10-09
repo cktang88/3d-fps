@@ -29,7 +29,7 @@ export class Navigation {
     const t0 = performance.now();
     try {
       const meta = await (await fetch(url + '.json')).json();
-      if (meta.hash !== this.inputHash()) { console.warn('navmesh bake is stale (level changed); building at boot. Run node tools/perf/bake_nav.mjs'); return false; }
+      if (meta.hash !== this.inputHash()) { console.info('navmesh bake is stale (level changed); building at boot. Run node tools/perf/bake_nav.mjs'); return false; }
       const bin = new Uint8Array(await (await fetch(url + '.bin')).arrayBuffer());
       const { navMesh } = importNavMesh(bin);
       this._init(navMesh);

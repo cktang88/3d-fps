@@ -601,15 +601,16 @@ export class Bot {
 
   /**
    * Same recoil as the player (Weapon._fire -> shot.pitch/yaw), compensated by skill. The uncompensated part
-   * is a muzzle offset the target-tracking loop never sees: it stacks up during a string and only settles once
-   * the bot pauses (better bots settle faster). Returns the offset [pitch, yaw] (rad) for THIS shot, then adds
+   * is a muzzle offset the target-tracking loop never sees: it stacks up during a string (better bots hold it down)
+   * and settles once the bot pauses. Returns the offset [pitch, yaw] (rad) for THIS shot, then adds
    * this shot's leftover recoil for the next one. recoilCtl: recruit 0.3 ... veteran 0.9.
    */
   _recoilComp(shot) {
     const ctl = this.diff.recoilCtl ?? 0.5;
     const now = this.game.time, gap = now - (this._rcT ?? -99);
     this._rcT = now;
-    const settle = Math.exp(-gap * (2 + 10 * ctl));
+    // Within a string (gap < 0.2 s) only good bots keep the muzzle down; a real pause lets everyone settle.
+    const settle = Math.exp(-gap * (gap < 0.2 ? 0.6 + 9 * ctl * ctl : 2 + 10 * ctl));
     const off = [(this._rcP || 0) * settle, (this._rcY || 0) * settle];
     // Leftover: vertical scales with (1 - ctl); horizontal is harder to read, and the misjudge noise grows as skill drops.
     const n = (1 - ctl) * 0.35;

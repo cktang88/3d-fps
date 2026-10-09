@@ -1,0 +1,288 @@
+{
+"tag": "perf_pvs_check",
+"setupFiles": [
+"tools/qa/suites/lib.js"
+],
+"match": "tdm",
+"w": 480,
+"h": 270,
+"fresh": true,
+"views": [
+{
+"name": "wh_out_0_off",
+"frames": 2,
+"eval": "__qa.god();__qa.freezeBots(true);__qa.releaseAll();__game.pvs.disable();__qa.place([-16.0,0,-21],0.0,0.05);__qa.sim(0.05);__game.player.yaw=0.0;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_out_0_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([-16.0,0,-21],0.0,0.05);__qa.sim(0.05);__game.player.yaw=0.0;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_out_1_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([-14.0,0,-21],0.0,0.05);__qa.sim(0.05);__game.player.yaw=0.0;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_out_1_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([-14.0,0,-21],0.0,0.05);__qa.sim(0.05);__game.player.yaw=0.0;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_out_2_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([-12.0,0,-21],0.0,0.05);__qa.sim(0.05);__game.player.yaw=0.0;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_out_2_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([-12.0,0,-21],0.0,0.05);__qa.sim(0.05);__game.player.yaw=0.0;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_out_3_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([-10.0,0,-21],0.0,0.05);__qa.sim(0.05);__game.player.yaw=0.0;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_out_3_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([-10.0,0,-21],0.0,0.05);__qa.sim(0.05);__game.player.yaw=0.0;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_out_4_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([-8.0,0,-21],0.0,0.05);__qa.sim(0.05);__game.player.yaw=0.0;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_out_4_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([-8.0,0,-21],0.0,0.05);__qa.sim(0.05);__game.player.yaw=0.0;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_out_5_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([-6.0,0,-21],0.0,0.05);__qa.sim(0.05);__game.player.yaw=0.0;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_out_5_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([-6.0,0,-21],0.0,0.05);__qa.sim(0.05);__game.player.yaw=0.0;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_out_6_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([-4.0,0,-21],0.0,0.05);__qa.sim(0.05);__game.player.yaw=0.0;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_out_6_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([-4.0,0,-21],0.0,0.05);__qa.sim(0.05);__game.player.yaw=0.0;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_out_7_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([-2.0,0,-21],0.0,0.05);__qa.sim(0.05);__game.player.yaw=0.0;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_out_7_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([-2.0,0,-21],0.0,0.05);__qa.sim(0.05);__game.player.yaw=0.0;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "of_out_0_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([-14.0,0,27],3.1416,0.05);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "of_out_0_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([-14.0,0,27],3.1416,0.05);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "of_out_1_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([-11.5,0,27],3.1416,0.05);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "of_out_1_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([-11.5,0,27],3.1416,0.05);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "of_out_2_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([-9.0,0,27],3.1416,0.05);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "of_out_2_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([-9.0,0,27],3.1416,0.05);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "of_out_3_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([-6.5,0,27],3.1416,0.05);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "of_out_3_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([-6.5,0,27],3.1416,0.05);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "of_out_4_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([-4.0,0,27],3.1416,0.05);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "of_out_4_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([-4.0,0,27],3.1416,0.05);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "of_out_5_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([-1.5,0,27],3.1416,0.05);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "of_out_5_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([-1.5,0,27],3.1416,0.05);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "of_out_6_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([1.0,0,27],3.1416,0.05);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "of_out_6_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([1.0,0,27],3.1416,0.05);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "of_out_7_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([3.5,0,27],3.1416,0.05);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "of_out_7_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([3.5,0,27],3.1416,0.05);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.05;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_in_0_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([-12.0,0,-33],3.1416,0.0);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.0;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_in_0_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([-12.0,0,-33],3.1416,0.0);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.0;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_in_1_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([-9.0,0,-33],3.1416,0.0);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.0;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_in_1_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([-9.0,0,-33],3.1416,0.0);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.0;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_in_2_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([-6.0,0,-33],3.1416,0.0);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.0;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_in_2_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([-6.0,0,-33],3.1416,0.0);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.0;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_in_3_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([-3.0,0,-33],3.1416,0.0);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.0;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_in_3_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([-3.0,0,-33],3.1416,0.0);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.0;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_in_4_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([0.0,0,-33],3.1416,0.0);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.0;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_in_4_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([0.0,0,-33],3.1416,0.0);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.0;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_in_5_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([3.0,0,-33],3.1416,0.0);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.0;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_in_5_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([3.0,0,-33],3.1416,0.0);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.0;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_in_6_off",
+"frames": 2,
+"eval": "__game.pvs.disable();__qa.place([6.0,0,-33],3.1416,0.0);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.0;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+},
+{
+"name": "wh_in_6_on",
+"frames": 2,
+"eval": "__game.pvs.enable();__qa.place([6.0,0,-33],3.1416,0.0);__qa.sim(0.05);__game.player.yaw=3.1416;__game.player.pitch=0.0;",
+"read": "({perf:__qa.perf(),pvs:__game.pvs.stats})"
+}
+]
+}

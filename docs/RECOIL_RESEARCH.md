@@ -111,8 +111,9 @@ plus the weapon's base dispersion (honest), and movement still costs accuracy.
 
 **Bots** (`Bot._recoilComp`): bots get the same shot.pitch/yaw. The part they fail to control (1-recoilCtl
 vertical, 1-0.8·recoilCtl horizontal, plus misjudge noise that grows as skill drops) is a hidden muzzle offset
-that their target-tracking loop cannot see. It stacks during a string and settles only between shots
-(exp(-gap·(2+10·ctl))). Recruits climb off target on sustained fire; veterans barely move.
+that their target-tracking loop cannot see. Within a string it decays only at 0.6+9·ctl² per second, and
+after a pause of 0.2 s or more at 2+10·ctl per second. Muzzle offset after 10 ADS rounds (recoil only): AK recruit 1.9°
+(82 cm at 25 m), regular 0.6°, hardened 0.2°, veteran 0.05°. M4 recruit 1.5°, MP5 recruit 0.9°.
 
 ### Per-weapon profiles
 

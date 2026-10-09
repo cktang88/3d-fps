@@ -525,7 +525,7 @@ export class Level {
           mat = mat.clone();
           mat.emissive = new THREE.Color(o.emissiveColor ?? 0xffc080);
           mat.emissiveIntensity = o.emissiveIntensity ?? 6;
-          mat.transparent = false; mat.opacity = 1;
+          mat.transparent = false; mat.opacity = 1; mat.depthWrite = true;
           mat.userData.noUnify = true;
         }
         if (mat.map) mat.map.anisotropy = 8;
@@ -1566,8 +1566,9 @@ export class Level {
           if (g.index === null) g.setIndex([...Array(g.attributes.position.count).keys()]);
         }
         // Perf (docs/PERF.md): split each material batch into zones so frustum + PVS culling (render/Pvs.js)
-        // can drop them: each interior volume (warehouse, office, shed) is its own zone, the exterior is split
-        // into 60 m quadrants, pieces > 30 m go to a global zone. Names stay 'lvl_<mat>@<zone>'.
+        // can drop them: each interior volume (warehouse, office, shed) is its own zone, the exterior is one
+        // zone (finer exterior splits cost more draw calls than they save), pieces > 30 m go to a global zone.
+        // Names stay 'lvl_<mat>@<zone>'.
         const chunks = new Map();
         const bb = new THREE.Box3(), c = new THREE.Vector3(), sz = new THREE.Vector3();
         const vols = INDOOR_VOLUMES();
@@ -1577,7 +1578,7 @@ export class Level {
           if (Math.max(sz.x, sz.z) > 30) key = 'G';
           else {
             const vi = vols.findIndex((v) => v.containsPoint(c));
-            key = vi >= 0 ? 'I' + vi : `Q${c.x < 0 ? 0 : 1}${c.z < 0 ? 0 : 1}`;
+            key = vi >= 0 ? 'I' + vi : 'E';
           }
           (chunks.get(key) || chunks.set(key, []).get(key)).push(g);
         }

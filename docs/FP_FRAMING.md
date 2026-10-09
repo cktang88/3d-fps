@@ -88,6 +88,9 @@ How these numbers are used in the game:
   - muzzle 4° down;
   - cant at most 30°, with the magazine well turned toward the eyes;
   - yaw halved.
+  The sprint carry (template Run loop) gets the same treatment. It keeps the timing and rotation but pivots about
+  the grip, carries the rifle 8 cm lower and 2 cm inboard, and caps the cant at 35°. Our full-length stocks
+  otherwise swing the receiver into the top-right of the frame.
   The procedural reload carries for pistols and the shotgun's shell-by-shell loading are lowered the same way
   (`FP_TUNE.reloadPos/reloadRot`). Target: arm and hand pixels under 25% of the screen at peak, and nothing in the
   central 20% box for more than a few frames. This is measured by `tools/qa/arm_coverage.py` on QA mask shots, where

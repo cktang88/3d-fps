@@ -32,6 +32,20 @@ export class Assets {
     this.total++;
     try {
       const g = await this.gltf.loadAsync(BASE + path);
+      // Perf: any KHR_materials_transmission material makes three re-render every opaque object into a
+      // transmission buffer each frame (2x the world pass draw calls) — two tiny prop glasses did exactly that.
+      // Glass becomes plain alpha-blended glass instead (docs/PERF.md).
+      g.scene.traverse((o) => {
+        if (!o.isMesh) return;
+        for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+          if (!(m?.transmission > 0)) continue;
+          m.transmission = 0;
+          m.transparent = true;
+          m.opacity = Math.min(m.opacity ?? 1, 0.35);
+          m.depthWrite = false;
+          m.needsUpdate = true;
+        }
+      });
       this.models[key] = g;
       return g;
     } catch (e) {

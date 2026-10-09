@@ -151,6 +151,23 @@ for f, a in zip(rl['gun'], angs):
 rl['gun'] = new
 rl['reshaped'] = {k: (round(math.degrees(v), 1) if 'pitch' in k or 'max' in k else v) for k, v in RESHAPE.items()}
 out['metrics']['Reload_reshaped'] = RESHAPE | {'pitch': -4, 'roll_max': 30}
+# ---- Run (sprint carry): same treatment. The template's 43 deg carry is authored for a short-stocked bullpup-ish
+# rifle; on our full-length stocks it swings the receiver up into the top-right. Keep timing and rotation, but
+# pivot about the grip and carry the rifle lower (8 cm) and a little inboard, cant capped at 35 deg.
+RUN = dict(off=(-0.02, -0.08, 0.0), roll_max=math.radians(35))
+rc = out['clips']['Run']
+angs = [2 * math.acos(min(1, abs(f[6]))) for f in rc['gun']]
+amax = max(angs)
+new_run = []
+for f in rc['gun']:
+    pitch, yaw, roll = euler_yxz(qmat(f[3:]))
+    D = np.eye(4); D[:3, :3] = qmat(f[3:]); D[:3, 3] = f[:3]
+    tg = (D @ np.array([*g0, 1]))[:3]                      # template grip path
+    Rn = rot_yxz(pitch, yaw, max(-RUN['roll_max'], min(RUN['roll_max'], roll)))
+    gn = tg + np.array(RUN['off'])
+    new_run.append(r([*(gn - Rn @ g0), *quat(Rn)]))
+rc['gun'] = new_run
+rc['reshaped'] = {'off': RUN['off'], 'roll_max_deg': 35}
 # Base poses (for docs): template gun grip in camera space.
 for b in ('hip', 'ads'):
     m = base[b]

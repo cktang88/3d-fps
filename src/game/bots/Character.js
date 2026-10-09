@@ -841,6 +841,7 @@ export class Character {
   }
 
   _lodInterval(bot) {
+    if (this.tpl.forceFullRate) { this._hidden = false; return 0; } // QA / tooling: every bot, every frame
     const cam = bot.game?.renderer?.camera;
     if (!cam) return 0;
     const dx = bot.position.x - cam.position.x, dy = bot.position.y - cam.position.y, dz = bot.position.z - cam.position.z;
@@ -1413,7 +1414,7 @@ export class Character {
     // Pushed forward (shot from behind) → knees buckle and the body pitches onto its front.
     // Real casualties mostly collapse at the knees (REFERENCE_ENEMIES §hits: ~70% knee buckle, ~20%
     // twisting fall, ≤10% thrown backward) — the authored backward fall is the minority case.
-    let mode = Math.abs(off) > 105 * DEG || Math.random() < 0.85 ? 'topple' : 'clip';
+    let mode = Math.abs(off) > 105 * DEG || Math.random() < 0.9 ? 'topple' : 'clip';
     if (this.forceDeathMode) mode = this.forceDeathMode; // debug / tests
     const d = {
       mode, t: 0, fadeW: 0, rate: headshot ? 1.35 : explosive ? 1.2 : 0.88 + Math.random() * 0.25,

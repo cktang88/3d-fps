@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Renderer } from '../render/Renderer.js';
 import { Effects } from '../render/Effects.js';
 import { Perf } from '../render/Perf.js';
-import { lodReady, installShadowProxyLayer, consolidateStaticShadows } from '../render/Lod.js';
+import { lodReady, lodCacheLoad, lodCacheSave, installShadowProxyLayer, consolidateStaticShadows } from '../render/Lod.js';
 import { BotOcclusion } from '../render/Occlusion.js';
 import { LightPool } from '../render/LightPool.js';
 import { StaticShadowCache } from '../render/ShadowCache.js';
@@ -82,6 +82,7 @@ export class Game {
       this.assets.model('soldierTac', 'models/characters/soldier_tac.glb'),
       this.loadSounds(),
       lodReady,
+      lodCacheLoad(),
     ]);
     this.perf.mark('assets loaded');
     onProgress?.(0.92, 'Building level');
@@ -137,6 +138,7 @@ export class Game {
     const R = this.renderer, rr = R.renderer;
     await Promise.all([rr.compileAsync(R.scene, R.camera), rr.compileAsync(R.viewScene, R.viewCamera)]);
     this.perf.mark('shaders compiled');
+    setInterval(lodCacheSave, 10000); // persist newly computed LODs (menu, match start) in the background (perf)
     onProgress?.(1, 'Ready');
     // Stream the remaining FP weapon rigs while the menu is up (startMatch awaits them).
     this.gunModels.loadRest().then(() => { this._rigsReady = true; });

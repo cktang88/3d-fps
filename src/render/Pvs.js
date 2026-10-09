@@ -59,9 +59,9 @@ export class Pvs {
 
   async load(url = './assets/pvs/level.json') {
     let data;
-    try { const r = await fetch(url); if (!r.ok) throw new Error(r.status); data = await r.json(); } catch (e) { console.warn('PVS: no baked data (' + e.message + '); culling disabled. Run node tools/perf/bake_pvs.mjs'); return false; }
+    try { const r = await fetch(url); if (!r.ok) throw new Error(r.status); data = await r.json(); } catch (e) { console.info('PVS: no baked data (' + e.message + '); culling disabled. Run node tools/perf/bake_pvs.mjs'); return false; }
     const { targets, hash } = pvsTargets(this.game.level);
-    if (data.hash !== hash || data.targets !== targets.length) { console.warn(`PVS: level changed since bake (${data.hash} vs ${hash}); culling disabled. Re-run node tools/perf/bake_pvs.mjs`); return false; }
+    if (data.hash !== hash || data.targets !== targets.length) { console.info(`PVS: level changed since bake (${data.hash} vs ${hash}); culling disabled. Re-run node tools/perf/bake_pvs.mjs`); return false; }
     this.targets = targets;
     this.grid = data.grid;
     this.rowBytes = Math.ceil(targets.length / 8);
@@ -84,13 +84,13 @@ export class Pvs {
 
   /**
    * Coarse: could anything at world point p be visible from the camera's cell? (any visible level chunk in the
-   * same zone: interior volume or exterior quadrant). Used by ambience to throttle hidden emitters. Always true when the PVS is off.
+   * same zone: interior volume or the exterior). Used by ambience to throttle hidden emitters. Always true when the PVS is off.
    */
   visiblePoint(p) {
     if (!this.enabled || this._row < 0) return true;
     const vols = this.game.level.indoorVolumes || [];
     const vi = vols.findIndex((v) => v.containsPoint(p));
-    const key = vi >= 0 ? 'I' + vi : `Q${p.x < 0 ? 0 : 1}${p.z < 0 ? 0 : 1}`;
+    const key = vi >= 0 ? 'I' + vi : 'E';
     const list = this._byKey.get(key);
     if (!list) return true;
     for (const i of list) if (this.visibleTarget(i)) return true;
@@ -117,6 +117,8 @@ export class Pvs {
     }
     this.stats = { hiddenChunks: hc, hiddenProps: hp, cell, row: this._row };
   }
+
+  enable() { if (this.targets) { this.enabled = true; this.cell = -2; } }
 
   disable() {
     if (!this.targets) return;

@@ -304,7 +304,11 @@ export class Renderer {
 
   /** Dynamic resolution: hold ~60 fps by trading pixel ratio (55–100%) on slow GPUs. */
   _updateDynRes() {
-    if (this.settings.dynamicRes === false || window.__qaFixedDt) return;
+    // Off when disabled, in QA (fixed-step / automation: 1-fps software rendering would ratchet it down) — reset to 100%.
+    if (this.settings.dynamicRes === false || window.__qaFixedDt || navigator.webdriver) {
+      if (this.dynScale !== 1) { this.dynScale = 1; this.renderer.setPixelRatio(this.basePixelRatio); this.resize(); }
+      return;
+    }
     const now = performance.now();
     if (this._drT0 === undefined) { this._drT0 = now; this._drN = 0; this._drOkSince = now; this._drHoldUntil = 0; this._drBackoff = 4000; return; }
     this._drN++;

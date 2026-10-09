@@ -9,10 +9,44 @@ import { mergeVertices, mergeGeometries } from 'three/addons/utils/BufferGeometr
  * Await `lodReady` once before first use (Game.init does); before that, sources are returned unchanged.
  */
 export const lodReady = MeshoptSimplifier.ready.then(() => { _ready = true; });
+
+// ---- persistent LOD cache (IndexedDB) ----
+const _idb = { enabled: false, map: new Map(), dirty: new Map(), db: null };
+function contentKey(pos, index, groups, maxTris, error) {
+  let h1 = 0x811c9dc5, h2 = 0x1b873593;
+  const u = new Uint32Array(pos.buffer, pos.byteOffset, pos.length);
+  for (let i = 0; i < u.length; i++) { h1 = Math.imul(h1 ^ u[i], 16777619); h2 = Math.imul(h2 ^ (u[i] >>> 7), 2246822507); }
+  for (let i = 0; i < index.length; i++) h1 = Math.imul(h1 ^ index[i], 16777619);
+  return `${(h1 >>> 0).toString(36)}.${(h2 >>> 0).toString(36)}.${pos.length}.${index.length}.${groups.length}.${maxTris}.${error}`;
+}
+const idbReq = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+/** Load cached LOD index buffers (call before building content; never throws, gives up after 1.5 s). */
+export async function lodCacheLoad() {
+  try {
+    if (typeof indexedDB === 'undefined') return;
+    const open = indexedDB.open('ironline-lod', 1);
+    open.onupgradeneeded = () => open.result.createObjectStore('idx');
+    const db = await Promise.race([idbReq(open), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 1500))]);
+    _idb.db = db;
+    const st = db.transaction('idx', 'readonly').objectStore('idx');
+    const [keys, vals] = await Promise.all([idbReq(st.getAllKeys()), idbReq(st.getAll())]);
+    keys.forEach((k, i) => _idb.map.set(k, vals[i]));
+    _idb.enabled = true;
+  } catch { _idb.enabled = false; }
+}
+/** Persist newly computed LODs (fire-and-forget, after the menu shows). */
+export function lodCacheSave() {
+  if (!_idb.db || !_idb.dirty.size) return;
+  try {
+    const tx = _idb.db.transaction('idx', 'readwrite'), st = tx.objectStore('idx');
+    for (const [k, v] of _idb.dirty) st.put(v, k);
+    _idb.dirty.clear();
+  } catch { /* quota / private mode: fine, recompute next time */ }
+}
 let _ready = false;
 const _cache = new WeakMap();
 export const lodErrors = [];
-export const lodStats = { ms: 0, n: 0 }; // runtime simplification cost (load-time budget, docs/PERF.md)
+export const lodStats = { ms: 0, n: 0, cacheHits: 0 }; // runtime simplification cost (load-time budget, docs/PERF.md)
 
 /**
  * @param {THREE.BufferGeometry} geo
@@ -37,19 +71,29 @@ export function simplifiedGeometry(geo, maxTris, error = 0.01) {
   const groups = src.groups.length ? src.groups : [{ start: 0, count: index.length, materialIndex: 0 }];
   const outIdx = [], outGroups = [];
   let at = 0;
-  for (const gr of groups) {
+  // Persistent cache (IndexedDB, keyed by a content hash of positions + index + budget): skips meshopt on
+  // later boots. Loaded by lodCacheLoad() before content is built; new results saved by lodCacheSave().
+  const ckey = _idb.enabled ? contentKey(pos, index, groups, maxTris, error) : null;
+  const cached = ckey && _idb.map.get(ckey);
+  for (let gi = 0; gi < groups.length; gi++) {
+    const gr = groups[gi];
     const cnt = Math.min(gr.count, index.length - gr.start);
-    const sub = new Uint32Array(index.subarray(gr.start, gr.start + cnt));
-    const target = Math.max(3, Math.floor((cnt / 3) * ratio) * 3);
-    let res = sub;
-    if (target < cnt) {
-      try { [res] = MeshoptSimplifier.simplify(sub, pos, 3, target, error); } catch (e) { res = sub; lodErrors.push(String(e?.message || e).slice(0, 200)); }
-      if (res.length < 3) res = sub; // never let a part vanish
+    let res;
+    if (cached) res = cached[gi];
+    else {
+      const sub = new Uint32Array(index.subarray(gr.start, gr.start + cnt));
+      const target = Math.max(3, Math.floor((cnt / 3) * ratio) * 3);
+      res = sub;
+      if (target < cnt) {
+        try { [res] = MeshoptSimplifier.simplify(sub, pos, 3, target, error); } catch (e) { res = sub; lodErrors.push(String(e?.message || e).slice(0, 200)); }
+        if (res.length < 3) res = sub; // never let a part vanish
+      }
     }
     outIdx.push(res);
     outGroups.push({ start: at, count: res.length, materialIndex: gr.materialIndex });
     at += res.length;
   }
+  if (ckey) { if (cached) lodStats.cacheHits++; else _idb.dirty.set(ckey, outIdx); }
   const merged = new Uint32Array(at);
   let o = 0;
   for (const r of outIdx) { merged.set(r, o); o += r.length; }
@@ -335,7 +379,7 @@ export class DistanceLod {
 }
 
 // Debug handle for QA scripts (docs/PERF.md).
-if (typeof window !== 'undefined') window.__lod = { simplifiedGeometry, triCount, lodErrors, lodStats, get ready() { return _ready; } };
+if (typeof window !== 'undefined') window.__lod = { simplifiedGeometry, triCount, lodErrors, lodStats, cacheSize: () => _idb.map.size, get ready() { return _ready; } };
 
 const _shadowMats = new Map();
 function shadowOnlyMaterial(side, shadowSide) {

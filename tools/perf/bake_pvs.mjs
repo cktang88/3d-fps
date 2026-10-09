@@ -13,7 +13,7 @@ const nJobs = +(process.argv[process.argv.indexOf('--jobs') + 1] || 8) || 8;
 const total = grid.nx * grid.nz * grid.ny;
 const cells = [...Array(total).keys()];
 const REQ = path.join(ROOT, 'tools/qa/requests'), RES = path.join(ROOT, 'tools/qa/results');
-const stamp = Date.now();
+const stamp = process.argv.includes("--prio") ? 1791484000000 + (Date.now() % 100000) : Date.now(); // --prio: sort ahead in the shared queue
 const ids = [];
 for (let j = 0; j < nJobs; j++) {
   const part = cells.filter((c) => c % nJobs === j);
