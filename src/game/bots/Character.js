@@ -1162,6 +1162,20 @@ export class Character {
       if (i === 2 && this.fireKick > 0) { _q4.setFromAxisAngle(UP, this.kickRoll * this.fireKick * 0.03); _q3.premultiply(_q4); }
       this._rotateW(bone, _q3);
     }
+    // Chest yaw-rate guard in world space (what the eye reads): whatever the mix (clip blends, dead blending,
+    // flinch, re-plants), the chest never spins faster than ~480°/s between consecutive full-rate frames.
+    if (b.spine && b.spine1 && b.spine2 && b.spine1.parent === b.spine && b.spine2.parent === b.spine1) {
+      const e = b.spine2.matrixWorld.elements, cy = Math.atan2(e[8], e[10]), dtA = this._animDt || 1 / 60;
+      if (this._chestYawW !== undefined && this._chestFrame === this._frame - 1 && dtA < 0.05) {
+        const d = wrapPi(cy - this._chestYawW), mx = 8.4 * dtA;
+        if (Math.abs(d) > mx) {
+          const corr = (Math.abs(d) - mx) * Math.sign(d);
+          _q4.setFromAxisAngle(UP, -corr); this._rotateW(b.spine, _q4); this._refreshW(b.spine1); this._refreshW(b.spine2);
+          this._chestYawW = wrapPi(cy - corr);
+        } else this._chestYawW = cy;
+      } else this._chestYawW = cy;
+      this._chestFrame = this._frame;
+    }
     // Head looks along the aim (the aim clip buries the chin in the stock; keep a slight cheek weld).
     if (b.head && b.neck && b.head.parent === b.neck && b.neck.parent === b.spine2 && this.oneShotW < 0.5) {
       const tp = pitch - 0.15;
@@ -1508,8 +1522,9 @@ export class Character {
       const fin = T.f.copy(tgt).lerp(lockAnkle(T.d), f.w);
       // Swing clearance: a travelling, unlocked foot keeps its toe ≥ 4 cm above its contact height
       // (low shuffling clips would otherwise drag the sole along the ground).
-      const swingK = (1 - f.w) * clamp((sT - 0.7) / 0.6, 0, 1);
-      f.lift = damp(f.lift || 0, clamp(f.minT + 0.04 - f.hT, 0, 0.05) * swingK, 25, dt);
+      // Releasing (blending from the lock back to the pose): the catch-up happens in the air, not as a slide.
+      const swingK = Math.max((1 - f.w) * clamp((sT - 0.7) / 0.6, 0, 1), !f.locked && !f.step && f.w > 0.01 ? 1 : 0);
+      f.lift = damp(f.lift || 0, clamp(f.minT + 0.04 - f.hT, 0, 0.05) * swingK, 40, dt);
       fin.y = Math.max(fin.y, f.gy + Math.max(f.minH - 0.005, 0.055)) + (f.step ? f.arc : 0) + f.lift; // never through the ground (ankle ≥ 5.5 cm)
       f.fin.copy(fin);
       // Locked heading only (yaw about world up); heel-strike → flat → toe-off roll stays animated.
@@ -1737,7 +1752,7 @@ export class Character {
       mode, t: 0, fadeW: 0, rate: headshot ? 1.35 : explosive ? 1.2 : 0.88 + Math.random() * 0.25,
       fromYaw: this.bodyYaw, toYaw: this.bodyYaw, dir: dir.clone(), angle: 0, angVel: 0, landed: false,
       // Knockback: a short stagger-slide, bigger for buckshot / blasts.
-      slide: explosive ? 1.6 : shotgun ? 0.5 : headshot ? 0.05 : 0.05 + Math.random() * 0.1, slid: 0, maxSlide: 0,
+      slide: explosive ? 1.0 : shotgun ? 0.3 : headshot ? 0.05 : 0.05 + Math.random() * 0.1, slid: 0, maxSlide: 0,
       groundY: bot.position.y, lift: 0, origin: bot.position.clone(),
     };
     if (mode === 'clip') {
@@ -1809,7 +1824,7 @@ export class Character {
     if (d.slideV > 0) {
       const step = Math.min(d.slideV * dt, d.maxSlide - d.slid);
       d.slid += Math.max(0, step);
-      d.slideV = Math.max(0, d.slideV - 7 * dt);
+      d.slideV = Math.max(0, d.slideV - (d.t > (d.kneel ?? 0.2) ? 14 : 7) * dt); // friction doubles once the body is going down
     }
     root.position.set(d.origin.x + d.dir.x * d.slid, d.groundY, d.origin.z + d.dir.z * d.slid);
 
