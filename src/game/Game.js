@@ -5,6 +5,8 @@ import { Perf } from '../render/Perf.js';
 import { lodReady, installShadowProxyLayer, consolidateStaticShadows } from '../render/Lod.js';
 import { BotOcclusion } from '../render/Occlusion.js';
 import { LightPool } from '../render/LightPool.js';
+import { StaticShadowCache } from '../render/ShadowCache.js';
+import { Pvs } from '../render/Pvs.js';
 import { Physics, G } from '../core/Physics.js';
 import { Input } from '../core/Input.js';
 import { Audio } from '../core/Audio.js';
@@ -56,6 +58,8 @@ export class Game {
     const s = this.settings;
     this.renderer = new Renderer(this.canvas, s);
     this.perf = new Perf(this); window.__perf = this.perf;
+    // Perf: cached static sun shadow (render/ShadowCache.js); must wrap shadowMap.render before the proxy layer.
+    this.shadowCache = new StaticShadowCache(this.renderer.renderer, this.renderer.scene);
     installShadowProxyLayer(this.renderer.renderer);
     this.perf.mark('renderer');
     this.input = new Input(this.canvas);
@@ -86,6 +90,10 @@ export class Game {
     this.level.placeProps();
     this.level.setupEnvironment(hdr);
     consolidateStaticShadows(this.level.group); // perf: ~70 static shadow draws -> a handful
+    this.shadowCache.light = this.level.sun; this.shadowCache.invalidate();
+    // Perf: precomputed visibility (render/Pvs.js, baked by tools/perf/bake_pvs.mjs).
+    this.pvs = new Pvs(this);
+    await this.pvs.load();
     this.renderer.viewScene.environment = this.renderer.scene.environment;
     this.renderer.viewScene.environmentIntensity = 0.9;
     this.perf.tag(this.renderer.scene, 'level'); this.perf.mark('level built');
@@ -667,6 +675,7 @@ export class Game {
     this.audio.updateListener(this.renderer.camera);
     this.effects.update(dt, this.renderer.camera);
     this.ambience?.update(dt);
+    this.pvs?.update();
     this.botOcclusion.update(); // perf: hide fully wall-occluded bots (shadow proxies keep casting)
     this.lightPool?.update(dt);
     if (this.started) this.hud.update(live ? dt : 0); // HUD timers freeze while paused

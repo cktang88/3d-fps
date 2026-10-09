@@ -49,6 +49,8 @@ const PROPS = {
   fluoro: ['mounted_fluorescent_lights/mounted_fluorescent_lights.glb', { emissive: /glass/, emissiveColor: 0xe6f2ff, emissiveIntensity: 5.5 }],
   pipes: ['modular_industrial_pipes_01/modular_industrial_pipes_01.glb'],
   woodCrate: ['wooden_crate_02/wooden_crate_02.glb'],
+  // Same crate for rack loads under the warehouse roof: separate batch that never casts sun shadows (perf).
+  rackCrate: [null, { alias: 'woodCrate', noShadow: true }],
   cementBag: ['cement_bag/cement_bag.glb'],
   wheelRim: ['rusted_wheel_rim_01/rusted_wheel_rim_01.glb'],
   wetSign: ['WetFloorSign_01/WetFloorSign_01.glb'],
@@ -506,6 +508,7 @@ export class Level {
   async loadProps(assets) {
     this.props = {};
     await Promise.all(Object.entries(PROPS).map(async ([k, [path, o = {}]]) => {
+      if (o.alias) return;
       const g = await assets.model('prop_' + k, 'models/props/' + path);
       if (!g) return;
       const root = g.scene;
@@ -537,9 +540,16 @@ export class Level {
         for (const p of parts) p.geo.translate(-c.x, 0, -c.z);
         bb.translate(V(-c.x, 0, -c.z));
       }
-      this.props[k] = { parts, bb, size: bb.getSize(new THREE.Vector3()), center: bb.getCenter(new THREE.Vector3()) };
+      this.props[k] = { parts, bb, size: bb.getSize(new THREE.Vector3()), center: bb.getCenter(new THREE.Vector3()), noShadow: !!o.noShadow };
       this.propInst[k] = [];
     }));
+    // Aliases share geometry + materials (no second download) but get their own batch/flags.
+    for (const [k, [, o = {}]] of Object.entries(PROPS)) {
+      const src = o.alias && this.props[o.alias];
+      if (!src) continue;
+      this.props[k] = { ...src, parts: src.parts.map((q) => ({ geo: q.geo, mat: q.mat })), noShadow: !!o.noShadow };
+      this.propInst[k] = [];
+    }
   }
 
   /**
@@ -603,7 +613,7 @@ export class Level {
           bm.setMatrixAt(id, m);
           pos.push(new THREE.Vector3().setFromMatrixPosition(m));
         }
-        bm.castShadow = big && !part.mat.userData.noUnify;
+        bm.castShadow = big && !part.mat.userData.noUnify && !p.noShadow;
         bm.receiveShadow = true;
         bm.name = 'prop_' + k;
         bm.userData.shadowGeo = sh; // used by Lod.consolidateStaticShadows (one shadow draw for all props)
@@ -923,8 +933,8 @@ export class Level {
         if (r < 0.55) {
           // Load of scanned timber crates (instanced) instead of a flat box; one clean collider for the load.
           const y0 = shelfY + 0.145;
-          for (const dz of [-0.31, 0.31]) this.prop('woodCrate', bx + rand(-0.04, 0.04), z + dz, Math.PI / 2 + rand(-0.08, 0.08), { y: y0, mount: true });
-          if (rnd() < 0.7) this.prop('woodCrate', bx, z + rand(-0.15, 0.15), Math.PI / 2 + rand(-0.2, 0.2), { y: y0 + 0.46, mount: true });
+          for (const dz of [-0.31, 0.31]) this.prop('rackCrate', bx + rand(-0.04, 0.04), z + dz, Math.PI / 2 + rand(-0.08, 0.08), { y: y0, mount: true });
+          if (rnd() < 0.5) this.prop('rackCrate', bx, z + rand(-0.15, 0.15), Math.PI / 2 + rand(-0.2, 0.2), { y: y0 + 0.46, mount: true });
           this.game.physics.addStaticBox(V(bx, y0 + 0.46, z), V(0.4, 0.46, 0.62), null, { surface: 'wood' });
         }
         else if (r < 0.85) {
@@ -1038,7 +1048,7 @@ export class Level {
     // Entrance canopy over the main door.
     this.box('concrete', -2.4, 2.75, z0 - 0.7, 3.2, 0.14, 1.4, { map: false, nav: false, collide: false });
     // Interior partitions (plaster) with door casings.
-    const pw = { doorFrame: 'woodDark', wainscot: 'plasterGreen' };
+    const pw = { doorFrame: 'woodDark', wainscot: 'plasterGreen', uv: 3.2 };
     this.wall('wornPlaster', -4, z0 + 0.15, -4, z1 - 0.15, 0, F - 0.25, 0.15, [{ at: 3, w: 1.2, y0: 0, y1: 2.2 }, { at: 9, w: 1.2, y0: 0, y1: 2.2 }], pw);
     this.wall('wornPlaster', x0 + 0.15, 38, -4, 38, 0, F - 0.25, 0.15, [{ at: 5, w: 1.2, y0: 0, y1: 2.2 }], pw);
     this.wall('wornPlaster', -2, z0 + 0.15, -2, z1 - 0.15, F, F - 0.25, 0.15, [{ at: 6, w: 1.2, y0: F, y1: F + 2.2 }], pw);
@@ -1105,7 +1115,7 @@ export class Level {
     this.interiorLight(-6, F - 0.5, 38, 0xdbe8ff, 18, 15, true);
     // Upper floor: cool fluorescent wash in the east rooms, a warm work lamp hanging in the west room (warm/cool
     // split leads the eye down the corridor), plus the sun pouring through the south windows (shafts below).
-    this.interiorLight(1.5, 2 * F - 0.55, 37.5, 0xdbe8ff, 22, 14);
+    this.interiorLight(1.5, 2 * F - 0.55, 37.5, 0xdbe8ff, 28, 15);
     this.prop('hangLamp', -9.5, 38.6, 0.4, { y: 2 * F - 1.36 - 0.02, mount: true });
     this.interiorLight(-9.5, 2 * F - 1.55, 38.6, 0xffad62, 16, 10);
     // Emissive exit signs over the doorways (practicals that read in bloom, no light cost).
@@ -1550,17 +1560,29 @@ export class Level {
           for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
           if (g.index === null) g.setIndex([...Array(g.attributes.position.count).keys()]);
         }
-        const merged = mergeGeometries(list, false);
-        if (!merged) { console.warn('merge failed for', mat.name); continue; }
-        merged.computeBoundingSphere();
-        const mesh = new THREE.Mesh(merged, mat);
-        mesh.castShadow = cast && !mat.transparent;
-        mesh.receiveShadow = !mat.transparent || mat === this.mats.get('leakDecal') || mat === this.mats.get('decals');
-        mesh.matrixAutoUpdate = false;
-        mesh.updateMatrix();
-        mesh.name = 'lvl_' + (mat.name || 'mat');
-        if (mat.transparent) mesh.renderOrder = mat.name === 'glass' ? 3 : 1;
-        this.group.add(mesh);
+        // Perf (docs/PERF.md): split each material batch into spatial chunks (24 m grid; pieces > 30 m go to a
+        // global chunk) so frustum + PVS culling (render/Pvs.js) can drop them. Names stay 'lvl_<mat>@<chunk>'.
+        const chunks = new Map();
+        const bb = new THREE.Box3(), c = new THREE.Vector3(), sz = new THREE.Vector3();
+        for (const g of list) {
+          g.computeBoundingBox(); bb.copy(g.boundingBox); bb.getCenter(c); bb.getSize(sz);
+          const key = Math.max(sz.x, sz.z) > 30 ? 'G' : `${Math.floor((c.x + 60) / 24)},${Math.floor((c.z + 60) / 24)}`;
+          (chunks.get(key) || chunks.set(key, []).get(key)).push(g);
+        }
+        for (const [key, part] of chunks) {
+          const merged = mergeGeometries(part, false);
+          if (!merged) { console.warn('merge failed for', mat.name); continue; }
+          merged.computeBoundingSphere();
+          const mesh = new THREE.Mesh(merged, mat);
+          mesh.castShadow = cast && !mat.transparent;
+          mesh.receiveShadow = !mat.transparent || mat === this.mats.get('leakDecal') || mat === this.mats.get('decals');
+          mesh.matrixAutoUpdate = false;
+          mesh.updateMatrix();
+          mesh.name = 'lvl_' + (mat.name || 'mat') + '@' + key + (cast ? '' : '~');
+          mesh.userData.chunk = key;
+          if (mat.transparent) mesh.renderOrder = mat.name === 'glass' ? 3 : 1;
+          this.group.add(mesh);
+        }
       }
     }
     scene.add(this.group);
@@ -1694,7 +1716,7 @@ function INDOOR_VOLUMES() {
   const box = (a, b, fill) => { const bx = new THREE.Box3(a, b); bx.userData = { fill }; return bx; };
   return [
     box(V(-18, -1, -49), V(18, 9.1, -27), [0.035, 0.026, 0.017]),
-    box(V(-14, -1, 32), V(10, 6.95, 44), [0.06, 0.052, 0.044]),
+    box(V(-14, -1, 32), V(10, 6.95, 44), [0.085, 0.074, 0.06]),
     box(V(12, -1, -18.5), V(18, 3.1, -13.5), [0.02, 0.018, 0.016]),
   ];
 }

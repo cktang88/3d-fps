@@ -1,0 +1,10 @@
+{"tag":"perf_shadowcache","setupFiles":["tools/qa/suites/lib.js"],"match":"tdm","w":960,"h":540,"fresh":true,
+ "setup":"window.__shc=(on)=>{const c=__game.shadowCache;c.enabled=on;c.invalidate();};",
+ "views":[
+  {"name":"s1_courtyard_off","frames":2,"eval":"__qa.god();__qa.freezeBots(false);__qa.releaseAll();__shc(false);__qa.place([0,0,20],0.3,0.02);__qa.sim(0.3);__game.player.yaw=0.3;__game.player.pitch=0.02;","read":"__qa.perf()"},
+  {"name":"s1_courtyard_on","frames":2,"eval":"__shc(true);","read":"({perf:__qa.perf(),bakes:__game.shadowCache.bakes})"},
+  {"name":"s2_dock_off","frames":2,"eval":"__shc(false);__qa.place([2,0,-12],0.4,0.02);__qa.sim(0.1);__game.player.yaw=0.4;__game.player.pitch=0.02;","read":"__qa.perf()"},
+  {"name":"s2_dock_on","frames":2,"eval":"__shc(true);","read":"({perf:__qa.perf(),bakes:__game.shadowCache.bakes})"},
+  {"name":"s3_warehouse_off","frames":2,"eval":"__shc(false);__qa.place([-12,0,-30],-1.9,0.05);__qa.sim(0.1);__game.player.yaw=-1.9;__game.player.pitch=0.05;","read":"__qa.perf()"},
+  {"name":"s3_warehouse_on","frames":2,"eval":"__shc(true);","read":"({perf:__qa.perf(),bakes:__game.shadowCache.bakes})"}
+ ]}

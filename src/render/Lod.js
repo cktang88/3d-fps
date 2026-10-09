@@ -85,6 +85,8 @@ export const triCount = (g) => (g.index ? g.index.count : g.attributes.position.
  * installShadowProxyLayer() enables the layer on that camera just for the duration of shadowMap.render.
  */
 export const SHADOW_PROXY_LAYER = 3;
+/** Static shadow casters (rendered once into the cached sun shadow, see render/ShadowCache.js). */
+export const STATIC_SHADOW_LAYER = 6;
 
 export function installShadowProxyLayer(renderer) {
   const sm = renderer.shadowMap;
@@ -389,7 +391,7 @@ export function consolidateStaticShadows(root) {
     const m0 = list[0].material, mat = shadowOnlyMaterial(m0.side, m0.shadowSide ?? null);
     const caster = new THREE.Mesh(simp, mat);
     caster.name = 'staticShadowCaster';
-    caster.layers.set(SHADOW_PROXY_LAYER);
+    caster.layers.set(STATIC_SHADOW_LAYER);
     caster.castShadow = true; caster.receiveShadow = false;
     caster.matrixAutoUpdate = false;
     root.add(caster);
@@ -409,7 +411,7 @@ export function consolidateStaticShadows(root) {
       bm.castShadow = false;
     });
     caster.name = 'propShadowCaster';
-    caster.layers.set(SHADOW_PROXY_LAYER);
+    caster.layers.set(STATIC_SHADOW_LAYER);
     caster.castShadow = true; caster.receiveShadow = false;
     // BatchedMesh matrices are in its local space; place it like the source batches (same parent transform).
     caster.matrix.copy(list[0].matrix); caster.matrix.decompose(caster.position, caster.quaternion, caster.scale);
