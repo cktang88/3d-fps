@@ -841,7 +841,6 @@ export class Character {
     // --- Body yaw (legs follow movement, upper body twists toward the aim) ---
     const v = bot.velocity;
     const speed = Math.hypot(v.x, v.z);
-    this.speedS = damp(this.speedS, speed, 14, dt);
     // Actual ground travel (crowd corrections and accelerations included) drives the stride wheel and the
     // travel direction, so planted feet track the root exactly; bot.velocity is smoothed and lags it.
     if (dt > 0) {
@@ -852,9 +851,13 @@ export class Character {
       this._tvx += (tx / dt - this._tvx) * kt; this._tvz += (tz / dt - this._tvz) * kt;
       this._travel += Math.hypot(this._tvx, this._tvz) * dt;
     }
+    // Locomotion follows the root's real motion as soon as it moves (bot.velocity is smoothed twice and
+    // lags starts / sharp turns, which left the idle pose gliding with the root).
+    this.speedS = damp(this.speedS, Math.max(speed, Math.hypot(this._tvx, this._tvz)), 14, dt);
     const sp = this.speedS;
     const aimYaw = bot.yaw;
-    let moveYaw = sp > 0.25 ? Math.atan2(-v.x, -v.z) : aimYaw;
+    const useTv = Math.hypot(this._tvx, this._tvz) > speed, mvx = useTv ? this._tvx : v.x, mvz = useTv ? this._tvz : v.z;
+    let moveYaw = sp > 0.25 ? Math.atan2(-mvx, -mvz) : aimYaw;
     // Legs run along the movement (forward gait) or against it (backpedal). Clearly forward / clearly
     // backward movement decides by itself; for strafes either works, so keep whichever needs the least
     // hip rotation — ADAD strafing then reads as stepping back and forth, not a body spinning 180°.
@@ -884,7 +887,7 @@ export class Character {
         if (sp > 1.2) {
           // Jog speeds: line the hips up with the travel line (forward or backpedal, ≤85°) so the jog
           // cycles apply cleanly; the chest twist keeps the weapon on the aim.
-          const rel = wrapPi(Math.atan2(-v.x, -v.z) - aimYaw);
+          const rel = wrapPi(Math.atan2(-mvx, -mvz) - aimYaw);
           // Forward under 60°, backpedal over 120°; in between keep whichever needs less hip rotation
           // (a lateral reversal switches jog-forward ↔ backpedal instead of swinging the hips 170°).
           if (Math.abs(rel) < 60 * DEG) this._alBack = false;
@@ -1434,6 +1437,7 @@ export class Character {
       f.minH = Math.min(h, f.minH + 0.04 * dt); // recent contact heights (rise slowly)
       f.minT = Math.min(f.hT, f.minT + 0.04 * dt);
       f.h = h;
+      if (!(Number.isFinite(f.A.x) && Number.isFinite(f.A.z) && Number.isFinite(rootY))) { f.init = false; this._footLockOn = false; return; } // never feed NaN to Rapier
       if (phys && (Math.abs(f.A.x - f.gx) + Math.abs(f.A.z - f.gz) > 0.04 || ((this._frame + i) & 3) === 0)) {
         f.gx = f.A.x; f.gz = f.A.z;
         T.o.set(f.A.x, rootY + 0.45, f.A.z);
@@ -1475,8 +1479,12 @@ export class Character {
       // world speed of the animated heel / toe: in contact they (nearly) stand still
       const sA = f.vInit ? Math.hypot(f.A.x - f.Ap.x, f.A.z - f.Ap.z) / dt : 9, sT = f.vInit ? Math.hypot(f.TA.x - f.TAp.x, f.TA.z - f.TAp.z) / dt : 9;
       f.Ap.copy(f.A); f.TAp.copy(f.TA); f.vInit = true;
-      const heelDown = f.h < f.minH + (f.locked ? 0.045 : 0.022) && sA < (f.locked ? 1.6 : 1.0);
-      const toeDown = f.hT < f.minT + (f.locked ? 0.03 : 0.018) && sT < (f.locked ? 1.6 : 1.0);
+      // A flat foot (heel and toe both at their contact heights) is planted whatever the pose blend does
+      // to it (idle ↔ walk transitions drag feet along the ground); heel-only / toe-only contact also needs
+      // the animated point to be nearly still (rejects low swings).
+      const flat = f.h < f.minH + 0.012 && f.hT < f.minT + 0.012;
+      const heelDown = flat || (f.h < f.minH + (f.locked ? 0.045 : 0.022) && sA < (f.locked ? 1.6 : 1.0));
+      const toeDown = flat || (f.hT < f.minT + (f.locked ? 0.03 : 0.018) && sT < (f.locked ? 1.6 : 1.0));
       const rot = (yawOff, x, z, out) => { const ca = Math.cos(yawOff), sa = Math.sin(yawOff); return out.set(x * ca + z * sa, 0, -x * sa + z * ca); };
       // horizontal ankle position implied by the lock (toe anchor: keep the toe point, roll the foot)
       const lockAnkle = (out) => {
@@ -1507,9 +1515,9 @@ export class Character {
           const drift = Math.hypot(f.P.x - tgt.x, f.P.z - tgt.z);
           if (!o.step && o.w > 0.9 && (drift > 0.11 || Math.abs(wrapPi(f.yaw - f.ay)) > 0.42)) {
             f.step = f.stepS || (f.stepS = {}); f.step.u = 0; f.step.x = f.P.x; f.step.z = f.P.z; f.step.yaw = f.yaw;
-          } else if (drift > 0.45) f.locked = false;
+          } // (standing, a foot never lets go: it waits for the other foot's step and then steps itself)
         }
-      } else if (heelDown || toeDown) {
+      } else if (heelDown || toeDown || (idle && !f.step && (f.h < f.minH + 0.03 || f.hT < f.minT + 0.025))) { // (standing: any foot near the ground re-plants)
         // (Re)lock where the foot is drawn now (it may still be blending out of the last lock): no snap.
         f.locked = true; f.anchor = heelDown ? 0 : 1;
         f.yaw = f.ay + wrapPi(f.yaw - f.ay) * f.w;
@@ -1529,6 +1537,7 @@ export class Character {
       f.fin.copy(fin);
       // Locked heading only (yaw about world up); heel-strike → flat → toe-off roll stays animated.
       T.q.setFromAxisAngle(UP, wrapPi(f.yaw - f.ay) * f.w).multiply(f.AQ);
+      if (!Number.isFinite(fin.x + fin.y + fin.z)) { f.locked = false; f.step = null; f.w = 0; continue; }
       if (fin.distanceToSquared(f.A) > 1e-8 || Math.abs(this._pelvis) > 0.002) {
         this._twoBoneIK(up, leg, foot, fin, 1);
         foot.quaternion.copy(wquat(foot.parent, T.q2).invert().multiply(T.q));
@@ -1737,7 +1746,7 @@ export class Character {
     const off = wrapPi(backYaw - this.bodyYaw);
     const phys = bot.game?.physics;
     const clear = (yaw, dist) => {
-      if (!phys) return true;
+      if (!phys || !Number.isFinite(bot.position.x + bot.position.y + bot.position.z + yaw + dist)) return true;
       _v2.set(bot.position.x, bot.position.y + 0.5, bot.position.z);
       _v3.set(Math.sin(yaw), 0, Math.cos(yaw));
       return !phys.raycast(_v2, _v3, dist, G.WORLD);
@@ -1772,7 +1781,7 @@ export class Character {
       d.forward = true;
     }
     // Knockback slide distance, clipped by walls.
-    if (phys) {
+    if (phys && Number.isFinite(bot.position.x + bot.position.y + bot.position.z + d.dir.x + d.dir.z + d.slide)) {
       _v2.set(bot.position.x, bot.position.y + 0.4, bot.position.z);
       const h = phys.raycast(_v2, d.dir, d.slide + 0.6, G.WORLD);
       d.maxSlide = h ? Math.max(0, h.distance - 0.6) : d.slide;
