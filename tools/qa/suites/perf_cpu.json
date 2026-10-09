@@ -1,0 +1,1 @@
+{"tag":"perf_cpu","setupFiles":["tools/qa/suites/lib.js"],"match":"tdm","w":320,"h":180,"fresh":true,"scriptFile":"tools/qa/suites/perf_cpu.script.js"}

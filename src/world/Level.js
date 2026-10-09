@@ -604,8 +604,13 @@ export class Level {
         if (ids.length > 1) {
           const low = new Uint8Array(list.length);
           const fovK = { fov: -1, t: 1 };
-          bm.onBeforeRender = (r, sc, camera) => {
-            if (camera !== cam) return;
+          // BatchedMesh builds its culled multi-draw list in its own onBeforeRender: run LOD first, then that.
+          const batchedOBR = bm.onBeforeRender.bind(bm);
+          bm.onBeforeRender = (r, sc, camera, ...rest) => {
+            if (camera === cam) updateLod();
+            return batchedOBR(r, sc, camera, ...rest);
+          };
+          const updateLod = () => {
             if (fovK.fov !== cam.fov) { fovK.fov = cam.fov; fovK.t = Math.tan(cam.fov * Math.PI / 360); }
             const cp = cam.position;
             for (let i = 0; i < pos.length; i++) {

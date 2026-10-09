@@ -255,6 +255,9 @@ export class CharacterTemplate {
     if (meshGltf && meshGltf !== gltf) clips = retargetClips(clips, gltf.scene, g);
     this.clips = new Map(clips.map((c) => [c.name, c]));
     if (meshGltf) mergeSkinnedByMaterial(g);
+    // The tactical body's headset is authored floating above the cap (user report: "hovers above the
+    // head") — drop it rather than ship a visibly wrong prop.
+    { const rm = []; g.traverse((o) => { if (o.isMesh && /Headphone/i.test(o.material?.name || '')) rm.push(o); }); for (const o of rm) o.parent?.remove(o); }
     g.updateMatrixWorld(true);
     // Measure standing height from the skeleton (head top) rather than the mesh bounds, which include
     // T-pose sockets / straps.

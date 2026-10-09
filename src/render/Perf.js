@@ -142,6 +142,61 @@ export class Perf {
     return { byOwner: Object.fromEntries(Object.entries(byOwner).sort((a, b) => b[1].calls - a[1].calls).map(([k, v]) => [k, `${v.calls}c ${Math.round(v.tris / 1000)}kt`])), top, topTris };
   }
 
+  // ------------------------------------------------------------------ CPU
+  /**
+   * Per-subsystem main-thread CPU time over `frames` simulated frames (fixed dt, GPU render skipped unless
+   * `render`). Wraps the per-frame entry points of each subsystem temporarily. Returns ms/frame (mean + p95).
+   */
+  async cpuProfile(frames = 120, render = false) {
+    const g = this.game, timers = {};
+    const wrap = (obj, fn, label) => {
+      if (!obj?.[fn]) return null;
+      const orig = obj[fn];
+      obj[fn] = function (...a) {
+        const t = performance.now();
+        try { return orig.apply(this, a); } finally { (timers[label] ||= []).push(performance.now() - t); }
+      };
+      return () => { obj[fn] = orig; };
+    };
+    const undo = [
+      wrap(g, 'update', 'TOTAL game.update'),
+      wrap(g.match, 'update', 'match'),
+      wrap(g.player, 'update', 'player'),
+      wrap(g.nav, 'update', 'nav'),
+      wrap(g.ballistics, 'update', 'ballistics'),
+      wrap(g.physics, 'step', 'physics.step'),
+      wrap(g.fpcam, 'update', 'fpcam'),
+      wrap(g.viewmodel, 'update', 'viewmodel'),
+      wrap(g.effects, 'update', 'effects'),
+      wrap(g.ambience, 'update', 'ambience'),
+      wrap(g.hud, 'update', 'hud'),
+      wrap(g.botOcclusion, 'update', 'botOcclusion'),
+      wrap(g.audio, 'updateListener', 'audio'),
+      wrap(g.renderer, 'render', 'renderer.render (JS+GL submit)'),
+      ...(g.bots || []).map((b) => wrap(b, 'update', 'bots (AI+anim)')),
+      ...(g.bots || []).map((b) => wrap(b.model, 'update', 'bots: Character.update')),
+      ...(g.currentWeapon ? [wrap(g.currentWeapon, 'update', 'weapon')] : []),
+    ].filter(Boolean);
+    const wasSkip = window.__qaSkipRender, wasDt = window.__qaFixedDt;
+    window.__qaFixedDt = 1 / 60;
+    window.__qaSkipRender = !render;
+    try {
+      for (let i = 0; i < frames; i++) await new Promise((r) => requestAnimationFrame(() => r()));
+    } finally {
+      for (const u of undo) u();
+      window.__qaSkipRender = wasSkip; window.__qaFixedDt = wasDt;
+    }
+    const n = timers['TOTAL game.update']?.length || 1;
+    const out = {};
+    for (const [k, arr] of Object.entries(timers)) {
+      const sum = arr.reduce((a, b) => a + b, 0);
+      // Sum of all calls per frame (bots: 11 calls/frame), p95 over per-call samples.
+      const sorted = [...arr].sort((a, b) => a - b);
+      out[k] = { msPerFrame: +(sum / n).toFixed(3), callsPerFrame: +(arr.length / n).toFixed(1), p95call: +sorted[Math.floor(sorted.length * 0.95)]?.toFixed(3) };
+    }
+    return Object.fromEntries(Object.entries(out).sort((a, b) => b[1].msPerFrame - a[1].msPerFrame));
+  }
+
   // ------------------------------------------------------------------ census
   census() {
     const g = this.game, scene = g.renderer.scene;
