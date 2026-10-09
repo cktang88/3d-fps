@@ -30,10 +30,11 @@ const ART = [
   ['e11_ruins_wall', [-30, 0, 3], 1.9, 0.0],
   ['e12_perimeter', [30, 0, 50], 2.4, 0.08],
   ['e13_tower', [-48, 4.2, -40.5], -0.9, -0.05],
+  ['e14_lane_x0', [0, 0, 18], 0, -0.05],
 ];
 const art = {
   tag: 'e_keyart', setupFiles: ['tools/qa/suites/lib.js'], match: 'tdm', w: 960, h: 540,
-  views: [{ name: 'e00_settle', shot: false, frames: 1, eval: '__qa.sim(4)' }].concat(ART.map(([name, pos, yaw, pitch]) => ({ name, frames: 2, eval: `__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([${pos}],${yaw},${pitch});__qa.sim(0.3);__game.player.yaw=${yaw};__game.player.pitch=${pitch};`, read: '__qa.perf()' }))).concat([{ name: 'e99_load', shot: false, frames: 1, read: '({hudOverlaps: __qa.hudOverlaps()})' }]),
+  views: [{ name: 'e00_settle', shot: false, frames: 1, eval: '__qa.sim(4)' }].concat(ART.map(([name, pos, yaw, pitch]) => ({ name, frames: 2, eval: `__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([${pos}],${yaw},${pitch});__qa.sim(0.3);__game.player.yaw=${yaw};__game.player.pitch=${pitch};`, read: name === 'e14_lane_x0' ? `(()=>{const g=__game,V=g.player.position.constructor,o=[];for(const h of [0.2,0.6,1.0,1.5]){const r=g.physics.raycast(new V(0,h,19),new V(0,0,-1),12);o.push([h,r?{d:+r.distance.toFixed(2),z:+r.point.z.toFixed(2),surf:r.data?.surface,name:r.data?.name}:null])}return {perf:__qa.perf(),rays:o}})()` : '__qa.perf()' }))).concat([{ name: 'e99_load', shot: false, frames: 1, read: '({hudOverlaps: __qa.hudOverlaps()})' }]),
 };
 fs.writeFileSync(dir + 'e_keyart.json', JSON.stringify(art, null, 1));
 console.log('ok');

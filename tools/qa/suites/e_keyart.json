@@ -92,6 +92,12 @@
    "read": "__qa.perf()"
   },
   {
+   "name": "e14_lane_x0",
+   "frames": 2,
+   "eval": "__qa.god();__qa.freezeBots(false);__qa.releaseAll();__qa.place([0,0,18],0,-0.05);__qa.sim(0.3);__game.player.yaw=0;__game.player.pitch=-0.05;",
+   "read": "(()=>{const g=__game,V=g.player.position.constructor,o=[];for(const h of [0.2,0.6,1.0,1.5]){const r=g.physics.raycast(new V(0,h,19),new V(0,0,-1),12);o.push([h,r?{d:+r.distance.toFixed(2),z:+r.point.z.toFixed(2),surf:r.data?.surface,name:r.data?.name}:null])}return {perf:__qa.perf(),rays:o}})()"
+  },
+  {
    "name": "e99_load",
    "shot": false,
    "frames": 1,

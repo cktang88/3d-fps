@@ -67,7 +67,9 @@ def main():
         moved = 0
         for slot, tref in slots.items():
             if not tref: continue
-            im = j['images'][j['textures'][tref['index']]['source']]
+            tex = j['textures'][tref['index']]
+            src = tex.get('source', (tex.get('extensions') or {}).get('EXT_texture_webp', {}).get('source'))
+            im = j['images'][src]
             if 'bufferView' not in im: continue
             v = j['bufferViews'][im['bufferView']]
             data = bytes(bin_[v.get('byteOffset', 0):v.get('byteOffset', 0) + v['byteLength']])
