@@ -223,6 +223,7 @@ export class DistantBattle {
   _columns(dt, ctx, warm = false) {
     for (const c of this.columns) {
       c.acc += dt * c.rate * (warm ? 1 : ctx.particleScale);
+      c.acc = Number.isFinite(c.acc) ? Math.min(c.acc, 8) : 0; // never spin on a dt spike / bad rate
       while (c.acc >= 1) {
         c.acc -= 1;
         const s = c.scale;
@@ -297,6 +298,7 @@ export class DistantBattle {
         f.halo.material.opacity = 0.45 * b;
         f.halo.position.copy(f.core.position);
         f.trailAcc += dt * 2.6 * ctx.particleScale;
+        f.trailAcc = Number.isFinite(f.trailAcc) ? Math.min(f.trailAcc, 8) : 0;
         while (f.trailAcc >= 1 && b > 0.05) {
           f.trailAcc -= 1;
           const w = f.core.getWorldPosition(new THREE.Vector3());

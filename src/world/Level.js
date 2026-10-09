@@ -606,6 +606,7 @@ export class Level {
         bm.castShadow = big && !part.mat.userData.noUnify;
         bm.receiveShadow = true;
         bm.name = 'prop_' + k;
+        bm.userData.shadowGeo = sh; // used by Lod.consolidateStaticShadows (one shadow draw for all props)
         if (ids.length > 1) {
           const low = new Uint8Array(list.length);
           const fovK = { fov: -1, t: 1 };

@@ -150,7 +150,7 @@ export class AmbAudio {
     // Irregular rolls.
     let tt = t + 0.05, level = 0.9 * strength;
     g.gain.exponentialRampToValueAtTime(level, tt + 0.3);
-    while (tt < t + dur - 0.8) {
+    for (let guard = 0; tt < t + dur - 0.8 && guard < 32; guard++) {
       tt += 0.35 + Math.random() * 0.9;
       level *= 0.55 + Math.random() * 0.55;
       g.gain.exponentialRampToValueAtTime(Math.max(0.02, Math.min(1.1, level)), tt);

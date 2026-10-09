@@ -477,6 +477,7 @@ export class Fires {
   _emitFlames(s, dt, k) {
     for (const f of s.flames) {
       f.acc = (f.acc ?? Math.random()) + dt * (10 + f.w * f.h * 10) * Math.max(0.6, k);
+      f.acc = Number.isFinite(f.acc) ? Math.min(f.acc, 16) : 0;
       while (f.acc >= 1) {
         f.acc -= 1;
         const r = Math.sqrt(Math.random()) * f.w * 0.32, a = Math.random() * Math.PI * 2;
@@ -517,6 +518,7 @@ export class Fires {
       }
       // Smoke.
       s.smokeAcc += dt * s.rate * k;
+      s.smokeAcc = Number.isFinite(s.smokeAcc) ? Math.min(s.smokeAcc, 8) : 0;
       while (s.smokeAcc >= 1) {
         s.smokeAcc -= 1;
         // Most smoke rolls straight off the flame tips; the rest from the plume source.
@@ -535,6 +537,7 @@ export class Fires {
       if (this.flipFlames) this._emitFlames(s, dt, k);
       // Embers.
       s.emberAcc += dt * (s.rate * 2.2) * k;
+      s.emberAcc = Number.isFinite(s.emberAcc) ? Math.min(s.emberAcc, 16) : 0;
       s.burstT -= dt;
       let burst = 0;
       if (s.burstT <= 0) { s.burstT = rand(4, 11); burst = (12 + Math.random() * 14) | 0; }

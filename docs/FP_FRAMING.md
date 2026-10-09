@@ -80,7 +80,18 @@ How these numbers are used in the game:
   - the support hand follows the template's gun-space path, re-anchored from its handguard grip and magazine well
     onto each gun's GripL and magazine well, and solved by our arm IK;
   - the magazine follows the template magazine track.
-  Pistols and the pump shotgun's shell loading keep their own animation. Setting `window.__vmProcAnims = true`
+  Pistols and the pump shotgun's shell loading keep their own animation.
+* **Reload art direction (from user feedback).** The template reload tips the muzzle about 25° up with up to 53° roll.
+  In our camera that swings the support forearm across the screen centre. The retarget keeps the template's
+  timing and envelope (grab f8, magazine seated f57, hand back f75) but rebuilds the rifle pose about the grip:
+  - 5.5 cm down, 2.5 cm inboard, 2 cm forward;
+  - muzzle 6° down;
+  - cant at most 27°, with the magazine well turned toward the eyes;
+  - yaw halved.
+  The procedural reload carries for pistols and the shotgun's shell-by-shell loading are lowered the same way
+  (`FP_TUNE.reloadPos/reloadRot`). Target: arm and hand pixels under 25% of the screen at peak, and nothing in the
+  central 20% box for more than a few frames. This is measured by `tools/qa/arm_coverage.py` on QA mask shots, where
+  the arms are rendered flat magenta. Setting `window.__vmProcAnims = true`
   restores the procedural set for A/B comparison.
 
 ### Rig framing (implemented, `tools/blender/rigs.py` FRAMING)

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Renderer } from '../render/Renderer.js';
 import { Effects } from '../render/Effects.js';
 import { Perf } from '../render/Perf.js';
-import { lodReady, installShadowProxyLayer } from '../render/Lod.js';
+import { lodReady, installShadowProxyLayer, consolidateStaticShadows } from '../render/Lod.js';
 import { BotOcclusion } from '../render/Occlusion.js';
 import { LightPool } from '../render/LightPool.js';
 import { Physics, G } from '../core/Physics.js';
@@ -84,6 +84,7 @@ export class Game {
     this.level.build();
     this.level.placeProps();
     this.level.setupEnvironment(hdr);
+    consolidateStaticShadows(this.level.group); // perf: ~70 static shadow draws -> a handful
     this.renderer.viewScene.environment = this.renderer.scene.environment;
     this.renderer.viewScene.environmentIntensity = 0.9;
     this.perf.tag(this.renderer.scene, 'level'); this.perf.mark('level built');

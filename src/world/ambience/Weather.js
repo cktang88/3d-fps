@@ -274,7 +274,8 @@ export class Weather {
       const pts = [start.clone()];
       const p = start.clone();
       const drift = new THREE.Vector3(rand(-0.6, 0.6), 0, rand(-0.6, 0.6));
-      while (p.y > endY) {
+      let guard = 0;
+      while (p.y > endY && guard++ < 64) {
         const step = rand(6, 16);
         p.add(new THREE.Vector3(rand(-1, 1) * step * 0.7 + drift.x * step, -step, rand(-1, 1) * step * 0.7 + drift.z * step));
         pts.push(p.clone());

@@ -331,3 +331,90 @@ export class DistanceLod {
 
 // Debug handle for QA scripts (docs/PERF.md).
 if (typeof window !== 'undefined') window.__lod = { simplifiedGeometry, triCount, lodErrors, get ready() { return _ready; } };
+
+const _shadowMats = new Map();
+function shadowOnlyMaterial(side, shadowSide) {
+  const k = side + '|' + shadowSide;
+  if (!_shadowMats.has(k)) {
+    const m = new THREE.MeshBasicMaterial({ side, colorWrite: false });
+    m.shadowSide = shadowSide;
+    m.name = 'shadowCaster';
+    _shadowMats.set(k, m);
+  }
+  return _shadowMats.get(k);
+}
+const posOnly = (src, matrix) => {
+  const p = src.attributes.position, g = new THREE.BufferGeometry();
+  const arr = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) { arr[i * 3] = p.getX(i); arr[i * 3 + 1] = p.getY(i); arr[i * 3 + 2] = p.getZ(i); }
+  g.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+  g.setIndex(new THREE.BufferAttribute(src.index ? new Uint32Array(src.index.array) : Uint32Array.from({ length: p.count }, (_, i) => i), 1));
+  if (matrix) g.applyMatrix4(matrix);
+  return g;
+};
+
+/**
+ * Static shadow consolidation (perf, docs/PERF.md). The sun's shadow pass used to issue one draw per level material
+ * batch (~33) and one per prop part (~35). Here every static caster is folded into a few shadow-only casters on
+ * SHADOW_PROXY_LAYER, so the shadow pass is a handful of draws:
+ *  - meshes named /^lvl_/ (Level's static per-material batches) → one merged position-only Mesh per shadow side
+ *  - prop BatchedMeshes (userData.shadowGeo = shadow LOD) → one multi-geometry BatchedMesh per shadow side,
+ *    still culled per instance against the shadow camera.
+ * Alpha-tested / transparent casters (fences, grates) are left alone. The visible meshes stop casting.
+ */
+export function consolidateStaticShadows(root) {
+  root.updateMatrixWorld(true);
+  const sideKey = (m) => m.side + '|' + (m.shadowSide ?? 'null');
+  const meshes = new Map(), batches = new Map();
+  root.traverse((o) => {
+    if (!o.castShadow || !o.visible || o.layers.mask !== 1 || !o.geometry?.attributes.position) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    if (mats.some((m) => !m || m.alphaTest > 0 || m.alphaMap || m.transparent || m.displacementMap)) return;
+    const key = sideKey(mats[0]);
+    if (mats.some((m) => sideKey(m) !== key)) return;
+    if (o.isBatchedMesh) { if (o.userData.shadowGeo) (batches.get(key) || batches.set(key, []).get(key)).push(o); return; }
+    if (o.isInstancedMesh || o.isSkinnedMesh || !/^lvl_/.test(o.name)) return;
+    (meshes.get(key) || meshes.set(key, []).get(key)).push(o);
+  });
+  const out = [];
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  for (const [key, list] of meshes) {
+    const merged = mergeGeometries(list.map((m) => posOnly(m.geometry, new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld))), false);
+    if (!merged) continue;
+    merged.computeBoundingSphere();
+    // Simplify to an absolute 3 cm tolerance (meshopt's error is relative to the mesh extent; the sun's shadow
+    // texel is ~4 cm at 4096): sandbags, cylinders and trim lose triangles, boxes stay boxes.
+    const ext = merged.boundingSphere.radius * 2;
+    const simp = simplifiedGeometry(merged, Math.round(triCount(merged) * 0.25), Math.min(0.01, 0.03 / Math.max(1, ext)));
+    const m0 = list[0].material, mat = shadowOnlyMaterial(m0.side, m0.shadowSide ?? null);
+    const caster = new THREE.Mesh(simp, mat);
+    caster.name = 'staticShadowCaster';
+    caster.layers.set(SHADOW_PROXY_LAYER);
+    caster.castShadow = true; caster.receiveShadow = false;
+    caster.matrixAutoUpdate = false;
+    root.add(caster);
+    for (const m of list) m.castShadow = false;
+    out.push(caster);
+  }
+  for (const [key, list] of batches) {
+    const geos = list.map((bm) => posOnly(bm.userData.shadowGeo));
+    let inst = 0, vtx = 0, idx = 0;
+    for (let i = 0; i < list.length; i++) { inst += list[i].instanceCount; vtx += geos[i].attributes.position.count; idx += geos[i].index.count; }
+    const m0 = list[0].material;
+    const caster = new THREE.BatchedMesh(inst, vtx, idx, shadowOnlyMaterial(m0.side, m0.shadowSide ?? null));
+    const m4 = new THREE.Matrix4();
+    list.forEach((bm, i) => {
+      const gid = caster.addGeometry(geos[i]);
+      for (let k = 0; k < bm.instanceCount; k++) { const id = caster.addInstance(gid); caster.setMatrixAt(id, bm.getMatrixAt(k, m4)); }
+      bm.castShadow = false;
+    });
+    caster.name = 'propShadowCaster';
+    caster.layers.set(SHADOW_PROXY_LAYER);
+    caster.castShadow = true; caster.receiveShadow = false;
+    // BatchedMesh matrices are in its local space; place it like the source batches (same parent transform).
+    caster.matrix.copy(list[0].matrix); caster.matrix.decompose(caster.position, caster.quaternion, caster.scale);
+    list[0].parent.add(caster);
+    out.push(caster);
+  }
+  return out;
+}

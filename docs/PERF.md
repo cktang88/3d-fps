@@ -42,6 +42,8 @@ Low/Medium must be meaningfully cheaper (see *Quality presets*).
   * Shadow-only layer (`SHADOW_PROXY_LAYER = 3`): three tests shadow casters against the *viewing* camera's layers
     after the main render list is built. `installShadowProxyLayer(renderer)` enables the layer only for the duration
     of `shadowMap.render`.
+* **`__perf.cpuProfile(frames, render)`** gives main-thread ms per frame per subsystem (bots AI, Character, HUD,
+  viewmodel, physics, ambience, …) at a fixed 60 Hz step. QA job: `tools/qa/suites/perf_cpu.json`.
 * **`tools/perf/compress_textures.py [--delete] [--max N]`** converts PBR JPGs to WebP (q88, normal maps q90).
 
 ## Findings (baseline, before this pass)
@@ -82,6 +84,12 @@ See the *Results* table for per-view numbers.
 | 11 | Vite: vendor split into `three`, `postfx` (postprocessing + n8ao), `rapier`, `nav` (recast), plus game code (~400 kB). Separately cacheable chunks that load in parallel. | `vite.config.js` (`codeSplitting.groups`) | |
 | 12 | UH-60 lazy-loaded after the menu (primitive heli as fallback), heli casts no shadow, burnt car uses a merged shadow proxy, ambience reuses the level's prop GLBs (ambience owner). | `Ambience`, `Flyover`, `Fires` | -3.1 MB before menu |
 | 13 | Level: GroundedSkybox 96 → 48 segments, props re-simplified (level owner). | `Level` | |
+| 14 | Props: shadow-only LOD (~12%, 2% error) chosen in `onBeforeShadow`; main-camera LOD in `onBeforeRender`, both chained in front of BatchedMesh's own culling hooks. | `Level.finalizeProps` | prop shadow tris roughly /3 |
+| 15 | Bot occlusion culling: 6 rays per bot against thick static boxes only (fences, glass and grates never occlude). Hidden after 2 blocked frames; the merged shadow proxy keeps casting. | `render/Occlusion.js`, `Game.update` | ~15 draws saved per hidden bot |
+| 16 | Point-light pool: every logical PointLight moves to a non-rendered layer, and N physical lights (Low 3 / Med 4 / High 6 / Ultra 8) mirror the most relevant lit, in-frustum ones. Fixed count, so no recompiles; fade-out 0.12 s. | `render/LightPool.js`, `Game` | lit-fragment light loop 12+ → ≤ 6 |
+| 17 | Sun shadow map primed at init (`Renderer.primeShadows`), and a quality change no longer disposes it. Fixes `GL_INVALID_OPERATION ... sampler type` (three r186's array shadow sampler falls back to a compare-less empty depth texture). | `Renderer`, `Game.init` | correctness |
+| 18 | Dynamic resolution (coordinator's `_updateDynRes`) made vsync-aware and oscillation-free: step down on misses; after 3 s at refresh rate, probe +5%; a failed probe is undone, its scale becomes a ceiling, and the next probe waits 4 s → 8 → … → 60 s. | `Renderer._updateDynRes` | converges; recovers after load drops |
+| 19 | First-boot quality from the GPU tier (`WEBGL_debug_renderer_info`): integrated (Intel/UHD/Iris, Radeon iGPU) → Medium, software/mobile → Low, discrete → High. Applies only until the player picks a quality (`settings.qualityAuto`). | `Renderer.autoQuality`, `Menu` | |
 
 ## Results
 
