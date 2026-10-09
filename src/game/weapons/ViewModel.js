@@ -1318,6 +1318,7 @@ export class ViewModel {
       const active = w.adsT > 0.05;
       a.lens.visible = true;
       this.scopeLensMat.uniforms.fade.value = clamp(w.adsT * 1.6, 0.15, 1);
+      if (!(active && !this.hidden)) this._scopeFresh = false;
       if (active && !this.hidden) {
         const cam = g.renderer.camera;
         // True magnification is relative to the naked-eye (un-zoomed) view: undo the main
