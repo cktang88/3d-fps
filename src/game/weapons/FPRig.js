@@ -41,11 +41,11 @@ export const FP_TUNE = {
   // brings each shell up under the port and thumbs it in (ViewModel._supportArmOffset).
   shotgun: { reloadPos: [-0.02, 0.006, -0.01], reloadRot: [0.09, 0.06, -0.48], ironRear: [0, 0.16, 0.0], ironFront: [0, 0.157, -0.984], rail: [0, 0.1314, 0.0], pumpStroke: 0.16,
     shellPort: [0.0, 0.0, 0.28], shellBelt: [-0.1, -0.5, 0.3], sprintPose: [1, -0.5, -2, -15, 22, 35] },
-  // Pistols: longer eye relief at ADS (arms extended). The thumbs-forward two-hand hold is authored in the rig build
-  // (tools/blender/rigs.py HOLDS, round 3), so the hands stay on the gun at ADS: no adsSupport / adsHandsDrop /
-  // supportFingers / thumbR overrides (they offset the old template hold and would now pull the hands apart).
-  p226: { ironRelief: 0.5, dotRelief: 0.5, hipPush: 1.3, sprintPose: [8, -4, 3, 20, -5, -15], reloadPos: [-0.02, -0.045, 0.0], reloadRot: [-0.05, 0.06, 0.3], ironRear: [0, 0.1352, 0.1435], ironFront: [0, 0.1359, -0.1692], rail: [0, 0.131, 0.04] },
-  m1911: { ironRelief: 0.5, dotRelief: 0.5, hipPush: 1.3, sprintPose: [8, -4, 3, 20, -5, -15], reloadPos: [-0.02, -0.045, 0.0], reloadRot: [-0.05, 0.06, 0.3], ironRear: [0, 0.1297, 0.1299], ironFront: [0, 0.1287, -0.1954], rail: [0, 0.1281, 0.045] },
+  // Pistols: longer eye relief at ADS (arms extended), so the two-hand grip stays compact under the sights.
+  p226: { ironRelief: 0.5, dotRelief: 0.5, adsSupport: [0.012, -0.03, 0.012], hipPush: 1.3, thumbR: 0.8, supportFingers: [0.5, 0.8],
+    adsHandsDrop: [0.005, -0.05, 0.02], sprintPose: [8, -4, 3, 20, -5, -15], reloadPos: [-0.02, -0.045, 0.0], reloadRot: [-0.05, 0.06, 0.3], ironRear: [0, 0.1352, 0.1435], ironFront: [0, 0.1359, -0.1692], rail: [0, 0.131, 0.04] },
+  m1911: { ironRelief: 0.5, dotRelief: 0.5, adsSupport: [0.012, -0.03, 0.012], hipPush: 1.3, thumbR: 0.8, supportFingers: [0.5, 0.8],
+    adsHandsDrop: [0.005, -0.05, 0.02], sprintPose: [8, -4, 3, 20, -5, -15], reloadPos: [-0.02, -0.045, 0.0], reloadRot: [-0.05, 0.06, 0.3], ironRear: [0, 0.1297, 0.1299], ironFront: [0, 0.1287, -0.1954], rail: [0, 0.1281, 0.045] },
   // Fixed-scope precision platforms: the authored scope glass defines the optical axis.
   vss: { integratedScope: true, hipPush: 1.2 }, // PSO eyecup sits right at the eye otherwise
   m24: { integratedScope: true },

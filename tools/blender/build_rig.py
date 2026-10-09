@@ -15,7 +15,7 @@ Pipeline (all in the gun's canonical K-space frame, +Y muzzle, +Z up):
 import sys, os, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fp_lib import *
-from rigs import TPL, LEFT_TPL, RIGS, FRAMING, SHOULDER, POLE, POLE_CLS, SHOULDER_CLS
+from rigs import TPL, LEFT_TPL, RIGS, FRAMING, SHOULDER, POLE
 from guns import GUNS
 
 K = GUN_K
@@ -287,104 +287,6 @@ for side, Mx, B in (('R', M_R, TR), ('L', M_L, TL)):
     got = (arm.matrix_world @ pb[f'Hand_{side}'].matrix).translation
     log('hand check', side, 'want', [round(x, 3) for x in want], 'got', [round(x, 3) for x in got], 'arm mw', arm.matrix_world.to_translation(), arm.matrix_world.to_scale())
 
-
-
-def curl_sign(bone):
-    """+1 if rotating +X curls the segment toward the palm."""
-    side = bone.name[5]
-    pc = (pb[f'Hand_{side}'].matrix.translation + pb[f'Bone_{side}.009'].matrix.translation) / 2
-    tip = bone.matrix @ Vector((0, bone.length, 0))
-    m0 = bone.matrix_basis.copy()
-    bone.matrix_basis = m0 @ Matrix.Rotation(0.05, 4, 'X'); bpy.context.view_layer.update()
-    tip2 = bone.matrix @ Vector((0, bone.length, 0))
-    bone.matrix_basis = m0; bpy.context.view_layer.update()
-    return 1 if (pc - tip2).length < (pc - tip).length else -1
-
-
-def aim_bone(name, target):
-    """Rotate a pose bone about its head so its +Y points at target (gun frame); children follow."""
-    b = pb[name]
-    M = b.matrix.copy()
-    cur = M.to_3x3().col[1].normalized()
-    want = (Vector(target) - M.translation).normalized()
-    q = cur.rotation_difference(want)
-    R = q.to_matrix().to_4x4()
-    b.matrix = Matrix.Translation(M.translation) @ R @ Matrix.Translation(-M.translation) @ M
-    bpy.context.view_layer.update()
-
-
-# Pistols (round 3): both hands are authored from explicit frames instead of transferring the ccransh template's
-# cupped hold, which left the support hand hidden behind the firing hand at ADS. SPEC['hold'] = {'R': {...}, 'L': {...}}
-# in the gun frame (K-space):
-#   mcp    middle-finger knuckle (Bone_X.009 head)
-#   axis   wrist -> knuckles direction;  palm  palm normal (toward what the palm presses on)
-#   thumb  thumb tip target (straight thumb aimed along the frame)
-#   aim    {chain: [targets]}: aim a finger's phalanges at successive points (firing index onto the trigger)
-#   curl   extra curl (deg) on the other fingers before the wrap solve
-# Modern thumbs-forward hold: the firing hand sits high under the beavertail with its fingers on the front strap; the
-# support palm heel fills the exposed left grip panel, its fingers wrap over the firing fingers under the trigger
-# guard, its thumb points at the target along the frame under the slide, and the support wrist cants down and left.
-# FP_HOLD_R / FP_HOLD_L (JSON) override a side for iteration.
-HOLD = dict(SPEC.get('hold') or {}) if tkey == 'pistol' else {}
-for _s in SIDES:
-    if os.environ.get(f'FP_HOLD_{_s}'):
-        HOLD[_s] = dict(HOLD.get(_s, {}), **json.loads(os.environ[f'FP_HOLD_{_s}']))
-
-
-def author_hand(side, P):
-    Y_ = Vector(P['axis']).normalized()
-    n_ = Vector(P['palm']); n_ = (n_ - Y_ * n_.dot(Y_)).normalized()
-    X_ = n_ if side == 'R' else -n_   # the palm faces local +X (right hand) / -X (left hand)
-    Z_ = X_.cross(Y_).normalized()
-    Rn = Matrix((X_, Y_, Z_)).transposed().to_4x4()
-    Hc = pb[f'Hand_{side}'].matrix.copy()
-    m_loc = Hc.inverted() @ pb[f'Bone_{side}.009'].head
-    Hn = Rn.copy(); Hn.translation = Vector(P['mcp']) - Rn.to_3x3() @ m_loc
-    ctrl = pb[f'IK_Hand_Cntrl_{side}']
-    ctrl.matrix = Hn @ Hc.inverted() @ ctrl.matrix
-    bpy.context.view_layer.update()
-    cu = math.radians(P.get('curl', 0.0))
-    aims = P.get('aim', {})
-    for ch in FINGERS[:4]:
-        if ch[0] in aims:
-            for _ in range(2):
-                for i, t in zip(ch[1:], aims[ch[0]]):
-                    aim_bone(f'Bone_{side}.{i}', t)
-        elif cu:
-            for i in ch[1:]:
-                bn = pb[f'Bone_{side}.{i}']
-                bn.matrix_basis = bn.matrix_basis @ Matrix.Rotation(curl_sign(bn) * cu, 4, 'X')
-                bpy.context.view_layer.update()
-    if P.get('thumb'):
-        for _ in range(3):
-            aim_bone(f'Bone_{side}.021', P['thumb'])
-            aim_bone(f'Bone_{side}.022', P['thumb'])
-    log('hold authored', side, 'mcp', [round(x, 3) for x in pb[f'Bone_{side}.009'].head], 'wrist', [round(x, 3) for x in pb[f'Hand_{side}'].matrix.translation],
-        'thumb tip', [round(x, 3) for x in pb[f'Bone_{side}.022'].tail])
-
-
-for _s in SIDES:
-    if _s in HOLD:
-        author_hand(_s, HOLD[_s])
-PSUP = HOLD.get('L')
-
-
-if os.environ.get('FP_DUMP'):
-    R3 = lambda v: [round(x, 3) for x in v]
-    for side in SIDES:
-        M3 = pb[f'Hand_{side}'].matrix.to_3x3()
-        log('DUMP hand', side, 'head', R3(pb[f'Hand_{side}'].matrix.translation), 'x', R3(M3.col[0]), 'y', R3(M3.col[1]), 'z', R3(M3.col[2]))
-        for ch in FINGERS:
-            log('DUMP finger', side, ch[0], [R3(pb[f'Bone_{side}.{i}'].head) for i in ch], 'tip', R3(pb[f'Bone_{side}.{ch[-1]}'].tail))
-    for z in [i * 0.02 for i in range(-6, 8)]:
-        s = [p for p in gun_pts if abs(p.z - z) < 0.006]
-        if s:
-            log('DUMP gun slab z', round(z, 3), 'y', round(min(p.y for p in s), 3), round(max(p.y for p in s), 3), 'x', round(min(p.x for p in s), 3), round(max(p.x for p in s), 3))
-    for y in [i * 0.02 for i in range(-12, 8)]:
-        s = [p for p in gun_pts if abs(p.y - y) < 0.006]
-        if s:
-            log('DUMP gun slab y', round(y, 3), 'z', round(min(p.z for p in s), 3), round(max(p.z for p in s), 3), 'x', round(min(p.x for p in s), 3), round(max(p.x for p in s), 3))
-
 # ------------------------------------------------------------------ 4. framing + IK
 FR = dict(FRAMING[SPEC['cls']])
 if os.environ.get('FP_FRAME'):
@@ -403,9 +305,7 @@ REPORT['hip'] = {'pos': list(FR['pos']), 'rot': list(FR['rot']), 'boreRef': [B_r
 
 poles = {}
 for side in SIDES:
-    shv = SHOULDER_CLS.get(SPEC['cls'], {}).get(side, SHOULDER[side])
-    if os.environ.get(f'FP_SH_{side}'): shv = [float(x) for x in os.environ[f'FP_SH_{side}'].split(',')]
-    sh = Ginv @ (Vector(shv) * K)
+    sh = Ginv @ (Vector(SHOULDER[side]) * K)
     hand = pb[f'Hand_{side}'].matrix.translation
     up, fo = arm.data.bones[f'UpArm_{side}'], arm.data.bones[f'Forearm_{side}']
     reach = up.length + sum(arm.data.bones[f'BoneTwist_0{i}.{side}'].length for i in (3, 2, 1)) + 0.0
@@ -418,40 +318,19 @@ for side in SIDES:
     pb[f'UpArm_{side}'].matrix = m
     bpy.context.view_layer.update()
     e = bpy.data.objects.new(f'pole_{side}', None); bpy.context.scene.collection.objects.link(e)
-    pv = POLE_CLS.get(SPEC['cls'], {}).get(side, POLE[side])
-    if os.environ.get(f'FP_POLE_{side}'): pv = [float(x) for x in os.environ[f'FP_POLE_{side}'].split(',')]
-    e.matrix_world = Matrix.Translation(Ginv @ (Vector(pv) * K))
+    e.matrix_world = Matrix.Translation(Ginv @ (Vector(POLE[side]) * K))
     poles[side] = e
-
-
-def _twist(side):
-    """Roll of the hand about the forearm relative to the rest pose (radians, wrapped to +-pi)."""
-    hand = pb[f'Hand_{side}'].matrix.to_3x3()
-    fa = pb[f'BoneTwist_01.{side}'].matrix.to_3x3()
-    yax = fa.col[1].normalized()
-    hx = hand.col[0] - yax * hand.col[0].dot(yax)
-    fx = fa.col[0] - yax * fa.col[0].dot(yax)
-    # Hand X vs forearm X in the rest pose, so only the posed deviation is distributed.
-    rh = arm.data.bones[f'Hand_{side}'].matrix_local.to_3x3(); rf = arm.data.bones[f'BoneTwist_01.{side}'].matrix_local.to_3x3()
-    ry = rf.col[1].normalized()
-    rhx = rh.col[0] - ry * rh.col[0].dot(ry); rfx = rf.col[0] - ry * rf.col[0].dot(ry)
-    rest_ang = math.atan2(rfx.cross(rhx).dot(ry), rfx.dot(rhx))
-    ang = math.atan2(fx.cross(hx).dot(yax), fx.dot(hx)) - rest_ang
-    return (ang + math.pi) % (2 * math.pi) - math.pi
 
 
 def solve_arm(side):
     tw1 = pb[f'BoneTwist_01.{side}']
     for n in (f'BoneTwist_03.{side}', f'BoneTwist_02.{side}', f'BoneTwist_01.{side}'):
         pb[n].lock_ik_x = pb[n].lock_ik_z = True
-        pb[n].lock_ik_y = side in HOLD   # authored holds: roll only through the explicit twist distribution below
         pb[n].matrix_basis = Matrix()
     pb[f'Forearm_{side}'].matrix_basis = Matrix()
     rot0 = pb[f'UpArm_{side}'].matrix_basis.copy()
     best = None
-    # Authored pistol holds also weigh the forearm twist the hand needs (a 150+ deg roll wrings the sleeve).
-    angs = range(-180, 180, 15) if side in HOLD else (0, 90, -90, 180)
-    for ang in angs:
+    for ang in (0, 90, -90, 180):
         for c in list(tw1.constraints): tw1.constraints.remove(c)
         c = tw1.constraints.new('IK')
         c.target = arm; c.subtarget = f'Hand_{side}'; c.chain_count = 5; c.use_tail = True
@@ -461,11 +340,6 @@ def solve_arm(side):
         wr = (arm.matrix_world @ tw1.matrix @ Vector((0, tw1.length, 0)))
         err = (wr - pb[f'Hand_{side}'].matrix.translation).length
         score = (el - poles[side].matrix_world.translation).length + err * 10
-        if side in HOLD:
-            tw = _twist(side)
-            score += abs(tw) * 0.06 * K
-            if os.environ.get('FP_DBG'):
-                log('pole try', side, ang, 'elbow-pole', round((el - poles[side].matrix_world.translation).length / K, 3), 'err', round(err / K * 1000, 1), 'twist', round(math.degrees(tw)))
         if best is None or score < best[0]:
             best = (score, ang, err)
     c.pole_angle = math.radians(best[1])
@@ -477,14 +351,22 @@ def solve_arm(side):
         pb[n].matrix = mats[n]
         bpy.context.view_layer.update()
     # Distribute the hand's roll about the forearm over the twist bones (1/3 each, cumulative).
-    ang = _twist(side)
+    hand = pb[f'Hand_{side}'].matrix.to_3x3()
+    fa = pb[f'BoneTwist_01.{side}'].matrix.to_3x3()
+    yax = fa.col[1].normalized()
+    hx = hand.col[0] - yax * hand.col[0].dot(yax)
+    fx = fa.col[0] - yax * fa.col[0].dot(yax)
+    # Hand X vs forearm X in the rest pose, so only the posed deviation is distributed.
+    rh = arm.data.bones[f'Hand_{side}'].matrix_local.to_3x3(); rf = arm.data.bones[f'BoneTwist_01.{side}'].matrix_local.to_3x3()
+    ry = rf.col[1].normalized()
+    rhx = rh.col[0] - ry * rh.col[0].dot(ry); rfx = rf.col[0] - ry * rf.col[0].dot(ry)
+    rest_ang = math.atan2(rfx.cross(rhx).dot(ry), rfx.dot(rhx))
+    ang = math.atan2(fx.cross(hx).dot(yax), fx.dot(hx)) - rest_ang
+    ang = (ang + math.pi) % (2 * math.pi) - math.pi
     for n in (f'BoneTwist_03.{side}', f'BoneTwist_02.{side}', f'BoneTwist_01.{side}'):
         pb[n].matrix_basis = pb[n].matrix_basis @ Matrix.Rotation(ang / 3, 4, 'Y')
         bpy.context.view_layer.update()
     log('IK', side, 'pole', best[1], 'wrist err mm', round(best[2] / K * 1000, 1), 'twist deg', round(math.degrees(ang), 1))
-    if os.environ.get('FP_DBG'):
-        cs = lambda v: [round(x / K, 3) for x in (G @ v)]
-        log('IK cam', side, 'shoulder', cs(pb[f'UpArm_{side}'].head), 'elbow', cs(pb[f'Forearm_{side}'].head), 'wrist', cs(pb[f'Hand_{side}'].head), 'pole', cs(poles[side].matrix_world.translation))
     return best[2]
 
 
@@ -560,7 +442,19 @@ def push_hand_out(side, iters=40, max_move=0.045, max_rot=35.0, snug=True):
     return moved
 
 
-def solve_finger(side, chain, wrap=True, max_iter=80, limit=45.0, strict=False):
+def curl_sign(bone):
+    """+1 if rotating +X curls the segment toward the palm."""
+    side = bone.name[5]
+    pc = (pb[f'Hand_{side}'].matrix.translation + pb[f'Bone_{side}.009'].matrix.translation) / 2
+    tip = bone.matrix @ Vector((0, bone.length, 0))
+    m0 = bone.matrix_basis.copy()
+    bone.matrix_basis = m0 @ Matrix.Rotation(0.05, 4, 'X'); bpy.context.view_layer.update()
+    tip2 = bone.matrix @ Vector((0, bone.length, 0))
+    bone.matrix_basis = m0; bpy.context.view_layer.update()
+    return 1 if (pc - tip2).length < (pc - tip).length else -1
+
+
+def solve_finger(side, chain, wrap=True, max_iter=80, limit=45.0):
     """De-penetrate a finger (search curl X / abduct Z per segment, distal first, limited deviation),
     then curl wrap fingers until the tip touches the surface."""
     segs = [pb[f'Bone_{side}.{i}'] for i in (chain[1:] if len(chain) == 4 else chain)]
@@ -599,8 +493,6 @@ def solve_finger(side, chain, wrap=True, max_iter=80, limit=45.0, strict=False):
             if i == 0:
                 break
             n2 = names[i - 1]
-            if strict and abs(dev[n2][0] - step) > lim:
-                break
             pb[n2].matrix_basis = pb[n2].matrix_basis @ Matrix.Rotation(-sign[n2] * step, 4, 'X'); dev[n2][0] -= step
             continue
         v, ax, sgn, k = best
@@ -626,210 +518,19 @@ def solve_finger(side, chain, wrap=True, max_iter=80, limit=45.0, strict=False):
     return {n[7:]: (round(math.degrees(d[0]), 0), round(math.degrees(d[1]), 0)) for n, d in dev.items()}
 
 
-def r_side_bvh():
-    """BVH of the posed firing arm (hand + forearm faces) so the support hand can wrap it without passing through."""
-    rset = set(['Hand_R', 'Forearm_R', 'BoneTwist_03.R', 'BoneTwist_02.R', 'BoneTwist_01.R', 'UpArm_R'] + [f'Bone_R.{i}' for c in FINGERS for i in c])
-    bpy.context.view_layer.update()
-    e = arms_mesh.evaluated_get(bpy.context.evaluated_depsgraph_get()); me_ = e.to_mesh()
-    bm = bmesh.new(); bm.from_mesh(me_); e.to_mesh_clear()
-    bmesh.ops.transform(bm, matrix=arms_mesh.matrix_world, verts=bm.verts)
-    bm.verts.ensure_lookup_table()
-    bmesh.ops.delete(bm, geom=[v for v in bm.verts if DOM[v.index] not in rset], context='VERTS')
-    return bm
-
-
-def combined_bvh(extra_bm):
-    bm = gun_bm.copy()
-    tmp = bpy.data.meshes.new('_rh'); extra_bm.to_mesh(tmp); bm.from_mesh(tmp); bpy.data.meshes.remove(tmp)
-    bm.verts.ensure_lookup_table(); bm.faces.ensure_lookup_table()
-    return BVHTree.FromBMesh(bm), bm
-
-
-def solve_side(side):
-    if side in HOLD:
-        return solve_held(side)
-    if not os.environ.get('FP_NOIK'):
-        # Authored pistol hands are already placed: the palm fit may only nudge them (12 mm / 12 deg).
-        lim = dict(max_move=0.012, max_rot=12.0) if side in HOLD else {}
-        push_hand_out(side, **lim)
+for side in ([] if os.environ.get('FP_NOIK') else SIDES):
+    push_hand_out(side)
+    solve_arm(side)
+    for _ in range(2):  # wrist twist moves palm vertices: re-fit, re-solve
+        push_hand_out(side, iters=15, snug=False)
         solve_arm(side)
-        for _ in range(2):  # wrist twist moves palm vertices: re-fit, re-solve
-            push_hand_out(side, iters=15, snug=False, **lim)
-            solve_arm(side)
-    if not FAST:
+if not FAST:
+    for side in SIDES:
         for ch in FINGERS:
             # Right index stays on the trigger (no wrap curl); thumbs only de-penetrate.
             wrap = not ((side == 'R' and ch[0] == '004') or ch[0] == '020')
             res = solve_finger(side, ch, wrap=wrap, limit=60.0 if ch[0] == '020' else 45.0)
             log('finger', side, ch[0], res)
-
-
-FINGER_R = 0.0125 * K   # glove finger radius, bone axis -> glove surface (measured: 11-14 mm proximal, 8-11 mm distal)
-
-
-def snug_palm(side, normal, tol=0.0004 * K):
-    """Slide an authored hand along its palm normal until the palm just touches (no penetration beyond tol)."""
-    hb = verts_of([f'Hand_{side}'] + [f'Bone_{side}.{c[0]}' for c in FINGERS])
-    ctrl = pb[f'IK_Hand_Cntrl_{side}']
-    m0 = ctrl.matrix.copy()
-    n = Vector(normal).normalized()
-
-    def f(t):
-        m = m0.copy(); m.translation = m0.translation + n * t; ctrl.matrix = m
-        return max(depths(hb))
-    lo, hi = -0.03 * K, 0.03 * K
-    if os.environ.get('FP_DBG'):
-        f(0.0)
-        co = eval_co(hb); dd = depths(hb)
-        bad = sorted([(d_, DOM[i], [round(x, 3) for x in p_]) for i, p_, d_ in zip(hb, co, dd) if d_ > tol], reverse=True)
-        log('snug dbg', side, len(bad), bad[:6], bad[-3:])
-    if f(lo) > tol:
-        log('snug', side, 'palm still inside at -30 mm')
-        return f(lo)
-    for _ in range(18):
-        mid = (lo + hi) / 2
-        if f(mid) > tol: hi = mid
-        else: lo = mid
-    f(lo + 0.004 * K)
-    blk = {}
-    for i, dd in zip(hb, depths(hb)):
-        if dd > tol: blk[DOM[i]] = max(blk.get(DOM[i], 0), round(dd / K * 1000, 1))
-    d = f(lo)
-    log('snug', side, 'shift mm', round(lo / K * 1000, 1), 'palm depth mm', round(d / K * 1000, 2), 'blocked by (+4mm)', blk)
-    return d
-
-
-def contour(c, u, e1, w=0.009 * K, n=96):
-    """Outer contour of the collision set (gun_bvh) around point c in the plane normal to u: rays cast inward from
-    outside at n angles on three parallel planes; per angle the outermost hit (radius from c)."""
-    e2 = u.cross(e1)
-    rad = []
-    for k in range(n):
-        a = 2 * math.pi * k / n
-        d = e1 * math.cos(a) + e2 * math.sin(a)
-        best = 0.0
-        for off in (-w, 0.0, w):
-            o = c + u * off + d * 0.4 * K
-            h = gun_bvh.ray_cast(o, -d, 0.4 * K)
-            if h[0] is not None:
-                best = max(best, 0.4 * K - h[3])
-        rad.append(best)
-    return rad
-
-
-def wrap_finger(side, ch, gc, u, wdir, rad=FINGER_R + 0.0012 * K, last_open=0.0):
-    """Wrap a finger chain around the collision contour in the plane through its knuckle (normal u, through the
-    grip axis point gc): each phalanx is aimed at the contour point (offset by the finger radius) one bone length on,
-    walking in the wrap direction wdir."""
-    segs = [f'Bone_{side}.{i}' for i in ch[1:]]
-    o = pb[segs[0]].head.copy()
-    u = Vector(u).normalized()
-    c = gc + u * (o - gc).dot(u)
-    e1 = (o - c); e1 = (e1 - u * e1.dot(u)).normalized()
-    e2 = u.cross(e1)
-    N = 180
-    R0 = contour(c, u, e1, n=N)
-    # Minkowski offset by the finger radius, approximated per angle on the (near-convex) contour.
-    P = []
-    for k in range(N):
-        a = 2 * math.pi * k / N
-        P.append((math.cos(a) * R0[k], math.sin(a) * R0[k]))
-    off = []
-    for k in range(N):
-        a = 2 * math.pi * k / N
-        d = (math.cos(a), math.sin(a))
-        # support distance along d of the contour points within +-60 deg, + rad: rounded offset of the local hull
-        best = 0.0
-        for j in range(-30, 31):
-            q = P[(k + j) % N]
-            ang = 2 * math.pi * j / N
-            r = math.hypot(*q)
-            if r <= 0: continue
-            # distance along the ray at angle a such that the circle of radius rad around q touches it
-            t = q[0] * d[0] + q[1] * d[1]
-            perp2 = r * r - t * t
-            if perp2 < rad * rad:
-                best = max(best, t + math.sqrt(rad * rad - perp2))
-        off.append(max(best, R0[k] + rad))
-    sgn = 1 if e1.cross(Vector(wdir)).dot(u) * 0 + e2.dot(Vector(wdir)) >= 0 else -1
-
-    def Q(theta):
-        k = theta / (2 * math.pi) * N
-        k0 = int(math.floor(k)) % N; k1 = (k0 + 1) % N; f = k - math.floor(k)
-        r = off[k0] * (1 - f) + off[k1] * f
-        return c + (e1 * math.cos(theta) + e2 * math.sin(theta)) * r
-    j = o.copy()
-    th = 0.0
-    tgts = []
-    for b in segs:
-        L = pb[b].length if b != segs[-1] else (pb[b].tail - pb[b].head).length
-        q = None
-        for step in range(1, 400):
-            t2 = th + sgn * math.radians(step * 0.75)
-            p_ = Q(t2)
-            if (p_ - j).length >= L:
-                q = p_; th = t2; break
-        if q is None: break
-        tgts.append(q); j = q
-    for _ in range(2):
-        for b, q in zip(segs, tgts):
-            aim_bone(b, q)
-    if os.environ.get('FP_DBG'):
-        log('wrap dbg', side, ch[0], 'c', [round(x, 3) for x in c], 'R0', [round(R0[k], 3) for k in range(0, N, 15)], 'off', [round(off[k], 3) for k in range(0, N, 15)],
-            'o', [round(x, 3) for x in o], 'tgts', [[round(x, 3) for x in q] for q in tgts], 'got', [[round(x, 3) for x in pb[b].tail] for b in segs], 'sgn', sgn)
-    if last_open and len(tgts) == len(segs):
-        bn = pb[segs[-1]]
-        bn.matrix_basis = bn.matrix_basis @ Matrix.Rotation(-curl_sign(bn) * math.radians(last_open), 4, 'X')
-    return [round(math.degrees(abs(th)), 0)]
-
-
-def solve_held(side):
-    """Authored pistol hand: palm snug along its normal, fingers wrapped on the contour, thumb/index aimed."""
-    P = HOLD[side]
-    if os.environ.get('FP_DBG'):
-        for ch in FINGERS:
-            for i in ch[1:]:
-                bn = pb[f'Bone_{side}.{i}']; a, b = bn.head, bn.tail
-                ds = []
-                for p_ in eval_co(verts_of([bn.name])):
-                    t = max(0, min(1, (p_ - a).dot(b - a) / max((b - a).length_squared, 1e-9)))
-                    ds.append((p_ - (a + (b - a) * t)).length)
-                if ds: log('radius', bn.name, 'max mm', round(max(ds) / K * 1000, 1), 'mean', round(sum(ds) / len(ds) / K * 1000, 1))
-    snug_palm(side, P['palm'], tol=P.get('press', 0.0035) * K)
-    gc = Vector(P.get('grip', (0.0, -0.135, -0.07)))
-    u = Vector(P.get('wrap_axis', (0.0, math.sin(math.radians(SPEC['rake'])), math.cos(math.radians(SPEC['rake'])))))
-    for ch in FINGERS[:4]:
-        if ch[0] in P.get('aim', {}):
-            continue
-        res = wrap_finger(side, ch, gc, u, P.get('wrap', (0, 1, 0)))
-        log('wrap', side, ch[0], res)
-    if not os.environ.get('FP_NOIK'):
-        solve_arm(side)
-    if not FAST:
-        for ch in FINGERS:
-            res = solve_finger(side, ch, wrap=False, limit=15.0, strict=True)
-            log('finger fix', side, ch[0], res)
-
-
-GUN_BVH = gun_bvh
-R_BM = None
-for side in SIDES:
-    if side == 'L' and PSUP:
-        # Pistol support hand: collide with the gun AND the posed firing hand (its fingers wrap over the firing fingers).
-        R_BM = r_side_bvh()
-        gun_bvh, _ = combined_bvh(R_BM)
-    solve_side(side)
-    R3 = lambda v: [round(x, 3) for x in v]
-    log('solved', side, 'wrist', R3(pb[f'Hand_{side}'].matrix.translation), 'mcp', R3(pb[f'Bone_{side}.009'].head),
-        'tips', [R3(pb[f'Bone_{side}.{c[-1]}'].tail) for c in FINGERS])
-gun_bvh = GUN_BVH
-if R_BM is not None:
-    # Support hand vs firing hand (glove into glove), for the report.
-    rb = R_BM.copy(); rb.verts.ensure_lookup_table(); rb.faces.ensure_lookup_table()
-    RBVH = BVHTree.FromBMesh(rb)
-    dl = [inside_depth(RBVH, p_, 0.05 * K) for p_ in eval_co(verts_of(['Hand_L'] + [f'Bone_L.{i}' for c in FINGERS for i in c]))]
-    REPORT['L_into_R_mm'] = round(max([x for x in dl if x > 0] or [0]) / K * 1000, 2)
-    log('HANDS support into firing hand mm', REPORT['L_into_R_mm'])
 
 # ------------------------------------------------------------------ 6. report
 REG = {
@@ -875,26 +576,6 @@ for o in bpy.data.objects:
 ov = os.environ.get('FP_OVERRIDE')
 make_camera(CAM_W, vfov_deg=52.0)
 render(os.path.join(WORK, f'rig_{GID}_fp.png'))
-if os.environ.get('FP_TINT') and OUT == '-':  # debug renders only: support side red
-    mt = bpy.data.materials.new('tintL'); mt.diffuse_color = (0.8, 0.1, 0.1, 1); mt.use_nodes = True
-    mt.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (0.8, 0.08, 0.08, 1)
-    arms_mesh.data.materials.append(mt); mi = len(arms_mesh.data.materials) - 1
-    Lset = set(REG['L_hand'] + REG['L_forearm'])
-    for f in arms_mesh.data.polygons:
-        if DOM[f.vertices[0]] in Lset: f.material_index = mi
-if SPEC['cls'] == 'pistol' or os.environ.get('FP_VIEWS'):
-    # ADS check: eye on the sight line 0.5 m real (FP_TUNE ironRelief, view space) behind the slide's rear,
-    # viewmodel vFOV 52 - 10; plus left-side and front-left views of the two-hand hold.
-    zt = max(p.z for p in gun_pts)
-    rear = min(p.y for p in gun_pts if p.z > zt - 0.012 * K)
-    eye = Vector((0, rear - 0.5 * K, zt - 0.004 * K))
-    make_camera(Matrix.Translation(eye) @ FP_CAM.to_3x3().to_4x4(), vfov_deg=42.0)
-    render(os.path.join(WORK, f'rig_{GID}_ads.png'))
-    for nm, off in (('left', Vector((-0.55, -0.05, -0.04))), ('frontleft', Vector((-0.35, 0.40, -0.15))), ('right', Vector((0.55, -0.05, -0.04))), ('below', Vector((-0.05, 0.25, -0.5)))):
-        c = Vector((0, SPEC['web'][0] + 0.06, -0.02))
-        e2 = c + off
-        make_camera(Matrix.Translation(e2) @ (c - e2).to_track_quat('-Z', 'Y').to_matrix().to_4x4(), vfov_deg=40)
-        render(os.path.join(WORK, f'rig_{GID}_{nm}.png'))
 if not FAST:
     # Close-ups of each hand (orbit from the outside / below).
     for side in SIDES:
@@ -925,28 +606,16 @@ if OUT != '-':
     for v in me.vertices: kd.insert(W_ @ v.co, v.index)
     kd.balance()
     R_FALL = 0.012 * K
-    L_SET = set(REG['L_hand'] + REG['L_forearm'])
-    RBVH_FIX = RBVH if R_BM is not None else None
     moved_total = 0
     for it in range(12):
         disp = {}
         for v in me.vertices:
             p = W_ @ v.co
             d = inside_depth(gun_bvh, p, 0.03 * K)
-            hits = []
             if d > 0.0002 * K:
                 loc, nrm, _, _ = gun_bvh.find_nearest(p, 0.03 * K)
-                hits.append(((loc + nrm * 0.0003 * K) - p, None))
-            if RBVH_FIX is not None and DOM[v.index] in L_SET:
-                # Pistol hold: the support glove is also pushed out of the posed firing glove (only support verts move).
-                d2 = inside_depth(RBVH_FIX, p, 0.03 * K)
-                if d2 > 0.0002 * K:
-                    loc, nrm, _, _ = RBVH_FIX.find_nearest(p, 0.03 * K)
-                    hits.append(((loc + nrm * 0.0003 * K) - p, L_SET))
-            for delta, only in hits:
+                delta = (loc + nrm * 0.0003 * K) - p
                 for (q, j, dist) in kd.find_range(p, R_FALL):
-                    if only is not None and DOM[j] not in only:
-                        continue
                     w = 1.0 if j == v.index else 0.5 * (1 + math.cos(math.pi * dist / R_FALL)) * 0.85
                     cur = disp.get(j)
                     if cur is None or (delta * w).length > cur.length:
@@ -968,10 +637,6 @@ if OUT != '-':
             fin[k_] = max(fin.get(k_, 0), d)
     REPORT['final_mm'] = {k: round(v / K * 1000, 2) for k, v in fin.items()}
     REPORT['final_max_mm'] = round(max(fin.values(), default=0) / K * 1000, 2)
-    if RBVH_FIX is not None:
-        dl = [inside_depth(RBVH_FIX, W_ @ me.vertices[i].co, 0.05 * K) for i in range(len(me.vertices)) if DOM[i] in L_SET]
-        REPORT['final_L_into_R_mm'] = round(max([x for x in dl if x > 0] or [0]) / K * 1000, 2)
-        log('FINAL support into firing hand mm', REPORT['final_L_into_R_mm'])
     REPORT['corrected_vertices'] = moved_total
     log('FINAL (after corrective pass)', REPORT['final_max_mm'], REPORT['final_mm'], 'verts moved', moved_total)
     save_json(os.path.join(WORK, f'rig_{GID}.json'), REPORT)

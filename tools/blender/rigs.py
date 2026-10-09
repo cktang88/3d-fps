@@ -28,30 +28,9 @@ RIGS = {
     'm24': dict(tpl='bolt', cls='sniper', web=(-0.585, 0.005), rake=36.0, trig=(-0.470, -0.070), sup=0.10),
     'awm': dict(tpl='rifle', cls='sniper', web=(-0.575, -0.050), rake=11.0, trig=(-0.430, -0.110), sup=0.15),
     'shotgun': dict(tpl='shotgun', cls='shotgun', web=(-0.505, 0.052), rake=16.0, trig=(-0.335, -0.030), sup='pump'),
-    'p226': dict(tpl='pistol', cls='pistol', web=(-0.160, 0.060), rake=12.0, trig=(-0.005, 0.020), hold='P226'),
-    'm1911': dict(tpl='pistol', cls='pistol', web=(-0.165, 0.045), rake=20.0, trig=(-0.035, 0.035), hold='M1911'),
+    'p226': dict(tpl='pistol', cls='pistol', web=(-0.160, 0.060), rake=12.0, trig=(-0.005, 0.020)),
+    'm1911': dict(tpl='pistol', cls='pistol', web=(-0.165, 0.045), rake=20.0, trig=(-0.035, 0.035)),
 }
-
-# Authored pistol holds (build_rig.py author_hand / solve_held; gun frame, K-space). Modern thumbs-forward two-hand
-# grip: firing wrist straight behind the grip, hand angled forward-right so the web and thenar cover the backstrap and
-# the knuckles sit on the right-front; support palm on the left panel, fingers over the firing fingers, thumb forward.
-HOLDS = {
-    'P226': {
-        'R': dict(mcp=(0.085, -0.112, -0.050), axis=(0.38, 0.92, -0.08), palm=(-0.92, 0.38, 0.0), thumb=(-0.050, -0.030, 0.052),
-                  aim={'004': [(0.040, -0.030, 0.020), (0.015, -0.008, 0.020), (-0.012, 0.002, 0.018)]}),
-        'L': dict(mcp=(-0.068, -0.068, -0.085), axis=(0.05, 0.93, -0.30), palm=(1.0, 0.0, 0.15), thumb=(-0.050, 0.035, 0.024)),
-    },
-    # M1911: grip ~2.5 cm (K) further back, trigger guard and slide ~1-2 cm higher, 20 deg rake.
-    'M1911': {
-        'R': dict(mcp=(0.085, -0.135, -0.040), axis=(0.38, 0.92, -0.08), palm=(-0.92, 0.38, 0.0), thumb=(-0.048, -0.060, 0.072), grip=(0.0, -0.158, -0.06),
-                  aim={'004': [(0.040, -0.062, 0.030), (0.015, -0.042, 0.032), (-0.012, -0.032, 0.030)]}),
-        'L': dict(mcp=(-0.068, -0.090, -0.075), axis=(0.05, 0.93, -0.30), palm=(1.0, 0.0, 0.15), thumb=(-0.046, 0.030, 0.042), grip=(0.0, -0.158, -0.06)),
-    },
-}
-
-for _r in RIGS.values():
-    if isinstance(_r.get('hold'), str):
-        _r['hold'] = HOLDS[_r['hold']]
 
 # Hip framing per class, REAL metres in view-camera space (x right, y forward, z up), applied to the
 # "bore point above the web marker" of each gun; rot = (pitch, yaw, roll) degrees
@@ -71,9 +50,3 @@ FRAMING = {
 # lower left like the template / AAA references.
 SHOULDER = {'R': (0.19, -0.04, -0.21), 'L': (-0.29, -0.15, -0.12)}
 POLE = {'R': (0.45, 0.05, -0.75), 'L': (-0.32, 0.12, -0.32)}
-# Per-class elbow poles. Pistols (round 3): the support elbow drops low and in, so the support forearm rises from the
-# bottom-left at about 45 deg and the support wrist reads canted down and left under the gun.
-POLE_CLS = {'pistol': {'L': (-0.14, 0.02, -0.50)}}
-# Per-class shoulders. Pistols: isosceles stance with the support shoulder low and rolled in (30 cm under the eye),
-# so the near-straight support arm rises from the bottom-left at ~35 deg on screen at ADS.
-SHOULDER_CLS = {'pistol': {'L': (-0.12, -0.06, -0.30)}}
