@@ -255,7 +255,7 @@ export class Bot {
       investigate: rec && !visible ? 0.6 : 0,
       cover: (visible || this.suppression > 0.5) && (hp < 0.5 || (w.state === 'reload' && visible)) ? 0.95 : 0,
       reload: !visible && w.ammo < w.stats.mag * 0.4 && w.reserve > 0 ? 0.7 : 0,
-      grenade: rec && !visible && this.grenades > 0 && this.game.time - rec.lastTime < 3 && rec.lastPos.distanceTo(this.position) < 28 && rec.lastPos.distanceTo(this.position) > 8 ? 0.65 : 0,
+      grenade: rec && !visible && this.grenades > 0 && w.state !== 'reload' && this.game.time - rec.lastTime < 3 && rec.lastPos.distanceTo(this.position) < 28 && rec.lastPos.distanceTo(this.position) > 8 ? 0.65 : 0,
     };
     if (this.diffKey === 'recruit') scores.cover *= 0.5;
     // Hysteresis.

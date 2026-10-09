@@ -4,7 +4,7 @@
 // bot-bot and bot-wall interpenetration, lingering corpses. Thresholds in TH; result.fails lists violations.
 (() => {
   const g = window.__game, Q = window.__qa, out = { fails: [], warn: [] };
-  const SIM = window.__jankSeconds || 60, dt = 1 / 30;
+  const SIM = window.__jankSeconds || 75, dt = 1 / 60; // 60 Hz: toe |vy| test is noisy at 30 Hz
   const TH = { stanceSlideP95: 0.03, stanceSlideWarn: 0.02, supportP95: 0.05, yawRateP99: 540, moveAimP95: 2, deathGroundLo: 0.6, deathGroundHi: 1.3, deathDisp: 0.3, deathJitter: 0.01, slideP95: 0.35, slideWarn: 0.2, ratioLo: 0.8, ratioHi: 1.25, popsPerMin: 6, twistDeg: 100, aimP90Deg: 10, handsApart: 0.95, handsApartT: 0.3, floatM: 0.15, sinkM: -0.1, floatT: 0.5, botBotM: 0.45, corpseS: 30 };
   out.thresholds = TH;
   Q.god(); Q.releaseAll();
@@ -60,7 +60,7 @@
       s.fh = s.fh || [[], []];
       const bodyV = Math.hypot(b.velocity.x, b.velocity.z);
       if (s.lastToe) for (let k = 0; k < 2; k++) {
-        const h = feet[k].y - groundY; s.fh[k].push(h); if (s.fh[k].length > 30) s.fh[k].shift();
+        const h = feet[k].y - groundY; s.fh[k].push(h); if (s.fh[k].length > 60) s.fh[k].shift();
         const vy = (feet[k].y - s.lastToe[k].y) / dt, floorK = Math.min(...s.fh[k]);
         const planted = bodyV < 2.2 && h < floorK + 0.035 && Math.abs(vy) < 0.15;
         const dxz = Math.hypot(feet[k].x - s.lastToe[k].x, feet[k].z - s.lastToe[k].z);
@@ -71,7 +71,7 @@
       const toesNow = [wp(B.lToe), wp(B.rToe)];
       s.th = s.th || [[], []]; s.toeSlip = s.toeSlip || [];
       if (s.lastToes) for (let k = 0; k < 2; k++) {
-        const h = toesNow[k].y - groundY; s.th[k].push(h); if (s.th[k].length > 30) s.th[k].shift();
+        const h = toesNow[k].y - groundY; s.th[k].push(h); if (s.th[k].length > 60) s.th[k].shift();
         const vy = (toesNow[k].y - s.lastToes[k].y) / dt;
         if (bodyV < 2.2 && h < Math.min(...s.th[k]) + 0.02 && Math.abs(vy) < 0.1) s.toeSlip.push(Math.hypot(toesNow[k].x - s.lastToes[k].x, toesNow[k].z - s.lastToes[k].z) / dt);
       }
@@ -95,7 +95,7 @@
       // Gait playback ratio: ground speed / blended natural clip speed (moving only).
       if ((m.speedS ?? 0) > 0.8) { let ws = 0, ns = 0; for (const [k, gk] of Object.entries(m.tpl?.gait || {})) { const a = m.lowerActions?.[k]; if (!a) continue; const w = a.getEffectiveWeight(); ws += w; ns += w * gk.speed; } if (ws > 0.5) s.ratio.push(m.speedS / (ns / ws)); }
       // Support palm vs its grip target (outside reload / throw).
-      if (m.lGripWorld && !(m.reloadW > 0.1) && !(m.oneShotW > 0)) { const gw = typeof m.lGripWorld === 'function' ? m.lGripWorld(b) : m.lGripWorld; if (gw?.isVector3) { const palm = B.lMid ? wp(B.lHand).lerp(wp(B.lMid), 0.5) : wp(B.lHand); s.support.push(palm.distanceTo(gw)); } }
+      if (m.lGripWorld && !(m.reloadW > 0.1) && !(m.oneShotW > 0) && !m.oneShot) { const gw = typeof m.lGripWorld === 'function' ? m.lGripWorld(b) : m.lGripWorld; if (gw?.isVector3) { const palm = B.lMid ? wp(B.lHand).lerp(wp(B.lMid), 0.5) : wp(B.lHand); s.support.push(palm.distanceTo(gw)); } }
       // Upper-body yaw rate.
       if (B.spine2) { const cy = yawOf(B.spine2); if (s.lastChestYaw != null) s.yawRate.push(angDiff(cy, s.lastChestYaw) * 57.3 / dt); s.lastChestYaw = cy; }
       // Muzzle steadiness while moving and aiming (engaged, not firing, not reloading).
@@ -106,7 +106,7 @@
       }
       // Hands apart (T-pose / support hand off the gun).
       const apart = wp(B.lHand).distanceTo(wp(B.rHand)); s.apartMax = Math.max(s.apartMax, apart);
-      if (apart > TH.handsApart && !m.dying) { s.apartT += dt; if (s.apartT > TH.handsApartT) s.tpose++; } else s.apartT = 0;
+      if (apart > TH.handsApart && !m.dying && !m.oneShot && !(m.oneShotW > 0)) { s.apartT += dt; if (s.apartT > TH.handsApartT) s.tpose++; } else s.apartT = 0;
       // Barrel vs aim right after a shot.
       if (b.lastFiredTime !== undefined && g.time - b.lastFiredTime < dt * 1.01) {
         const mz = m.muzzleWorld?.(b);
@@ -120,7 +120,7 @@
       const c = new V(b.position.x, b.position.y + 1.0, b.position.z);
       for (const d of DIRS) { const h = g.physics.raycast(c, d, 0.2); if (h && h.distance < 0.005) { s.inside++; break; } }
     });
-    if (tick++ % 30 === 0) bots.forEach((b, i) => { const c = b.model; if (!c || dumps[i].length > 70) return; dumps[i].push({ t: +g.time.toFixed(0), same: c === b.spareModel, hasWrap: !!c.weaponObj, wrapParentIsRoot: c.weaponObj?.parent === c.root, rootInScene: !!c.root?.parent, hidden: c._hidden, osw: c.oneShotW, oneShot: c.oneShot?.name, reloadW: c.reloadW, wstate: b.weapon?.state, alive: b.alive, lodAcc: c._lodAcc, animDt: c._animDt, frame: c._frame, matrixFrame: c._matrixFrame, deadTime: c.deadTime, dying: !!c.dying, grip: !!c.lGripWorld, wrapParentType: c.weaponObj?.parent?.type, handOff: c.handOff, rootVisible: c.root?.visible }); });
+    if (tick++ % 60 === 0) bots.forEach((b, i) => { const c = b.model; if (!c || dumps[i].length > 70) return; dumps[i].push({ t: +g.time.toFixed(0), same: c === b.spareModel, hasWrap: !!c.weaponObj, wrapParentIsRoot: c.weaponObj?.parent === c.root, rootInScene: !!c.root?.parent, hidden: c._hidden, osw: c.oneShotW, oneShot: c.oneShot?.name, reloadW: c.reloadW, wstate: b.weapon?.state, alive: b.alive, lodAcc: c._lodAcc, animDt: c._animDt, frame: c._frame, matrixFrame: c._matrixFrame, deadTime: c.deadTime, dying: !!c.dying, grip: !!c.lGripWorld, wrapParentType: c.weaponObj?.parent?.type, handOff: c.handOff, rootVisible: c.root?.visible }); });
     // Bot-bot interpenetration
     for (let i = 0; i < bots.length; i++) for (let j = i + 1; j < bots.length; j++) {
       const a = bots[i], b = bots[j]; if (!a.alive || !b.alive) continue;

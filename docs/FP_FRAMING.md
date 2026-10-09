@@ -41,7 +41,7 @@ aperture or notch 0.26–0.34 m from the eye.
 **Sprint:** the gun is lowered and canted 30–45°, muzzle down-left, and stays partly in frame in the lower right (CoD/BF tactical carry; round 2 user feedback: it must not leave the frame entirely).
 Pistols tip up and in toward the chest.
 
-**Reload:** the gun rolls 15–25° toward the support hand and rises slightly, so the magazine well comes into frame
+**Reload:** the gun rolls 25–35° toward the support hand (pistols about 50°) and rises slightly, so the magazine well comes into frame
 (x 50–65%, y 60–85%). The support hand has to be visible for the whole magazine swap.
 
 ### Professional reference: Free FPS Template (Fab) rifle set

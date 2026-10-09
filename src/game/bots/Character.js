@@ -857,7 +857,7 @@ export class Character {
       }
     }
     const dy = wrapPi(targetBody - this.bodyYaw);
-    const turn = dy * Math.min(1, dt * (sp > 0.25 ? 9 : 6));
+    const turn = clamp(dy * Math.min(1, dt * (sp > 0.25 ? 9 : 6)), -9 * dt, 9 * dt); // hips pivot ≤ ~515°/s
     this.bodyYaw = wrapPi(this.bodyYaw + turn);
     this.yawRate = damp(this.yawRate, turn / Math.max(dt, 1e-4), 8, dt);
     // Chest follows the aim with a human turn-rate cap (≤ ~500°/s), legs absorb the rest.
@@ -1214,6 +1214,20 @@ export class Character {
     const ikW = 1 - osw;
     if (ikW <= 0.01) return;
     if (!this._reach && b.lArm && b.lFore && b.lHand) { wpos(b.lArm, _v2); wpos(b.lFore, _v3); this._reach = _v2.distanceTo(_v3); wpos(b.lHand, _v2); this._reach += _v3.distanceTo(_v2); }
+    // Reach guard: when even the rearmost handguard grip is beyond the support arm (run-carry arm swing,
+    // long guns), slide the whole weapon toward the support shoulder by the deficit so the hand never
+    // floats off the gun.
+    if (this._reach && b.lArm && rw < 0.02) {
+      wpos(b.lArm, _v2);
+      _v3.copy(this.gripLocal); _v3.z = Math.min(_v3.z + 0.28, Math.max(_v3.z, -0.06));
+      _v3.applyMatrix4(wrap.matrixWorld);
+      const dist = _v3.distanceTo(_v2), lim = this._reach * 0.96;
+      if (dist > lim) {
+        _v3.sub(_v2).multiplyScalar(-(dist - lim) / dist).applyQuaternion(_q2); // world shift → root space
+        wrap.position.add(_v3);
+        wrap.updateMatrixWorld(true);
+      }
+    }
     _v5.set(Math.cos(aimYaw), 0, -Math.sin(aimYaw)); // aim right
     // --- right hand on the pistol grip (bolt-action: runs the bolt) ---
     _v4.set(0, 0, 0);
@@ -1238,7 +1252,7 @@ export class Character {
       wpos(b.lArm, _v2);
       for (let k = 0; k < 8; k++) {
         _v3.copy(_v4).applyMatrix4(wrap.matrixWorld);
-        if (_v3.distanceTo(_v2) < this._reach * 0.93 + 0.06) break;
+        if (_v3.distanceTo(_v2) < Math.min(this._reach * 0.93 + 0.06, this._reach * 0.97)) break;
         _v4.z = Math.min(_v4.z + 0.035, -0.06);
       }
       if (w.state === 'pump' && w.stateDur > 0) _v4.z += Math.sin(Math.min(1, w.stateTime / w.stateDur) * Math.PI) * 0.09;
