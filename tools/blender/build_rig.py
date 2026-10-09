@@ -607,7 +607,7 @@ if OUT != '-':
     kd.balance()
     R_FALL = 0.012 * K
     moved_total = 0
-    for it in range(6):
+    for it in range(12):
         disp = {}
         for v in me.vertices:
             p = W_ @ v.co
