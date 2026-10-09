@@ -10,7 +10,7 @@
   {
    "name": "f1_spawn",
    "frames": 2,
-   "read": "({mode: __game.mode.key, teams: __game.mode.teams, bots: __game.bots.length, alive: __game.bots.filter(b=>b.alive).length, pos: __qa.p(), hudOverlaps: __qa.hudOverlaps()})"
+   "read": "__qa.ready().then(()=>(({mode: __game.mode.key, teams: __game.mode.teams, bots: __game.bots.length, alive: __game.bots.filter(b=>b.alive).length, pos: __qa.p(), hudOverlaps: __qa.hudOverlaps()})))"
   },
   {
    "name": "f2_sim",

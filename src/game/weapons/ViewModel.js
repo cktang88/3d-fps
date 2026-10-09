@@ -790,6 +790,7 @@ export class ViewModel {
     if (this.body) this.body.update(dt);
     const rig = this.rig;
     if (!rig) return;
+    this._presented = this.game.renderer.renderer.info.render.frame !== this._offFrame; // see _updateLighting
     this.time += dt;
     const w = ctx.weapon, p = ctx.player;
     const s = rig.stats;
@@ -1550,7 +1551,7 @@ export class ViewModel {
         const every = g.renderer.features?.pipEvery ?? ((g.settings.quality ?? 2) >= 2 ? 1 : 2);
         // Perf: on Medium and Low the PiP refreshes every 2nd frame (the lens image is small and mostly static while aiming).
         this._scopeTick = (this._scopeTick || 0) + 1;
-        if (!window.__qaSkipRender && res > 0 && (every <= 1 || (this._scopeTick & 1) === 0 || !this._scopeFresh)) {
+        if (!window.__qaSkipRender && this._presented && res > 0 && (every <= 1 || (this._scopeTick & 1) === 0 || !this._scopeFresh)) {
           this._scopeFresh = true;
           const prevTarget = r2.getRenderTarget();
           // Reuse this frame's shadow maps (the main pass already updated them).
@@ -1620,7 +1621,10 @@ export class ViewModel {
     this.viewScene.environmentRotation.setFromQuaternion(camQi);
 
     // ---- Local light probe (round-robin cube faces + async SH readback).
-    const skip = !!window.__qaSkipRender;
+    // Offscreen passes (probe face, viewmodel shadow) run at most once per presented frame. When the main render is
+    // skipped (QA fast-sim steps, a stalled tab) they would otherwise pile up: 21 probe faces in one 1.4 s __qa.sim
+    // were read back as a 1,160-call "spike" on the first frame after a weapon swap.
+    const skip = !!window.__qaSkipRender || !this._presented;
     if (this.probeRT && this.probeEvery > 0 && !skip && (this._probeTick = (this._probeTick + 1) % this.probeEvery) === 0) {
       if (!this._probeTagged) this._tagProbeLayer();
       const sm = r.shadowMap, au = sm.autoUpdate, nu = sm.needsUpdate;
@@ -1698,6 +1702,7 @@ export class ViewModel {
       r.setRenderTarget(prevT);
       sm.autoUpdate = au; sm.needsUpdate = nu;
     }
+    this._offFrame = r.info.render.frame;
   }
 
   /**

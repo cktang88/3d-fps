@@ -41,7 +41,7 @@ aperture or notch 0.26–0.34 m from the eye.
 **Sprint:** the gun is lowered and canted 30–45°, muzzle down-left, and stays partly in frame in the lower right (CoD/BF tactical carry; round 2 user feedback: it must not leave the frame entirely).
 Pistols tip up and in toward the chest.
 
-**Reload:** the gun rolls 25–35° toward the support hand (pistols about 50°) and rises slightly, so the magazine well comes into frame
+**Reload:** the gun rolls 25–35° toward the support hand (pistols about 45°) and rises slightly, so the magazine well comes into frame
 (x 50–65%, y 60–85%). The support hand has to be visible for the whole magazine swap.
 
 ### Professional reference: Free FPS Template (Fab) rifle set
@@ -85,17 +85,17 @@ How these numbers are used in the game:
   nothing. The rifle reload now keeps the template's support-hand and magazine tracks (grab f8, pouch f24, seated f57,
   hand back f75), but the gun pose is hand-authored in `src/game/weapons/ReloadChoreo.js` (`RIFLE_TAC`, eased keys
   pivoting about the firing grip):
-  - the rifle cants about 30° (top to the right, so the magazine well turns toward the eye and the support hand),
-    comes about 2 cm inboard and 1.5 cm up, and tips the muzzle 5–6° up. The well sits at about x 60%, y 60–65% for the
-    whole swap;
+  - the rifle cants about 35° (top to the right, so the magazine well turns toward the eye and the support hand),
+    comes about 3 cm inboard and 3 cm up, and tips the muzzle about 10° up, so the magazine and the hand stay in the
+    lower-centre frame for the whole swap;
   - it is tugged down as the old magazine is stripped (f14), dips as the new one is pushed in, and jolts up on the
     seat (f57, the "slap").
   - Empty reloads compress the template into the first 56% and then work the bolt (`BOLT_PHASE`): `release` (M4: the
     palm runs up the magazine well and slaps the bolt catch; the carrier is locked back until then) or `rack` (AK,
     SCAR, MP5: the hand takes the charging handle, runs it back with the gun canted toward it, `rackRoll`, and lets
     it slam). Per-gun `FP_TUNE.emptyAction / rackRoll / boltTravel / boltHand`.
-  - Pistols (`PISTOL_TAC / PISTOL_EMPTY`, fully procedural): the pistol cants about 50° with the butt swung toward
-    the support hand and lifts into frame, the magazine drops free along the grip axis, the support hand fetches a new
+  - Pistols (`PISTOL_TAC / PISTOL_EMPTY`, fully procedural): the pistol cants about 45° with the butt swung toward
+    the support hand, tips up about 10° and lifts into frame (kept right of the centre box), the magazine drops free along the grip axis, the support hand fetches a new
     one from the belt (palm turned up), inserts it along the grip and palm-slaps it; on an empty reload the slide stays
     locked back until the slide release at 71%.
   - The support elbow follows a pole below and outside the arm (`ELBOW_POLE_L`) as the hand leaves its grip, so the
@@ -137,6 +137,15 @@ Shoulders are camera-relative (R (0.19, -0.04, -0.21), L (-0.29, -0.15, -0.12) f
 shoulder slides toward it along the arm line, which keeps the open sleeve ends below the frame. Elbow pole targets
 are below and outside the arms (R (0.45, 0.05, -0.75), L (-0.32, 0.12, -0.32)), which tucks the elbows.
 
+**Runtime hip review (round 2, 1600x900 shots against the reference set).** `FP_TUNE.hipPush` scales the hip pose
+about the eye. The gun stays in place on screen but sits further out, so it reads smaller. Values: M4 1.12, SCAR 1.15,
+MP5 1.12, VSS 1.2, AK/RPK 1.05; the others are unchanged. Measured with `__qa.geo()` after the push (M4 with red dot):
+optic (66%, 53%), front sight (62%, 52%), muzzle (56%, 59%).
+The AK irons are at (60%, 57%) / (55%, 54%), pistols at (62%, 56%) / (57%, 53%), and the M870 bead at (54%, 54%).
+The new M4 support station (`rigs.py` `sup` 0.26, vertical grip 0.30) brings the support forearm in steeply from
+the bottom edge instead of reaching straight in from the bottom-left corner. `FP_TUNE.m4a1.gunTint` darkens the
+Firewarden albedo, which was authored light grey, to anodised black.
+
 ## 4. Quality gates
 
 * **Intersection.** For each rig, the automatic BVH check in `build_rig.py` reports the maximum penetration of hand,
@@ -152,7 +161,7 @@ are below and outside the arms (R (0.45, 0.05, -0.75), L (-0.32, 0.12, -0.32)), 
 
   | Weapon | Hands after pose solve (mm) | Forearms after pose solve (mm) | **Final (exported), mm** | Vertical-grip variant, mm |
   |---|---|---|---|---|
-  | M4A1 | 5.77 | 0.00 | **1.89** | 4.01 |
+  | M4A1 (Firewarden model, round 2) | 5.10 | 0.00 | **0.18** | 0.95 (with morph) |
   | AK-47 / RPK | 3.60 | 0.00 | **0.10** | 4.64 |
   | SCAR-L | 7.89 | 0.00 | **0.15** | 3.30 |
   | MP5A5 | 9.98 | 0.00 | **0.09** | 3.48 |
@@ -209,7 +218,7 @@ blender -b --python tools/blender/zoom.py -- <glb> <png> y0 y1 z0 z1 step    # g
 python3 tools/blender/gridify.py <png>…                                      # draw the metric grid (system python + PIL)
 blender -b --python tools/blender/build_rig.py -- <id> <sf> <work> <out.glb> # pose, solve, report, render, export
 tools/blender/build_all.sh <blender> <sf> <work> <outdir>                    # all ten rigs
-tools/blender/optimize.sh <outdir> public/assets/models/fp                  # gltf-transform: dedup, prune, 1K, weld, quantize, webp
+tools/blender/optimize.sh <outdir> public/assets/models/fp                  # atlas (VSS/P226), dedup, prune, 1K, weld, quantize, webp, meshopt
 # then list the ids in public/assets/models/fp/manifest.json (GunModels only requests listed rigs)
 ```
 
@@ -217,8 +226,14 @@ The export step also bakes **ambient occlusion** with Cycles: one 1K atlas per r
 gun and arms together so the grip-in-hand contact and magazine wells darken. It is wired as glTF `occlusionTexture`
 and loaded by three.js as `aoMap`.
 
-Note on rig sizes: 1.8–5.2 MB each, 29 MB for all ten. Textures from the many-material sources dominate (VSS,
-AK, P226). They can be cut further by atlasing.
+Note on rig sizes (round 2): 1.1–2.0 MB each, 15.7 MB for all ten. Every rig is meshopt-compressed
+(`EXT_meshopt_compression`; `src/core/Assets.js` registers `MeshoptDecoder`). The many-material guns are atlased by
+`tools/blender/atlas_fp.mjs` (`ATLAS` in `optimize.sh`), which merges every opaque gun material whose UVs fit (or can be
+shifted by whole tiles to fit) into one 2048 px atlas sized by world area:
+- VSS: 27 materials become 7, 3.6 MB → 2.0 MB. Four materials keep tiling UVs that span texture seams.
+- P226: 5 materials become 2, 3.1 MB → 1.35 MB.
+The remaining large texture in every rig is the arms metal-rough map, with the rig's own AO bake packed into its R
+channel (about 350 KB). It cannot be shared between rigs.
 
 ```
 ```

@@ -60,6 +60,7 @@ function findBones(root) {
  * the actual rig and shift its hips track so the lowest foot/toe over the cycle sits exactly where it
  * does in the idle clip (feet planted on the ground plane).
  */
+const RUN_BOB = 0.048; // target hips bob of the run cycles (m); trained runners carry ~4-5 cm
 function groundMocapClips(scene, clips, refClip) {
   const bn = {}; scene.traverse((o) => { if (o.isBone && !bn[boneKey(o.name)]) bn[boneKey(o.name)] = o; });
   const hips = bn.Hips, feet = ['LeftFoot', 'RightFoot', 'LeftToeBase', 'RightToeBase'].map((k) => bn[k]).filter(Boolean);
@@ -80,9 +81,30 @@ function groundMocapClips(scene, clips, refClip) {
   const ref = minFoot(refClip, 8);
   scene.updateMatrixWorld(true);
   const toLocal = new THREE.Matrix3().setFromMatrix4(hips.parent.matrixWorld.clone().invert());
+  const top = bn.HeadTop_End || bn.Head;
+  const unit = top ? 1.8 / Math.max(1e-6, top.getWorldPosition(new THREE.Vector3()).y - ref) : 1; // scene units → metres (approx.)
+  const upL = new THREE.Vector3(0, 1, 0).applyMatrix3(toLocal).normalize();
   for (const clip of mocap) {
     const tr = clip.tracks.find((t) => t.name.endsWith('.position') && boneKey(THREE.PropertyBinding.parseTrackName(t.name).nodeName) === 'Hips');
     if (!tr) continue;
+    if (/^mocap_run/.test(clip.name)) {
+      // Runs: compress the vertical hips oscillation to a ~4.8 cm bob (captured runs bounce 8-9 cm on our rigs).
+      const a = mixer.clipAction(clip); a.reset().play();
+      let lo = Infinity, hi = -Infinity;
+      for (let i = 0; i < 48; i++) { mixer.setTime((clip.duration * i) / 48); scene.updateMatrixWorld(true); const y = hips.getWorldPosition(v).y; lo = Math.min(lo, y); hi = Math.max(hi, y); }
+      a.stop(); mixer.uncacheAction(clip);
+      const bob = (hi - lo) * unit;
+      if (bob > RUN_BOB) {
+        const k = RUN_BOB / bob, vals = tr.values, n = vals.length / 3;
+        let mean = 0;
+        for (let i = 0; i < n; i++) mean += vals[i * 3] * upL.x + vals[i * 3 + 1] * upL.y + vals[i * 3 + 2] * upL.z;
+        mean /= n;
+        for (let i = 0; i < n; i++) {
+          const d = (vals[i * 3] * upL.x + vals[i * 3 + 1] * upL.y + vals[i * 3 + 2] * upL.z - mean) * (1 - k);
+          vals[i * 3] -= upL.x * d; vals[i * 3 + 1] -= upL.y * d; vals[i * 3 + 2] -= upL.z * d;
+        }
+      }
+    }
     const dy = minFoot(clip, 48) - ref;
     if (!(Math.abs(dy) > 1e-4)) continue;
     const d = v.set(0, -dy, 0).applyMatrix3(toLocal), vals = tr.values;
@@ -529,7 +551,7 @@ function springDamperExact(s, goal, halflife, dt) {
 }
 // Hot-path world transforms read straight from matrixWorld (callers keep matrices current).
 const _wv = new THREE.Vector3(), _ws = new THREE.Vector3();
-const _fk = { o: new THREE.Vector3(), down: new THREE.Vector3(0, -1, 0), d: new THREE.Vector3(), t: new THREE.Vector3(), f: new THREE.Vector3(), q: new THREE.Quaternion(), q2: new THREE.Quaternion(), m: new THREE.Matrix4(), n: new THREE.Matrix3() };
+const _fk = { r: new THREE.Vector3(), o: new THREE.Vector3(), down: new THREE.Vector3(0, -1, 0), d: new THREE.Vector3(), t: new THREE.Vector3(), f: new THREE.Vector3(), q: new THREE.Quaternion(), q2: new THREE.Quaternion(), m: new THREE.Matrix4(), n: new THREE.Matrix3() };
 const _cl = { lp: new THREE.Vector3(), rp: new THREE.Vector3(), d: new THREE.Vector3(), pole: new THREE.Vector3(), lq: new THREE.Quaternion(), rq: new THREE.Quaternion(), q: new THREE.Quaternion(), m: new THREE.Matrix4(), n: new THREE.Matrix3() };
 const wpos = (o, out) => out.setFromMatrixPosition(o.matrixWorld);
 const wquat = (o, out) => { o.matrixWorld.decompose(_wv, out, _ws); return out; };
@@ -623,7 +645,7 @@ export class Character {
     this.fireKick = 0;
     this.kickRoll = 0;
     this.oneShot = null; // { name, t, dur, rate }
-    this._fl = [0, 1].map(() => ({ A: new THREE.Vector3(), AQ: new THREE.Quaternion(), P: new THREE.Vector3(), TA: new THREE.Vector3(), hT: 0, minT: 0, anchor: 0, yaw: 0, ay: 0, w: 0, locked: false, step: null, init: false, minH: 0, h: 0, gy: 0, gyT: 0, gx: 1e9, gz: 0 }));
+    this._fl = [0, 1].map(() => ({ A: new THREE.Vector3(), AQ: new THREE.Quaternion(), P: new THREE.Vector3(), TA: new THREE.Vector3(), Ap: new THREE.Vector3(), TAp: new THREE.Vector3(), fin: new THREE.Vector3(), vInit: false, arc: 0, hT: 0, minT: 0, anchor: 0, yaw: 0, ay: 0, w: 0, locked: false, step: null, init: false, minH: 0, h: 0, gy: 0, gyT: 0, gx: 1e9, gz: 0 }));
     this._pelvis = 0;
     this.oneShotW = 0;
     this.deadTime = 0;
@@ -750,7 +772,7 @@ export class Character {
 
   // ---------------- events ----------------
   onSpawn(bot) {
-    this.deadTime = 0; this._hidden = false; this._lodAcc = 1; this._pelvis = 0; for (const f of this._fl) { f.w = 0; f.locked = false; f.step = null; f.init = false; } // first update after spawn: full pose + aim/IK pass
+    this.deadTime = 0; this._hidden = false; this._lodAcc = 1; this._pelvis = 0; for (const f of this._fl) { f.w = 0; f.locked = false; f.step = null; f.init = false; f.vInit = false; } // first update after spawn: full pose + aim/IK pass
     this.dying = null;
     this.mixer.stopAllAction();
     for (const [k, a] of Object.entries(this.lowerActions)) { a.reset().play(); a.setEffectiveWeight(k === 'idle' ? 1 : 0); if (GAIT_KEYS.includes(k)) a.timeScale = 0; }
@@ -824,7 +846,7 @@ export class Character {
     // travel direction, so planted feet track the root exactly; bot.velocity is smoothed and lags it.
     if (dt > 0) {
       let tx = 0, tz = 0;
-      if (this._lastX !== undefined) { tx = bot.position.x - this._lastX; tz = bot.position.z - this._lastZ; if (tx * tx + tz * tz > 1) tx = tz = 0; }
+      if (this._lastX !== undefined) { tx = bot.position.x - this._lastX; tz = bot.position.z - this._lastZ; if (tx * tx + tz * tz > 1) { tx = tz = 0; for (const f of this._fl) { f.w = 0; f.locked = false; f.step = null; f.init = false; f.vInit = false; } } } // teleport: drop foot locks
       this._lastX = bot.position.x; this._lastZ = bot.position.z;
       const kt = 1 - Math.exp(-30 * dt);
       this._tvx += (tx / dt - this._tvx) * kt; this._tvz += (tz / dt - this._tvz) * kt;
@@ -861,14 +883,14 @@ export class Character {
     }
     const prevBody = this.bodyYaw;
     const dy = wrapPi(targetBody - this.bodyYaw);
-    const maxTurn = sp < 0.3 && this._footLockOn ? 5 : 9; // hips pivot ≤ ~515°/s (≤ ~290°/s stepping in place)
+    const maxTurn = sp < 0.3 && this._footLockOn ? 5 : 8.4; // hips pivot ≤ ~480°/s (≤ ~290°/s stepping in place)
     const turn = clamp(dy * Math.min(1, dt * (sp > 0.25 ? 9 : 6)), -maxTurn * dt, maxTurn * dt);
     this.bodyYaw = wrapPi(this.bodyYaw + turn);
     this.yawRate = damp(this.yawRate, turn / Math.max(dt, 1e-4), 8, dt);
     // Chest follows the aim with a human turn-rate cap (≤ ~500°/s), legs absorb the rest.
     const chestT = this.bodyYaw + clamp(wrapPi(aimYaw - this.bodyYaw) + this.twistTrim, -100 * DEG, 100 * DEG);
     const chestNow = prevBody + this.twist; // last frame's chest (the legs' turn this frame must not drag it)
-    const dc = wrapPi(chestT - chestNow), maxStep = 8.7 * dt;
+    const dc = wrapPi(chestT - chestNow), maxStep = 8.0 * dt; // ≤ ~460°/s
     this.twist = clamp(wrapPi(chestNow + clamp(dc * Math.min(1, dt * 16), -maxStep, maxStep) - this.bodyYaw), -100 * DEG, 100 * DEG);
     const tvs = Math.hypot(this._tvx, this._tvz);
     this.velRel = sp > 0.05 ? wrapPi((tvs > 0.25 ? Math.atan2(-this._tvx, -this._tvz) : Math.atan2(-v.x, -v.z)) - this.bodyYaw) : 0; // travel direction relative to the legs
@@ -1351,17 +1373,22 @@ export class Character {
     const dt = Math.min(0.1, Math.max(1e-3, this._animDt || 1 / 60));
     const cam = bot.game?.renderer?.camera;
     let near = true;
-    if (cam && !this.tpl.forceFullRate) { const dx = bot.position.x - cam.position.x, dz = bot.position.z - cam.position.z; near = dx * dx + dz * dz < 25 * 25; }
+    if (cam && !this.tpl.forceFullRate) {
+      const dx = bot.position.x - cam.position.x, dy = bot.position.y - cam.position.y, dz = bot.position.z - cam.position.z, d2 = dx * dx + dy * dy + dz * dz;
+      near = d2 < 25 * 25;
+      if (near && d2 > 4) { cam.getWorldDirection(_v7); near = (dx * _v7.x + dy * _v7.y + dz * _v7.z) / Math.sqrt(d2) > 0.25; } // on screen
+    }
     const air = (bot.jumpY || 0) > 0.02;
+    if (this.footLock === false) near = false; // opt-out (the first-person player body)
     this._footLockOn = near && !air;
     if (!b.hips?.parent || !b.lUp || !b.rUp || !b.lLeg || !b.rLeg || !b.lFoot || !b.rFoot) return;
-    if (!near || air) { for (const f of FL) { f.w = 0; f.locked = false; f.step = null; f.init = false; } this._pelvis = 0; return; }
+    if (!near || air) { for (const f of FL) { f.w = 0; f.locked = false; f.step = null; f.init = false; f.vInit = false; } this._pelvis = 0; return; }
     const T = _fk, rootY = bot.position.y + (bot.jumpY || 0);
     const sp = this.speedS, idle = sp < 0.3;
     const phys = bot.game?.physics;
     const legs = [[b.lUp, b.lLeg, b.lFoot], [b.rUp, b.rLeg, b.rFoot]];
     // Pass 1: animated targets + ground heights.
-    let off = 0;
+    let off = Infinity;
     for (let i = 0; i < 2; i++) {
       const f = FL[i], foot = legs[i][2];
       wpos(foot, f.A); wquat(foot, f.AQ);
@@ -1383,39 +1410,61 @@ export class Character {
       f.gy = f.gy + (f.gyT - f.gy) * Math.min(1, dt * 20);
       off = Math.min(off, f.gy - rootY);
     }
-    // Pelvis: drop so the lower foot can reach its ground (never raised; the navmesh carries the root).
+    // Reach: a locked foot the hip has moved away from (turning over planted feet, long strides) must stay
+    // inside the leg's length; drop the pelvis just enough (estimated from last frame's foot targets).
+    if (!this._legL) this._legL = wpos(b.lUp, T.o).distanceTo(wpos(b.lLeg, T.d)) + T.d.distanceTo(wpos(b.lFoot, T.t));
+    for (let i = 0; i < 2; i++) {
+      const f = FL[i];
+      if (f.w < 0.01 || !f.vInit || !idle) continue; // (moving: the stride is the clip's; no pelvis dips)
+      wpos(legs[i][0], T.o);
+      const hz = Math.hypot(f.fin.x - T.o.x, f.fin.z - T.o.z), L = this._legL * (idle ? 0.99 : 0.997);
+      const maxV = Math.sqrt(Math.max(0, L * L - hz * hz)), need = T.o.y - f.fin.y;
+      if (need > maxV) off = Math.min(off, -(need - maxV) * f.w);
+    }
+    off = clamp(off, -0.25, 0.12);
+    // Pelvis follows the lower foot's ground: drops onto steps / slopes below the navmesh root, rises a
+    // little when the physical floor is above the navmesh height (both feet higher).
     this._pelvis = damp(this._pelvis || 0, off, 10, dt);
-    if (this._pelvis < -0.002) {
+    if (Math.abs(this._pelvis) > 0.002) {
       T.n.setFromMatrix4(T.m.copy(b.hips.parent.matrixWorld).invert());
       b.hips.position.add(T.d.set(0, this._pelvis, 0).applyMatrix3(T.n));
       b.hips.updateMatrixWorld(true);
     }
-    // Pass 2: plant / roll / step state machine, then IK. Anchor 0 = heel (ankle) pinned (heel strike,
-    // stance, idle), anchor 1 = toe pinned (foot flat → toe-off roll; forefoot strikes when running).
+    // Pass 2: plant / roll / step state machine, then IK. Locks hold the horizontal position and heading
+    // only (height stays animated + ground). Anchor 0 = heel (ankle) pinned (heel strike, stance, idle);
+    // anchor 1 = toe pinned (foot flat → toe-off roll; forefoot strikes when running).
     for (let i = 0; i < 2; i++) {
       const f = FL[i], o = FL[1 - i], [up, leg, foot] = legs[i];
       const gyo = f.gy - rootY;
       const tgt = T.t.copy(f.A); tgt.y += gyo; // animated ankle, on this foot's ground
-      const ox = f.TA.x - f.A.x, oy = f.TA.y - f.A.y, oz = f.TA.z - f.A.z; // ankle → toe (animated)
-      const heelDown = f.h < f.minH + (f.locked ? 0.045 : 0.022);
-      const toeDown = f.hT < f.minT + (f.locked ? 0.035 : 0.018);
-      // ankle position implied by the current lock (toe anchor: keep the toe point, roll the foot)
+      const ox = f.TA.x - f.A.x, oz = f.TA.z - f.A.z; // ankle → toe (animated, horizontal)
+      // world speed of the animated heel / toe: in contact they (nearly) stand still
+      const sA = f.vInit ? Math.hypot(f.A.x - f.Ap.x, f.A.z - f.Ap.z) / dt : 9, sT = f.vInit ? Math.hypot(f.TA.x - f.TAp.x, f.TA.z - f.TAp.z) / dt : 9;
+      f.Ap.copy(f.A); f.TAp.copy(f.TA); f.vInit = true;
+      const heelDown = f.h < f.minH + (f.locked ? 0.045 : 0.022) && sA < (f.locked ? 1.6 : 1.0);
+      const toeDown = f.hT < f.minT + (f.locked ? 0.03 : 0.018) && sT < (f.locked ? 1.6 : 1.0);
+      const rot = (yawOff, x, z, out) => { const ca = Math.cos(yawOff), sa = Math.sin(yawOff); return out.set(x * ca + z * sa, 0, -x * sa + z * ca); };
+      // horizontal ankle position implied by the lock (toe anchor: keep the toe point, roll the foot)
       const lockAnkle = (out) => {
-        if (!f.anchor) return out.copy(f.P);
-        const a = wrapPi(f.yaw - f.ay), ca = Math.cos(a), sa = Math.sin(a);
-        return out.set(f.P.x - (ox * ca + oz * sa), f.P.y - oy, f.P.z - (-ox * sa + oz * ca));
+        if (!f.anchor) return out.set(f.P.x, tgt.y, f.P.z);
+        rot(wrapPi(f.yaw - f.ay), ox, oz, T.r);
+        return out.set(f.P.x - T.r.x, tgt.y, f.P.z - T.r.z);
       };
       if (f.step) {
         f.step.u += dt / 0.24;
         const u = Math.min(1, f.step.u), e = u * u * (3 - 2 * u);
-        f.P.copy(f.step.p).lerp(tgt, e); f.P.y += Math.sin(u * Math.PI) * 0.07;
+        f.P.x = f.step.x + (tgt.x - f.step.x) * e; f.P.z = f.step.z + (tgt.z - f.step.z) * e;
+        f.arc = Math.sin(u * Math.PI) * 0.07;
         f.yaw = f.step.yaw + wrapPi(f.ay - f.step.yaw) * e;
-        if (u >= 1) { f.step = null; f.P.copy(tgt); f.yaw = f.ay; }
+        if (u >= 1) { f.step = null; f.arc = 0; f.P.copy(tgt); f.yaw = f.ay; }
       } else if (f.locked) {
         if (!idle) {
           if (!heelDown && !toeDown) f.locked = false; // lift-off
           else {
-            if (!f.anchor && toeDown && f.h > f.minH + 0.012) { lockAnkle(T.d); const a = wrapPi(f.yaw - f.ay), ca = Math.cos(a), sa = Math.sin(a); f.P.set(T.d.x + ox * ca + oz * sa, T.d.y + oy, T.d.z - ox * sa + oz * ca); f.anchor = 1; }
+            if (!f.anchor && toeDown && f.h > f.minH + 0.012) { // heel rising, toe down: roll onto the toe
+              lockAnkle(T.d); rot(wrapPi(f.yaw - f.ay), ox, oz, T.r);
+              f.P.set(T.d.x + T.r.x, 0, T.d.z + T.r.z); f.anchor = 1;
+            }
             lockAnkle(T.d);
             if (Math.hypot(T.d.x - tgt.x, T.d.z - tgt.z) > 0.35) f.locked = false; // the leg cannot keep it
           }
@@ -1423,21 +1472,29 @@ export class Character {
           if (f.anchor) { lockAnkle(T.d); f.P.copy(T.d); f.anchor = 0; } // standing: pin the heel
           const drift = Math.hypot(f.P.x - tgt.x, f.P.z - tgt.z);
           if (!o.step && o.w > 0.9 && (drift > 0.11 || Math.abs(wrapPi(f.yaw - f.ay)) > 0.42)) {
-            f.step = { u: 0, p: (f.step0 ||= new THREE.Vector3()).copy(f.P), yaw: f.yaw };
+            f.step = f.stepS || (f.stepS = {}); f.step.u = 0; f.step.x = f.P.x; f.step.z = f.P.z; f.step.yaw = f.yaw;
           } else if (drift > 0.45) f.locked = false;
         }
       } else if (heelDown || toeDown) {
-        f.locked = true; f.yaw = f.ay;
-        f.anchor = heelDown ? 0 : 1;
-        if (f.anchor) f.P.set(f.TA.x, f.TA.y + gyo, f.TA.z); else f.P.copy(tgt);
+        // (Re)lock where the foot is drawn now (it may still be blending out of the last lock): no snap.
+        f.locked = true; f.anchor = heelDown ? 0 : 1;
+        f.yaw = f.ay + wrapPi(f.yaw - f.ay) * f.w;
+        if (f.anchor) { rot(wrapPi(f.yaw - f.ay), ox, oz, T.r); f.P.set(f.fin.x + T.r.x, 0, f.fin.z + T.r.z); }
+        else f.P.set(f.fin.x, 0, f.fin.z);
+        if (f.w < 0.01) { f.yaw = f.ay; f.P.set(f.anchor ? f.TA.x : tgt.x, 0, f.anchor ? f.TA.z : tgt.z); }
       }
       const want = f.locked || f.step ? 1 : 0;
       f.w = want ? Math.min(1, f.w + dt / 0.05) : Math.max(0, f.w - dt / 0.09);
-      const fin = T.f.copy(tgt).lerp(f.step ? f.P : lockAnkle(T.d), f.w);
-      if (!f.step) fin.y = Math.max(fin.y, f.gy + f.minH - 0.005); // never through the ground
+      const fin = T.f.copy(tgt).lerp(lockAnkle(T.d), f.w);
+      // Swing clearance: a travelling, unlocked foot keeps its toe ≥ 4 cm above its contact height
+      // (low shuffling clips would otherwise drag the sole along the ground).
+      const swingK = (1 - f.w) * clamp((sT - 0.7) / 0.6, 0, 1);
+      f.lift = damp(f.lift || 0, clamp(f.minT + 0.04 - f.hT, 0, 0.05) * swingK, 25, dt);
+      fin.y = Math.max(fin.y, f.gy + Math.max(f.minH - 0.005, 0.055)) + (f.step ? f.arc : 0) + f.lift; // never through the ground (ankle ≥ 5.5 cm)
+      f.fin.copy(fin);
       // Locked heading only (yaw about world up); heel-strike → flat → toe-off roll stays animated.
       T.q.setFromAxisAngle(UP, wrapPi(f.yaw - f.ay) * f.w).multiply(f.AQ);
-      if (fin.distanceToSquared(f.A) > 1e-8 || this._pelvis < -0.002) {
+      if (fin.distanceToSquared(f.A) > 1e-8 || Math.abs(this._pelvis) > 0.002) {
         this._twoBoneIK(up, leg, foot, fin, 1);
         foot.quaternion.copy(wquat(foot.parent, T.q2).invert().multiply(T.q));
         foot.updateMatrixWorld(true);
@@ -1660,7 +1717,7 @@ export class Character {
       mode, t: 0, fadeW: 0, rate: headshot ? 1.35 : explosive ? 1.2 : 0.88 + Math.random() * 0.25,
       fromYaw: this.bodyYaw, toYaw: this.bodyYaw, dir: dir.clone(), angle: 0, angVel: 0, landed: false,
       // Knockback: a short stagger-slide, bigger for buckshot / blasts.
-      slide: explosive ? 1.6 : shotgun ? 0.5 : headshot ? 0.06 : 0.08 + Math.random() * 0.14, slid: 0, maxSlide: 0,
+      slide: explosive ? 1.6 : shotgun ? 0.5 : headshot ? 0.05 : 0.05 + Math.random() * 0.1, slid: 0, maxSlide: 0,
       groundY: bot.position.y, lift: 0, origin: bot.position.clone(),
     };
     if (mode === 'clip') {
@@ -1779,6 +1836,23 @@ export class Character {
       _v2.set(Math.sin(local), 0, Math.cos(local));
       _v3.crossVectors(UP, _v2).normalize();
       this.pivot.quaternion.setFromAxisAngle(_v3, d.angle);
+    }
+    {
+      // Keep the fall compact: a buckling body folds down over its feet (the prone pose would carry the
+      // hips ~0.5 m forward; the authored backward fall ~0.65 m back). Hips end ≤ 0.32 m (collapse) /
+      // 0.42 m (backward fall) from the stance, plus the knockback slide.
+      if (this.bones.hips) {
+        this.pivot.position.x = 0; this.pivot.position.z = 0;
+        root.updateMatrixWorld(true);
+        wpos(this.bones.hips, _v4);
+        const ex = _v4.x - root.position.x, ez = _v4.z - root.position.z, dd = Math.hypot(ex, ez);
+        const lim = d.mode === 'clip' ? 0.42 : 0.32;
+        if (dd > lim) {
+          const k = (dd - lim) / dd, wx = -ex * k, wz = -ez * k, a = -this.bodyYaw; // world shift → root-local
+          this.pivot.position.x = wx * Math.cos(a) + wz * Math.sin(a);
+          this.pivot.position.z = -wx * Math.sin(a) + wz * Math.cos(a);
+        }
+      }
     }
     this.pivot.position.y = d.lift;
     root.updateMatrixWorld(true);

@@ -13,6 +13,7 @@ export class PlayerBody {
     this.game = game;
     const ch = game.charTemplate.instance(0);
     ch._lodInterval = () => 0; // always full rate (it's right under the camera)
+    ch.footLock = false; // bot foot-lock IK off: the player actor carries no airborne state
     this.ch = ch;
     this.clipY = { value: 1e9 };
     const patched = new Map();
