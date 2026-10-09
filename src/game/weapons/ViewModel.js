@@ -127,6 +127,10 @@ export class ViewModel {
     this.kickPos = new Spring3(260, 0.6);
     this.kickRot = new Spring3(240, 0.55);
     this.landY = new Spring(140, 0.55);
+    // Pistol muzzle flip (deg) / push (cm) about the firing grip: stiff and under-damped so each shot snaps up and
+    // returns fast (a wrist flip, not a float).
+    this.flipR = new Spring3(420, 0.52);
+    this.flipP = new Spring3(520, 0.6);
     this.adsBlend = 0;
     this.sprintBlend = 0;
     this.reloadBlend = 0;
@@ -743,8 +747,15 @@ export class ViewModel {
       const sc = (rig.sidearm ? 0.75 : 1) * (0.85 + Math.random() * 0.35) * fl * (s.pellets > 1 ? 1.35 : 1);
       this.flash.scale.setScalar(sc / rig.scale);
     }
-    // Slide / bolt carrier cycles.
-    if (rig.charging && (rig.sidearm || s.closedBolt)) this.slideT = 0.06;
+    if (rig.sidearm) {
+      // Snappy flip: ~7 deg (P226) / ~10 deg (M1911) at the hip, about half aimed, a little roll into the wrist and a
+      // yaw that follows the shot's push; the push back sells the slide mass.
+      const kp = (s.kick ?? 1) * (1 - this.adsBlend * 0.55);
+      this.flipR.impulse(240 * kp, (side * 30 + rand(-15, 15)) * kp, rand(-20, 60) * kp);
+      this.flipP.impulse(rand(-4, 4) * kp, 9 * kp, 42 * kp);
+    }
+    // Slide / bolt carrier cycles (pistol slides run longer so every shot reads: fast back, slower return).
+    if (rig.charging && (rig.sidearm || s.closedBolt)) this.slideT = rig.sidearm ? 0.11 : 0.06;
   }
 
   startReload(rig = this.rig, type) {
@@ -813,6 +824,7 @@ export class ViewModel {
     if (!p.grounded) this.swayPos.target.y += -p.velocity.y * 0.002;
     this.swayRot.update(dt); this.swayPos.update(dt);
     this.kickPos.update(dt); this.kickRot.update(dt);
+    this.flipR.update(dt); this.flipP.update(dt);
     this.landY.update(dt);
 
     // Authored animation set (FP rifle-family rigs): replaces procedural bob / breathing / sprint carry /
@@ -958,6 +970,11 @@ export class ViewModel {
         this._pivotDelta(rig, _k);
       }
     }
+    // Pistol flip (springs fed by onFire).
+    if (rig.sidearm && (this.flipR.x.lengthSq() + this.flipP.x.lengthSq() > 1e-6)) {
+      _k[0] = this.flipP.x.x; _k[1] = this.flipP.x.y; _k[2] = this.flipP.x.z; _k[3] = this.flipR.x.x; _k[4] = this.flipR.x.y; _k[5] = this.flipR.x.z;
+      this._pivotDelta(rig, _k);
+    }
     // Authored reload gun pose (ReloadChoreo): rifles (template timing) and pistols, pivoting about the firing grip.
     const pistolAuth = rig.fp && rig.sidearm && !window.__vmProcAnims; // authored pistol reload (A/B: __vmProcAnims)
     if (w.state === 'reload' && rig.fp && !s.tube && (tplReload || pistolAuth)) {
@@ -972,7 +989,8 @@ export class ViewModel {
       this.slideT = Math.max(0, (this.slideT || 0) - dt);
       const lockBack = rig.sidearm && w.ammo === 0 && w.state !== 'reload';
       const travel = rig.sidearm ? 0.07 : 0.1;
-      const k = lockBack ? 1 : this.slideT > 0 ? Math.sin((1 - this.slideT / 0.06) * Math.PI) : 0;
+      const T = rig.sidearm ? 0.11 : 0.06, u = 1 - this.slideT / T;
+      const k = lockBack ? 1 : this.slideT <= 0 ? 0 : rig.sidearm ? (u < 0.3 ? smoothstep(u / 0.3) : 1 - smoothstep((u - 0.3) / 0.7)) : Math.sin(u * Math.PI);
       rig.charging.position.z = rig.chargingHome.z + k * travel;
     }
 
