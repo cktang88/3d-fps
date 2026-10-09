@@ -1,9 +1,21 @@
 # Asset sources — vetted catalogue for Ironline
 
-Curated by the asset-scout pass (2026-10-08) against `docs/QUALITY_BAR.md` (stormy golden hour after rain, photoreal
-PBR, cohesive fidelity) and `docs/ART_PIPELINE.md` (everything goes through gltf-transform plus the unify pass).
-Every entry was checked for licence, and previews were viewed. Nothing has been downloaded into the repo; this is a
-shopping list.
+> **Historical shopping list (asset-scout pass, 2026-10-08).** It is not the list of shipped assets: the README
+> "Credits & licences" section is authoritative for what is in `public/assets/`. Statements such as "already used"
+> or "the current arms" describe the game on that date.
+
+Curated against `docs/QUALITY_BAR.md` (stormy golden hour after rain, photoreal PBR, cohesive fidelity) and
+`docs/ART_PIPELINE.md` (everything goes through gltf-transform plus the unify pass). Every entry was checked for
+licence, and previews were viewed.
+
+**Adopted from this list** (as of 2026-10-09): the ccransh rigs (AK-74m, pistol, sniper rifle, Remington 870) as arm
+rig and grip templates; the Generic Red Dot by valterjherson1; the 1799danly "Military tactical suit
+(LowPolyGameReady)" for the bots; Quaternius UAL 1 & 2; the Unity Labs flipbooks (Explosion01, WispySmoke02, Flame03);
+ambientCG Leaking, GraffitiSet001, Tape001, TireTracks001 and AsphaltDamage decals; the Free Firearm Sound Library;
+Kenney Interface Sounds. Everything else here was **evaluated, not used**. Several shipped assets came from outside
+this list: the gloved arms ("Fps arms" by bumstrum, 9452ce4c, not the e3c42c05 arms below), most FP guns and the
+other optics (see `docs/FP_FRAMING.md` §7), the alexdelker burnt car and helijah UH-60, the BAMEN rig, 100STYLE
+mocap, and the Free FPS Template animations (Fab licence; see the note in §9).
 
 **Legend**
 - ★ = **recommended** (top pick for that slot).
@@ -292,7 +304,7 @@ All Poly Haven, CC0. All have a sun near the horizon, real cloud structure and a
 | Mixamo characters/animations (three.js `Soldier.glb`, dive soldier, three-fps mutant) | Not redistributable |
 | dive "Sci-Fi Assault Rifle" (Ptis) | CC BY‑NC |
 | Bandai Namco motion dataset, BBC Sound Effects, Pixabay/Mixkit audio | NC or no standalone redistribution |
-| Sketchfab "Free Standard"/"Standard", Fab/Unity Asset Store/TurboSquid | Store licences |
+| Sketchfab "Free Standard"/"Standard", Fab/Unity Asset Store/TurboSquid | Store licences. Later exception: the user-supplied Free FPS Template (Fab) is used for its rifle animation *motion* only, under its Fab licence; no template mesh ships |
 | operation-steel-tide `hy3d_operators` | AI-generated (Hunyuan3D), unclear rights |
 | Gumroad lens-dirt packs, summerengine "realistic FPS VFX atlas" | No licence stated / AI concept pages |
 | Renderpeople scanned civilians (CC‑BY samples) | Licence OK, but civilians in casual clothes; off-theme (keep for a possible civilian-panic set piece) |

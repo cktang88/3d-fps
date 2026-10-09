@@ -193,15 +193,19 @@ export class Menu {
   creditsHtml() {
     const c = (what, who) => `<div class="cr"><b>${what}</b><span>${who}</span></div>`;
     return `<div class="card"><h3>Credits</h3><div class="credits">
-      ${c('Weapon models & FP animation data', 'Operation Steel Tide (MIT) · meshes CC0 by nisu, taradavies, Quaternius')}
-      ${c('SCAR-L', 'AdamKokrito — CC BY 3.0')}
-      ${c('First-person arms', 'DJMaesen — CC BY 4.0')}
-      ${c('Soldier model', 'BAMEN — CC BY 4.0 · animations Quaternius (CC0)')}
-      ${c('Shotgun model', 'Harry_L — CC BY')}
+      ${c('First-person guns', 'Sketchfab CC BY 4.0: Firewarden (M4A1), Hitansh_3DArtist (SCAR-L), Rotuma (MP5), Naudaff3D (M24), erhanmatur (AWM), Alexcanot (P226), egorbelous (M1911); ArmsMuseum (VSS, CC0); tris09 (870)')}
+      ${c('Optics', 'valterjherson1, Argentavisss, ense7en — CC BY 4.0')}
+      ${c('First-person arms & grip templates', 'DJMaesen, ccransh — CC BY 4.0')}
+      ${c('First-person rifle animations', 'Free FPS Template (Fab), used under its licence')}
+      ${c('Fallback weapons & FP data', 'Operation Steel Tide (MIT) · meshes CC0 by nisu, taradavies, Quaternius')}
+      ${c('Soldiers', '1799danly (tactical suit), BAMEN — CC BY 4.0')}
+      ${c('Bot motion capture', '100STYLE (Mason, Starke, Komura) — CC BY 4.0 · Quaternius UAL 1 & 2 — CC0')}
       ${c('Gunshots & foley', 'The Free Firearm Sound Library — CC0')}
       ${c('Impacts, footsteps, UI & explosion sounds', 'Kenney (Impact, Interface, Sci-Fi Sounds) — CC0')}
-      ${c('Textures, props, HDRI', 'ambientCG & Poly Haven — CC0')}
+      ${c('Textures, props, HDRI, decals', 'ambientCG & Poly Haven — CC0')}
+      ${c('Upscaling', 'AMD FidelityFX FSR 1 (EASU/RCAS) — MIT')}
       ${c('Fonts', 'Rajdhani, Barlow Condensed — SIL OFL')}
+      ${c('Full list', 'See README.md › Credits & licences')}
     </div></div>`;
   }
 

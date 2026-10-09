@@ -8,9 +8,10 @@ Every change to Ironline is held to these principles:
 4. **Satisfaction / dopamine loop** — crisp hit feedback, rewarding kills, medals, streaks, readable progress.
 5. **Basics done exceedingly well** — no jank: no clipping, popping, sliding feet, z-fighting, light leaks,
    stuck movement, UI overlap, abrupt cuts or missing sounds. Nothing should look like a prototype.
-
-Verification: every visual change is checked with the headless screenshot harness (`tools/shot.mjs`) before it lands.
 6. **Jaw-drop visuals** — would a player stop and stare? Every frame should read like key art.
+
+Verification: every visual change is checked in screenshots from the shared QA runner (`tools/qa/`, see
+`tools/README.md`) before it lands.
 
 ## Art direction: "Ironline — edge of a live war zone"
 Stormy golden hour after rain: a low warm sun breaks through dark storm clouds; wet asphalt and puddles mirror
@@ -28,10 +29,9 @@ colour grade as the final glue. Details: `docs/ART_PIPELINE.md`.
 Curated, licence-verified catalogue: `docs/ASSET_SOURCES.md` (GitHub repos first, plus Sketchfab, Poly Haven,
 ambientCG, OpenGameArt, itch.io, Kenney, Quaternius). Allowed: CC0 / CC-BY / CC-BY-SA or explicitly redistributable
 in a public open-source game. Never: NC, ND, store licences, ripped commercial-game assets, raw Mixamo files.
-Every shipped asset is credited in README.
+Every shipped asset is credited in the README.
 
 ## Process
-- **Model policy:** all agents run on Claude Opus 5.5 (medium effort). Never Haiku.
 - **QA lead** (dedicated agent) owns the regression suite (`tools/qa/suites/`), runs it against the shared tree via
   the single QA runner, reviews every screenshot against this bar, routes findings to owners, and keeps
   `docs/QA_REPORT.md` current. Engineers send it specific test requests.

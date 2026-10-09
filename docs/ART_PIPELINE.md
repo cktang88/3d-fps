@@ -5,12 +5,14 @@ Ironline's look: **stormy golden hour just after rain** at the edge of a war zon
 layer, one light and one grade. This file is the contract; follow it for anything you add.
 
 ## 1. Sourcing & import
-- Only CC0 photoreal PBR sources (Poly Haven models/HDRIs, ambientCG materials). Record every asset in README credits.
+- World art: CC0 photoreal PBR sources (Poly Haven models/HDRIs, ambientCG materials). Weapons, characters and
+  vehicles may be CC BY (licence rules in `docs/QUALITY_BAR.md`). Record every shipped asset in the README credits.
 - Props: download the 1k glTF, then optimise into a single `.glb`:
   `gltf-transform optimize in.gltf out.glb --compress false --texture-compress webp --texture-size 1024 --simplify true --simplify-ratio <r>`
   (target ≤ ~8k tris for anything placed more than a few times). Put it in `public/assets/models/props/<id>/`.
-- Level surface sets live in `public/assets/textures/<Set>/{Color.jpg,NormalGL.jpg,Roughness.jpg}`
-  (alpha sets: `ColorA.webp`). Bake ambient occlusion into Color for ground sets. 1–2k is plenty.
+- Level surface sets live in `public/assets/textures/<Set>/{Color,NormalGL,Roughness}.webp`
+  (alpha sets: `ColorA.webp`). Bake ambient occlusion into Color for ground sets. 1K is the budget
+  (`tools/perf/compress_textures.py` converts JPGs to WebP and caps the size).
 - Level geometry uses world-space UVs (`Geo.worldBox`, `Level.mesh(..., {worldUV})`, `Level.cyl` length-correct UVs),
   so texel density is constant (~2 m per tile on walls, 3–5 m on ground).
 
@@ -52,10 +54,13 @@ HDR (before the viewmodel pass, which clears depth): god rays from the sun (mask
 bright things glow) → lens (dirt lit by bloom; sun glare only when the sun disc is on screen and unoccluded).
 Display: ACES filmic tonemap → grade (split toning: teal shadows / warm highlights, lift/gamma/gain, filmic S-curve,
 saturation) → vignette (barely there at rest, deepens with damage/low health/ADS) → chromatic aberration (edges,
-damage only) → fine grain 3.5% → SMAA on the display-referred image.
+damage only) → fine grain 2% → SMAA on the display-referred image → CAS sharpening (upscaling off) or FSR 1
+EASU + RCAS (upscaling on, `render/Fsr.js`).
 Each effect can be disabled from settings keys: `fxBloom`, `fxGodRays`, `fxLens`, `fxCA`, `fxGrain`.
 
 ## 6. Performance rules
-- Static level boxes merge per material (one draw call each); props are `InstancedMesh` per material part.
+- Static level boxes merge per material and zone; props are one `BatchedMesh` per material part (per-instance
+  culling and LOD). Details and budgets: `docs/PERF.md`.
 - Small props (< ~0.3 m) don't cast shadows; glass/decals never do.
-- Verify with `tools/shot.mjs`: draw calls and triangles are printed in `stats`.
+- Verify with the QA runner (`tools/qa/suites/perf_profile.json`): draw calls and triangles per pass. After moving
+  level geometry or props, re-bake the PVS and navmesh (`tools/README.md`, "Bakes").

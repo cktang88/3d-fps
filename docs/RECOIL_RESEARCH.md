@@ -1,5 +1,8 @@
 # Recoil & spread research (Ironline weapon feel)
 
+> **Status:** sections 1–2 are research notes; section 3 (implementation and per-weapon table) matches the current
+> code (`WeaponDefs.js` `rc`, `Recoil.js`); section 4 lists proposals not yet built.
+
 The goal is guns that climb up and slightly right the way real rifles do. Controlling that should take skill,
 and taps and short bursts should beat spraying past about 15 m without the game ever feeling unfair. This
 document collects what realistic and competitive shooters do, the real-world physics behind it, and how Ironline
@@ -93,10 +96,11 @@ vertical, long barrel -4%, short barrel +8%/+6%.
 **Aim side** (`Recoil.js` `AimRecoil`, player):
 - each kick eases into the real aim over about 60 ms (no single-frame teleport);
 - no recovery while the string continues, so the player pulls down;
-- when the trigger pauses (>max(0.12 s, 1.2x the cyclic interval), capped at 0.3 s) only `recS` (1 shot) to
-  `recL` (10+ shots) of the *uncompensated* climb settles back at 10/s. Mouse pull-down consumes the
-  recoverable part first, so compensating never overshoots. Tap and burst shooters get most of their sight
-  picture back; sprayers end up high and right.
+- when the trigger pauses (>max(0.12 s, 1.2x the cyclic interval), capped at 0.3 s), a **single tap settles fully
+  back** to the point of aim (`AimRecoil.settleFrac` returns 1, so slow taps never walk the group up); for strings
+  the fraction slides from `recS` (2 shots) to `recL` (10+ shots) of the *uncompensated* climb, settling at 10/s.
+  Mouse pull-down consumes the recoverable part first, so compensating never overshoots. Tap and burst shooters get
+  most of their sight picture back; sprayers end up high and right.
 
 **Visual only:** the camera kick spring (`FPCamera.addKick`) and the viewmodel flip (`ViewModel.onFire`) follow
 the shot's direction but never change where bullets go. `Game._playerFire` now fires along the true aim
@@ -117,7 +121,7 @@ after a pause of 0.2 s or more at 2+10·ctl per second. Muzzle offset after 10 A
 
 ### Per-weapon profiles
 
-| Weapon | up | first | tail | drift h | wander wa/wp | jit | vj | settle recS→recL | Character |
+| Weapon | up | first | tail | drift h | wander wa/wp | jit | vj | settle recS→recL (2→10+ shots) | Character |
 |---|---|---|---|---|---|---|---|---|---|
 | M4A1 | 0.34 | 1.30 | 0.85 | +0.05 | 0.06 / 12 | 0.09 | 0.12 | 0.85→0.35 | Fast, smooth, gentle right drift; easy to learn |
 | AK-47 | 0.50 | 1.40 | 0.95 | +0.09 | 0.16 / 9 | 0.20 | 0.22 | 0.78→0.25 | Harsh jump, erratic horizontal, keeps climbing (brake tames the drift) |

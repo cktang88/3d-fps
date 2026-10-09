@@ -89,7 +89,7 @@ See the *Results* table for per-view numbers.
 | 16 | Point-light pool: every logical PointLight moves to a non-rendered layer, and N physical lights (Low 3 / Med 4 / High 6 / Ultra 8) mirror the most relevant lit, in-frustum ones. Fixed count, so no recompiles; fade-out 0.12 s. | `render/LightPool.js`, `Game` | lit-fragment light loop 12+ → ≤ 6 |
 | 17 | Sun shadow map primed at init (`Renderer.primeShadows`), and a quality change no longer disposes it. Fixes `GL_INVALID_OPERATION ... sampler type` (three r186's array shadow sampler falls back to a compare-less empty depth texture). | `Renderer`, `Game.init` | correctness |
 | 18 | Dynamic resolution (coordinator's `_updateDynRes`) made vsync-aware and oscillation-free: step down on misses; after 3 s at refresh rate, probe +5%; a failed probe is undone, its scale becomes a ceiling, and the next probe waits 4 s → 8 → … → 60 s. | `Renderer._updateDynRes` | converges; recovers after load drops |
-| 19 | First-boot quality from the GPU tier (`WEBGL_debug_renderer_info`): integrated (Intel/UHD/Iris, Radeon iGPU) → Medium, software/mobile → Low, discrete → High. Applies only until the player picks a quality (`settings.qualityAuto`). | `Renderer.autoQuality`, `Menu` | |
+| 19 | First-boot quality from the GPU tier (`WEBGL_debug_renderer_info`): Apple Silicon and integrated (Intel/UHD/Iris, Radeon iGPU) → Medium + FSR Balanced, software/mobile → Low + FSR Performance, discrete → High + FSR Quality. Applies only until the player picks a quality / upscaling mode (`settings.qualityAuto`, `upscalingAuto`). | `Renderer.autoQuality`, `Menu` | |
 
 ## Results
 
@@ -123,27 +123,31 @@ CPU (`perf_cpu`, live TDM, 11 bots fighting, fixed 60 Hz, container CPU): **game
 occlusion 0.11 ms, nav 0.10 ms. Expect 2–3x on a mid laptop (~6–8 ms). Render submission (~340 draws plus 34 post
 passes) is the other main-thread cost.
 
-### Open items (owners notified)
-* FP rigs (`models/fp`, FP art lead): 30 MB, `ak47` 130k tris, the arms textures duplicated in every file, no meshopt.
-  Lazy-load the non-equipped rigs after the menu (viewmodel owner).
-* Scope ADS is over on tris (1.37 M): the PiP re-renders the scene (346k). Options: PiP every 2nd frame on Medium,
-  or a PiP-only far LOD.
-* `models/weapons/ak47.glb` (97k tris) is still the player viewmodel source where no FP rig exists.
-* QA warm pages: `FPCamera.fovCurrent` can carry a huge value between jobs (seen 2e33), which corrupts warm per-view
-  numbers. perf jobs use `fresh: true`. Reported to the QA lead.
+### Open items at the end of round 1 (status as of round 3)
+* FP rigs (`models/fp`): 30 MB, `ak47` 130k tris, arm textures duplicated, no meshopt. **Done in round 2**: 15.7 MB
+  for all ten, meshopt-compressed, AK decimated, arm maps shared, only the loadout's rigs load before the menu.
+* Scope ADS over on tris (1.37 M). **Done in round 2**: 0.54 M (PiP every 2nd frame on Medium/Low, PVS, cached shadows).
+* `models/weapons/ak47.glb` (97k tris) as the viewmodel fallback. **Moot**: every weapon has an FP rig now; the
+  `models/weapons/` guns only load if a rig is missing from `models/fp/manifest.json`.
+* QA warm pages: `FPCamera.fovCurrent` could carry a huge value between jobs (seen 2e33). perf jobs still use
+  `fresh: true`.
 
 ## Quality presets (what each level costs)
 
 | | Low | Medium | High | Ultra |
 |---|---|---|---|---|
-| pixel ratio cap | 0.75 | 1 | 1.25 | 2 |
-| sun shadow map | 1024 | 2048 | 4096 | 4096 |
+| pixel ratio cap (internal, with FSR) | 0.75 | 1 | 1.5 | 2 |
+| auto upscaling (first boot) | FSR Performance | FSR Balanced | FSR Quality | (manual only) |
+| sun shadow map | 1024, 1-tap PCF | 2048 | 4096 | 4096 |
 | N8AO | off | Low, half-res | Medium, half-res | High, full-res |
-| bloom / god rays | off | on (32 samples) | on (48) | on (48) |
-| PiP scope RT | 256 | 384 | 512 | 768 |
-| viewmodel light probe | off | 1 face / 4 frames | 1 face / 2 frames | 1 face / 2 frames |
-| muzzle-flash lights | 2 | 4 | 4 | 4 |
+| bloom mip levels / god-ray samples | 4 / off | 5 / 32 | 7 / 48 | 7 / 48 |
+| PiP scope RT (refresh) | 256 (every 2nd frame) | 384 (every 2nd frame) | 512 | 768 |
+| viewmodel light probe / viewmodel sun shadow | off / off | 1 face per 4 frames / 512 | 1 face per 2 frames / 1024 | 1 face per 2 frames / 1024 |
+| physical point lights (`LightPool`) | 2 | 4 | 6 | 8 |
+| material unify pass | lite | full | full | full |
 | ambience particles / rain | 0.4x / 500 | 0.65x / 2200 | 1x / 4000 | 1.25x / 6000 |
+
+The table is `QUALITY_PRESETS` in `src/render/Renderer.js` (the source of truth).
 
 ## Rules for new content
 
@@ -235,3 +239,16 @@ sun 278/387k · courtyardN 257/404k · dock 203/375k · warehouse 206/414k · wa
 office1 201/372k · office2 222/417k · containers 287/476k · ruins 202/359k · ruins_wall 219/382k · perimeter 163/239k ·
 tower 187/306k · lane 261/402k. All 14 views are under 400 calls / 1.2 M tris. Fresh load 18.6 s, zero console errors or warnings,
 dynamic res 100%, no visual regressions.
+
+## Round 3: resolution scaling, adaptive quality, measurement
+
+| what | where | notes |
+|---|---|---|
+| **FSR 1 upscaling** (EASU + RCAS, FP32 GLSL port of AMD `ffx_fsr1.h`, MIT). Modes Quality 0.77 / Balanced 0.67 / Performance 0.5 / Dynamic of the output size. The world and post chain run at the internal size; EASU upscales after SMAA, RCAS sharpens (Settings → Sharpness). | `src/render/Fsr.js`, `Renderer` (`UPSCALING`) | Skipped entirely when internal == output |
+| **CAS sharpening** with upscaling off (same Sharpness slider; a little stronger while dynamic resolution has dropped). | `Renderer` | |
+| **Dynamic resolution**: either the *Dynamic* upscaling mode or the *Dynamic resolution* option on top of a fixed mode. Floors: 50% of the output with FSR (33% on Retina-class outputs), 55% without. Off under QA / webdriver. | `Renderer._updateDynRes` | see fix #18 for the control loop |
+| **Adaptive quality**: while `qualityAuto` and `adaptiveQuality` are on, < 30 fps over the first ~8 s of live play (after 2 s grace) or any later 10 s window steps one tier down (`ADAPTIVE_STEPS`: AO → god rays → shadow map → probe → bloom → render scale) with a toast. Never steps back up; the level persists; a manual quality pick resets it. Off in QA and during the benchmark. | `src/render/Adaptive.js` | |
+| **Graphics benchmark** (Settings → Video): 5-view tour per step, one feature changed per step (`BENCH_STEPS`), frame ms mean/p95, main-thread ms, GPU ms per pass, draws, program count; *Copy results*. Console: `await __bench.run(__game, { steps: [0, 3] })`. | `src/render/Benchmark.js` | QA smoke: `tools/qa/suites/bench_smoke.json` |
+| **GPU timers** per pass (`EXT_disjoint_timer_query_webgl2`, non-blocking, off by default). | `src/render/GpuTimer.js` | used by the benchmark |
+| **Upload ring** (opt-in, off by default): ring-buffers bone / BatchedMesh indirect data textures so Apple / ANGLE-Metal never rewrites a texture the GPU is still reading. | `src/render/UploadRing.js` | A/B step in the benchmark |
+| **Physics step-skip**: `world.step()` is skipped while no dynamic bodies exist (the player is a KCC; all queries read collider poses directly); one step still runs after colliders change. | `src/core/Physics.js` | ~0.3–0.7 ms/frame saved |

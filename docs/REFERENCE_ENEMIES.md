@@ -1,5 +1,9 @@
 # Enemy soldier reference: how bots hold, aim, move with, fire and reload weapons
 
+> **Status:** current spec. Its measurable rules are the thresholds of `tools/qa/suites/h_bot_jank.json`. The
+> reference images it cites (`$R`) are copyrighted study material that was never committed; the scratchpad path below
+> was session-local and no longer resolves.
+
 This is the visual spec for third-person bots (`src/game/bots/Character.js`, Mixamo-named skeleton). It describes
 how trained shooters actually stand and move, and how top-tier shooters present them. Every rule comes with a number
 QA can measure on a filmstrip. First-person framing is a separate contract (`docs/FP_FRAMING.md`). Distances here are

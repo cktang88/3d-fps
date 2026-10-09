@@ -1,5 +1,10 @@
 # Bot animation research: making third-person soldiers move and shoot like people
 
+> **Historical research (2026-10-08).** "Where we are today" and the line references describe the code on that date.
+> Several recommendations have since shipped (100STYLE mocap locomotion, runtime foot locking with ground/stairs
+> adaptation, turn-rate caps, compact procedural deaths; see `src/game/bots/Character.js` and the bot commits); ragdolls
+> and Rocketbox clips were not adopted. Current pass/fail metrics: `tools/qa/suites/h_bot_jank.json`.
+
 Research pass, 2026-10-08. Scope: `src/game/bots/Character.js` and `src/game/bots/Bot.js` on three.js r186, the Bamen
 soldier (Mixamo-named skeleton) and the retargeted Quaternius UAL clips. Every licence below was checked against the
 source's own LICENSE file, README or API metadata on this date. Anything marked **unverified** was not.

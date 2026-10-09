@@ -2,7 +2,10 @@
 
 Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Results: `tools/qa/results/<id>/`.
 
-**Last run:** 2026-10-09 10:10 UTC: `e_keyart` 1791540168505 (clean, 0 console messages), `h_bot_jank` 1791540168566 (10/11 bots pass; bot0 backpedal slip + 569°/s yaw spike), `core` 1791538990595 (09:43, all PASS). Perf budget: MET.
+**Last full run:** 2026-10-09 10:10 UTC: `e_keyart` 1791540168505 (clean, 0 console messages), `core` 1791538990595 (09:43, all PASS). Perf budget: MET.
+**Since then:** `h_bot_jank` 1791546261592 (11:44, all 11 bots pass, 0 fails; stance-foot-slide warnings only, an unvalidated metric). Later jobs were first-person rig (pistol viewmodel) iterations. `core` / `e_keyart` / `c_visual_all` have not been
+re-run since 10:10, so the bot (813a8b5), viewmodel-probe (c2f2659) and pistol-viewmodel (382c1d8) commits still need a
+full pass.
 
 ## Pass / fail by area
 
@@ -17,7 +20,7 @@ Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Resu
 | Recoil / spray (tuned feature) | `w_spray.json` + `l_pistol_tap.script.js` (in `m_pistol_cov.json`) | PASS | 09:20: relaxed taps fully recover (M4/P226/M1911 MPI < 1 cm at 25 m); sights true; bursts/strings still need pull-down by design |
 | FFA | `f_ffa.json` | PASS | 06:48: spawn, 120 s sim, scoreboard, bot close-up; no NaN, no console messages |
 | HUD / menus / UI flow | `core.json` | PASS | kills/medals/tally, low ammo, cook + drop on death, death card, respawn 1.6/4.5 s, damage arcs, pause opens on home, bullets hit bot, end screen |
-| Bot animation jank metrics | `h_bot_jank.json` | PASS | 08:32: toe slip fwd 0.02/0.10, strafe 0.01/0.34 m/s (p50/p90), per-bot p50 ≤0.02; palm 1.3–2.2 cm; aim OK; yaw ≤433°/s; 0 pops; deaths 2/10 > 0.45 m. Minor: rare backpedal residual (0.2% of samples, p90 2.2 m/s) |
+| Bot animation jank metrics | `h_bot_jank.json` | PASS | 11:44: all 11 bots pass. 08:32: toe slip fwd 0.02/0.10, strafe 0.01/0.34 m/s (p50/p90), per-bot p50 ≤0.02; palm 1.3–2.2 cm; aim OK; yaw ≤433°/s; 0 pops; deaths 2/10 > 0.45 m. Minor: rare backpedal residual (0.2% of samples, p90 2.2 m/s) |
 
 ## Open issues
 
@@ -46,7 +49,7 @@ Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Resu
 | 24 | Physics hang | coordinator (Player.js) | Page hang inside Rapier world.step() (captured stack), likely NaN player collider translation via Player._syncBody; proposed 8-line finite guard (QA edit blocked by permissions) | runner log 01:50 fprig_cov | guard applied 02:15; investigation found no real Rapier hang (CPU starvation); step-skip when nothing dynamic VERIFIED 09:43. CLOSED |
 | 25 | Perf | perf a06576c27e6a80553 | Draw calls regressed (transmission glass + zoning, fixed by owner); PVS 404 (VERIFIED gone 03:07); FPS overlay intentional (user); chunky FP gun = dynamic res at 85% (disabled under QA) | e_keyart 1791509573464 | VERIFIED fixed 03:37 |
 | 26 | Runner | coordinator / render | "Renders nothing" 04:48 was a WebGL context loss at ~04:21 that made Chrome block 3D for the origin; not a code bug. Runner now passes --disable-domain-blocking-for-3d-apis and QA added context-loss detection plus browser recycle | c_optics 1791519443222 | RESOLVED 04:58 (smoke clean) |
-| 27 | Bots | bots a77d0883019b11e4c | Moonwalk / skating / yaw spikes FIXED 08:32. Residual: rare backpedal slip (0.2% of samples) | h_jank 1791534734653 | minor |
+| 27 | Bots | bots a77d0883019b11e4c | Moonwalk / skating / yaw spikes FIXED 08:32. Residual: rare backpedal slip (0.2% of samples) | h_jank 1791534734653 | VERIFIED fixed 11:44 (h_jank 1791546261592: 0 fails) |
 | 28 | FP rig | FP viewmodel r2 ae2dabb5f9b0dd692 | M870 reload at 45%: gun out of frame; P226 ADS: oversized support glove, pistol tiny/low | c_wvis_b 1791523688692 | VERIFIED improved 09:08 (M870 reload readable; P226 glove smaller but still large, minor) |
 | 29 | Render | FP viewmodel r2 ae2dabb5f9b0dd692 | 1160-call / 2.3M-tri frame on the first render after a weapon switch (≈ full light-probe refresh); the shot frame itself is a normal 248 calls | k_m24_spike 1791525779216 | VERIFIED fixed 09:02 (259 calls on the swap frame) |
 | 30 | Weapons | coordinator | Pistol zero true; relaxed taps used to leave a permanent climb. Coordinator changed settleFrac to 1 for single shots | pistol 1791537366175 | VERIFIED fixed 09:20 (6 relaxed taps: aim drift 0.003°, MPI < 1 cm at 25 m) |
@@ -71,6 +74,9 @@ Suites: `core.json` (boot, menus, TDM sim, movement, weapons logic, spawn/fall p
 `e_keyart.json` (14 key-art views + perf budget, full quality), `c_visual_all.json` (all weapons hip/ADS/fire/reload/
 sprint + optics + switch), `h_bot_jank.json` (bot animation metrics, thresholds from docs/REFERENCE_ENEMIES.md),
 `f_ffa.json`, `w_spray.json` (recoil), `m_pistol_cov.json` (pistol tap zero + reload arm coverage), `k_m24_spike.json`
-(per-pass draw capture), `r_smoke.json` (fast render sanity), `j_fall_probe.json`, `f_ffa_hang.json`.
+(per-pass draw capture), `r_smoke.json` (fast render sanity), `j_fall_probe.json`, `f_ffa_hang.json`,
+`perf_profile.json` / `perf_cpu.json` / `perf_visual.json` / `perf_pvs_check.json` / `perf_shadowcache.json` (see
+`docs/PERF.md`), `bench_smoke.json` (graphics benchmark), `fsr_compare*.json` (upscaling A/B), `level_audit.json`.
+Runner behaviour (warm pages, watchdog, browser recycling, `timeoutS`): `tools/README.md`.
 Tools: `summarize.mjs <id>` (errors, grouped logs, perf budget, script fails), `contact.py <dir>` (contact sheets),
 `arm_coverage.py <dir>` (FP arm coverage on mask shots), `requeue.mjs <id> <suite>` (refresh a queued job).

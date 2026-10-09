@@ -251,10 +251,9 @@ shifted by whole tiles to fit) into one 2048 px atlas sized by world area:
 The remaining large texture in every rig is the arms metal-rough map, with the rig's own AO bake packed into its R
 channel (about 350 KB). It cannot be shared between rigs.
 
-```
-```
-
 ## 7. Credits (CC-BY 4.0 unless noted; modifications: re-posed, re-rigged, rescaled, re-textured to webp)
+
+Sources of the FP rigs and `optics.glb`. The README credits section is the complete list of shipped assets.
 
 | Asset | Author | Source | Licence |
 |---|---|---|---|
