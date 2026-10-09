@@ -23,6 +23,7 @@
     g.player.position.set(...park); g.player.velocity.set(0, 0, 0);
     bots.forEach((b, i) => {
       const s = S[i], m = b.model; if (!m?.bones?.lToe) return;
+      if (!m._qaLod) { m._qaLod = m._lodInterval; m._lodInterval = () => 0; s.lastToe = null; s.minHist = []; } // models swap on respawn (corpse hand-off)
       if (!b.alive) {
         // Death: time for the hips to reach the ground, hips displacement, settle jitter 3-4 s after death.
         if (m.bones?.hips && m.root.visible) {
@@ -108,7 +109,7 @@
       if (Math.hypot(a.position.x - b.position.x, a.position.z - b.position.z) < TH.botBotM && Math.abs(a.position.y - b.position.y) < 1) { botBot++; botBotPairs.add(i + '-' + j); }
     }
   });
-  for (const b of bots) if (b.model?._qaLod) { b.model._lodInterval = b.model._qaLod; delete b.model._qaLod; }
+  for (const b of bots) for (const m of [b.model, b.spareModel, b.corpse]) if (m?._qaLod) { m._lodInterval = m._qaLod; delete m._qaLod; }
   const pct = (arr, p) => { if (!arr.length) return 0; const a = arr.slice().sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(p * a.length))]; };
   out.bots = S.map((s, i) => {
     const stance = s.stance[0].concat(s.stance[1]);

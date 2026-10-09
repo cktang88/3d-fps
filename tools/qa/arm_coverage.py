@@ -13,7 +13,8 @@ for f in sorted(glob.glob(os.path.join(d, '*.png'))):
         continue
     a = np.asarray(Image.open(f).convert('RGB')).astype(int)
     r, g, b = a[..., 0], a[..., 1], a[..., 2]
-    m = (r > 140) & (b > 140) & (g < 0.55 * np.minimum(r, b))
+    # flat emissive magenta after tonemapping / grade reads as saturated pink
+    m = (r > 170) & (b > 170) & ((np.minimum(r, b) - g) > 55)
     h, w = m.shape
     cb = m[int(h * 0.4):int(h * 0.6), int(w * 0.4):int(w * 0.6)]
     upper = m[: int(h * 0.55)]
