@@ -856,13 +856,14 @@ export class Character {
         targetBody = sp > 0.25 ? aimYaw + this.stanceYaw * 0.35 : this._idleBodyYaw(aimYaw + stance);
       }
     }
+    const prevBody = this.bodyYaw;
     const dy = wrapPi(targetBody - this.bodyYaw);
     const turn = clamp(dy * Math.min(1, dt * (sp > 0.25 ? 9 : 6)), -9 * dt, 9 * dt); // hips pivot ≤ ~515°/s
     this.bodyYaw = wrapPi(this.bodyYaw + turn);
     this.yawRate = damp(this.yawRate, turn / Math.max(dt, 1e-4), 8, dt);
     // Chest follows the aim with a human turn-rate cap (≤ ~500°/s), legs absorb the rest.
     const chestT = this.bodyYaw + clamp(wrapPi(aimYaw - this.bodyYaw) + this.twistTrim, -100 * DEG, 100 * DEG);
-    const chestNow = this.bodyYaw + this.twist;
+    const chestNow = prevBody + this.twist; // last frame's chest (the legs' turn this frame must not drag it)
     const dc = wrapPi(chestT - chestNow), maxStep = 8.7 * dt;
     this.twist = clamp(wrapPi(chestNow + clamp(dc * Math.min(1, dt * 16), -maxStep, maxStep) - this.bodyYaw), -100 * DEG, 100 * DEG);
     const tvs = Math.hypot(this._tvx, this._tvz);
@@ -1217,15 +1218,22 @@ export class Character {
     // Reach guard: when even the rearmost handguard grip is beyond the support arm (run-carry arm swing,
     // long guns), slide the whole weapon toward the support shoulder by the deficit so the hand never
     // floats off the gun.
-    if (this._reach && b.lArm && rw < 0.02) {
-      wpos(b.lArm, _v2);
-      _v3.copy(this.gripLocal); _v3.z = Math.min(_v3.z + 0.28, Math.max(_v3.z, -0.06));
-      _v3.applyMatrix4(wrap.matrixWorld);
-      const dist = _v3.distanceTo(_v2), lim = this._reach * 0.96;
-      if (dist > lim) {
-        _v3.sub(_v2).multiplyScalar(-(dist - lim) / dist).applyQuaternion(_q2); // world shift → root space
-        wrap.position.add(_v3);
-        wrap.updateMatrixWorld(true);
+    // While reloading, the magazine well must be reachable instead (long guns canted for the reload).
+    if (this._reach && b.lArm) {
+      for (let pass = 0; pass < 2; pass++) {
+        const wgt = pass === 0 ? 1 - rw : rw;
+        if (wgt < 0.02) continue;
+        wpos(b.lArm, _v2);
+        if (pass === 0) { _v3.copy(this.gripLocal); _v3.z = Math.min(_v3.z + 0.28, Math.max(_v3.z, -0.06)); }
+        else if (this.magGrabLocal) _v3.copy(this.magGrabLocal);
+        else _v3.set(0, -0.12, -0.1);
+        _v3.applyMatrix4(wrap.matrixWorld);
+        const dist = _v3.distanceTo(_v2), lim = this._reach * 0.96;
+        if (dist > lim) {
+          _v3.sub(_v2).multiplyScalar((-(dist - lim) / dist) * wgt).applyQuaternion(_q2); // world shift → root space
+          wrap.position.add(_v3);
+          wrap.updateMatrixWorld(true);
+        }
       }
     }
     _v5.set(Math.cos(aimYaw), 0, -Math.sin(aimYaw)); // aim right

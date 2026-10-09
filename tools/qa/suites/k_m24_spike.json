@@ -1,0 +1,8 @@
+{"tag":"m24spike","setupFiles":["tools/qa/suites/lib.js"],"match":"tdm","w":800,"h":450,"timeoutS":600,
+ "views":[
+  {"name":"k0_ready","shot":false,"frames":1,"read":"__qa.ready().then(()=>{__qa.sim(3);return true;})"},
+  {"name":"k1_m24_hip","frames":1,"eval":"__qa.god();__qa.freezeBots(true);__qa.releaseAll();__qa.place([0,0.1,10],0.15,0.02);","read":"__qa.loadoutReady('m24').then(()=>{__qa.sim(1.4);__game.player.spawnProtect=0;return __qa.perf();})"},
+  {"name":"k2_prefire","shot":false,"frames":1,"read":"(async()=>{const f=await __perf.capture({detail:true});return {total:f.total,shadow:f.shadow,passes:f.passes};})()"},
+  {"name":"k3_fire","frames":1,"eval":"window.__cap=__perf.capture({detail:true});__qa.press('Mouse0');","read":"(async()=>{const f=await window.__cap;return {total:f.total,shadow:f.shadow,passes:f.passes,top:__perf.constructor.summarize(f.objects,15)};})()","release":["Mouse0"]},
+  {"name":"k4_after","shot":false,"frames":1,"eval":"window.__cap2=__perf.capture({detail:true});","read":"(async()=>{const f=await window.__cap2;return {total:f.total,shadow:f.shadow,passes:f.passes,top:__perf.constructor.summarize(f.objects,10)};})()"}
+ ]}

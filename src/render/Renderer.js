@@ -245,7 +245,8 @@ export class Renderer {
 
     // ---- HDR stage
     this.bloom = new BloomEffect({
-      intensity: 0.55, luminanceThreshold: 1.15, luminanceSmoothing: 0.35, mipmapBlur: true, radius: 0.82, levels: 7,
+      // Tight bloom (level art A/B, job *_level_veil): the wide 0.82 radius laid a milky veil over distant silhouettes.
+      intensity: 0.42, luminanceThreshold: 1.15, luminanceSmoothing: 0.35, mipmapBlur: true, radius: 0.62, levels: 7,
     });
     // Sun proxy for god rays (never added to the visible scene; positioned at "infinity" each frame).
     this.sunSource = new THREE.Mesh(

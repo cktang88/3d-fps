@@ -974,7 +974,7 @@ export class ViewModel {
       if (this.inspU > 0 && this.inspK > 1e-3) {
         sampleKeys(rig.sidearm ? INSPECT_PISTOL : INSPECT_RIFLE, this.inspU, _k);
         for (let i = 0; i < 6; i++) _k[i] *= this.inspK;
-        this._pivotDelta(rig, _k);
+        this._pivotDelta(rig, _k, rig.sidearm ? null : rig.aim.point);
       }
     }
     // Pistol flip (springs fed by onFire).
@@ -987,7 +987,7 @@ export class ViewModel {
     if (w.state === 'reload' && rig.fp && !s.tube && (tplReload || pistolAuth)) {
       const u = clamp(w.stateTime / w.stateDur, 0, 1), empty = w.reloadType === 'empty';
       const keys = rig.sidearm ? (empty ? PISTOL_EMPTY : PISTOL_TAC)
-        : empty && this._emptyAction(rig) ? (rig._emptyKeys ||= rifleEmptyKeys(this._emptyAction(rig), rig.tune.rackRoll ?? 12)) : RIFLE_TAC;
+        : empty && this._emptyAction(rig) ? (rig._emptyKeys ||= rifleEmptyKeys(this._emptyAction(rig), rig.tune.rackRoll ?? 12)) : (window.__vmReloadKeys || RIFLE_TAC);
       this._pivotDelta(rig, sampleKeys(keys, u, _k));
     }
 

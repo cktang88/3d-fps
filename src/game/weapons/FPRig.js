@@ -21,7 +21,9 @@ export const FP_IDS = ['m4a1', 'ak47', 'scarl', 'mp5a5', 'vss', 'm24', 'awm', 's
 export const FP_TUNE = {
   // Reload carry (procedural paths: pistols, shotgun shell loading): DOWN and inboard, muzzle low, 15-25 deg cant
   // so the support hand works in the lower part of the frame (rifles use the reshaped template clip).
-  default: { opticScale: 0.82, reloadPos: [-0.025, -0.05, -0.01], reloadRot: [-0.08, 0.08, -0.3] },
+  default: { opticScale: 0.82, reloadPos: [-0.025, -0.05, -0.01], reloadRot: [-0.08, 0.08, -0.3],
+    // Sprint carry (rifle family, pivot = sight): cm right / up / back, pitch / yaw / roll deg (ViewModel._applyTemplate).
+    sprintPose: [1, -3, -2, -15, 22, 35] },
   // Measured on the FP models (tools/blender/measure_sights.py, WeaponRoot-local = gun frame, K-space).
   // M4A1 (Firewarden model): BUIS aperture centre / front post tip (rear-view renders), flat-top rail ahead of the BUIS.
   m4a1: { ironRear: [0, 0.2498, 0.255], ironFront: [0, 0.2404, -0.505], rail: [0, 0.1786, 0.06], gunTint: 0.42 },
@@ -33,10 +35,13 @@ export const FP_TUNE = {
   // MP5: diopter drum aperture centre / front post tip inside the hood.
   mp5a5: { ironRear: [0, 0.238, 0.0978], ironFront: [0, 0.254, -0.5722], rail: [0, 0.2286, -0.21], emptyAction: 'rack', rackRoll: -24, boltTravel: 0.12, boltHand: [-0.05, -0.06, 0.08] },
   // Remington: ghost ring on the receiver + the authored bead.
-  shotgun: { reloadPos: [-0.03, -0.05, 0.0], reloadRot: [-0.08, 0.1, 0.4], ironRear: [0, 0.16, 0.0], ironFront: [0, 0.157, -0.984], rail: [0, 0.1314, 0.0], pumpStroke: 0.16,
-    shellPort: [0.0, -0.02, 0.05], shellBelt: [0.1, -0.5, 0.25] },
-  p226: { reloadPos: [-0.02, -0.045, 0.0], reloadRot: [-0.05, 0.06, 0.3], ironRear: [0, 0.1352, 0.1435], ironFront: [0, 0.1359, -0.1692], rail: [0, 0.131, 0.04] },
-  m1911: { reloadPos: [-0.02, -0.045, 0.0], reloadRot: [-0.05, 0.06, 0.3], ironRear: [0, 0.1297, 0.1299], ironFront: [0, 0.1287, -0.1954], rail: [0, 0.1281, 0.045] },
+  // Shell loading: canted top-right so the loading port (receiver underside) faces the eye, barely lowered; the palm
+  // brings each shell up under the port and thumbs it in (ViewModel._supportArmOffset).
+  shotgun: { reloadPos: [-0.02, 0.006, -0.01], reloadRot: [0.09, 0.06, -0.48], ironRear: [0, 0.16, 0.0], ironFront: [0, 0.157, -0.984], rail: [0, 0.1314, 0.0], pumpStroke: 0.16,
+    shellPort: [0.0, 0.0, 0.28], shellBelt: [-0.1, -0.5, 0.3] },
+  // Pistols: longer eye relief at ADS (arms extended), so the two-hand grip stays compact under the sights.
+  p226: { ironRelief: 0.42, dotRelief: 0.42, reloadPos: [-0.02, -0.045, 0.0], reloadRot: [-0.05, 0.06, 0.3], ironRear: [0, 0.1352, 0.1435], ironFront: [0, 0.1359, -0.1692], rail: [0, 0.131, 0.04] },
+  m1911: { ironRelief: 0.42, dotRelief: 0.42, reloadPos: [-0.02, -0.045, 0.0], reloadRot: [-0.05, 0.06, 0.3], ironRear: [0, 0.1297, 0.1299], ironFront: [0, 0.1287, -0.1954], rail: [0, 0.1281, 0.045] },
   // Fixed-scope precision platforms: the authored scope glass defines the optical axis.
   vss: { integratedScope: true },
   m24: { integratedScope: true },

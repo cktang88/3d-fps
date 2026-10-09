@@ -853,7 +853,7 @@ export class Level {
       { at: 3, w: 3, y0: 6, y1: 7.6 }, { at: 16, w: 3, y0: 6, y1: 7.6 }, { at: 21, w: 3, y0: 6, y1: 7.6 }, { at: 32, w: 3, y0: 6, y1: 7.6 },
     ];
     this.wall(wm, x0, z1, x1, z1, 0, H, t, southHoles, { ...wo, shaft: -1, doorFrame: 'metalDark' });
-    this.wall(wm, x1, z0, x0, z0, 0, H, t, [...winRow(36), { at: 10, w: 3, y0: 0, y1: 2.8 }], { ...wo, doorFrame: 'metalDark' });
+    this.wall(wm, x1, z0, x0, z0, 0, H, t, [...winRow(36), { at: 10.5, w: 1.9, y0: 0, y1: 2.6 }], { ...wo, doorFrame: 'metalDark' });
     const westHoles = [{ at: 15, w: 3, y0: 0, y1: 2.8 }, { at: 5, w: 3, y0: 6, y1: 7.6 }];
     const eastHoles = [{ at: 9, w: 4, y0: 0, y1: 3.6 }, { at: 16, w: 3, y0: 6, y1: 7.6 }];
     this.wall(wm, x0, z0, x0, z1, 0, H, t, westHoles, { ...wo, doorFrame: 'metalDark' });
@@ -861,7 +861,7 @@ export class Level {
     // Concrete plinth around the base (outside), broken at door openings.
     const pl = { collide: false, nav: false, map: false };
     this.wall('concrete', x0 - 0.2, z1 + 0.22, x1 + 0.2, z1 + 0.22, 0, 0.6, 0.15, [{ at: 9.2, w: 6, y0: 0, y1: 5 }, { at: 26.2, w: 3.2, y0: 0, y1: 3 }], pl);
-    this.wall('concrete', x1 + 0.2, z0 - 0.22, x0 - 0.2, z0 - 0.22, 0, 0.6, 0.15, [{ at: 10.2, w: 3, y0: 0, y1: 2.8 }], pl);
+    this.wall('concrete', x1 + 0.2, z0 - 0.22, x0 - 0.2, z0 - 0.22, 0, 0.6, 0.15, [{ at: 10.7, w: 1.9, y0: 0, y1: 2.6 }], pl);
     this.wall('concrete', x0 - 0.22, z0 - 0.2, x0 - 0.22, z1 + 0.2, 0, 0.6, 0.15, [{ at: 15.2, w: 3, y0: 0, y1: 2.8 }], pl);
     this.wall('concrete', x1 + 0.22, z1 + 0.2, x1 + 0.22, z0 - 0.2, 0, 0.6, 0.15, [{ at: 9.2, w: 4, y0: 0, y1: 3.6 }], pl);
     // Roll-up shutter half open over the main door + housing.
@@ -883,8 +883,19 @@ export class Level {
         const up = k % 2 === 0;
         this.beam('steel', V(x, up ? H - 1.6 : H - 0.25, za), V(x, up ? H - 0.25 : H - 1.6, zb), 0.08, 0.08);
       }
-      for (const z of [z0 + 0.4, z1 - 0.4]) this.box('steel', x, H / 2, z, 0.35, H, 0.35, { map: false, nav: true });
+      for (const z of [z0 + 0.4, z1 - 0.4]) {
+        // The portal columns at x = ±9 on the south wall stood in the middle of both south doorways: there the
+        // truss lands on a door header instead (box-section lintel spanning the opening).
+        if (z > (z0 + z1) / 2 && Math.abs(Math.abs(x) - 9) < 0.01) continue;
+        this.box('steel', x, H / 2, z, 0.35, H, 0.35, { map: false, nav: true });
+      }
     }
+    this.box('steel', -9, 5.35, z1 - 0.4, 6.6, 0.4, 0.35, { map: false, nav: false });   // main door header
+    this.box('steel', 8, 3.3, z1 - 0.4, 3.8, 0.4, 0.35, { map: false, nav: false });    // second door header
+    for (const hx of [-12.3, -5.7]) this.box('steel', hx, 2.7, z1 - 0.4, 0.25, 5.4, 0.3, { map: false, nav: true });
+    for (const hx of [6.1, 9.9]) this.box('steel', hx, 1.75, z1 - 0.4, 0.25, 3.5, 0.3, { map: false, nav: true });
+    this.box('steel', 9, (H + 3.5) / 2, z1 - 0.4, 0.35, H - 3.5, 0.35, { map: false, nav: false });  // column stub above header
+    this.box('steel', -9, (H + 5.55) / 2, z1 - 0.4, 0.35, H - 5.55, 0.35, { map: false, nav: false });
     // Longitudinal purlins.
     for (const zz of [-44, -38, -32]) this.box('steel', 0, H - 0.1, zz, 36, 0.12, 0.1, { nav: false, map: false, collide: false });
     // Ceiling ducting.
@@ -1452,8 +1463,8 @@ export class Level {
       const zc = z + W / 2;
       if (skip.some(([a, b]) => zc >= a && zc <= b)) continue;
       const k = Math.round(z / W) % 2, dx = k ? 0.03 : -0.02;
-      this.box('concreteWall', x + dx, H / 2 + 0.25, zc, 0.3, H - 0.5, W, { uv: 2, surface: 'concrete' });
-      this.box('concreteWall', x + dx, 0.25, zc, 1.0, 0.5, W, { uv: 2, surface: 'concrete', map: false });
+      this.box(k ? 'concrete' : 'concreteDirty', x + dx, H / 2 + 0.25, zc, 0.3, H - 0.5, W, { uv: 2.2, surface: 'concrete' });
+      this.box('concreteDirty', x + dx, 0.25, zc, 1.0, 0.5, W, { uv: 2, surface: 'concrete', map: false });
       this.box('concrete', x + dx, H + 0.02, zc, 0.36, 0.08, W - 0.04, { uv: 1, map: false, collide: false, nav: false });
       this.box('metalDark', x + dx, H - 0.1, zc, 0.34, 0.12, 0.08, { map: false, collide: false, nav: false, cast: false }); // lifting eye
       if (rnd() < 0.3) this.decalA('graf' + Math.floor(rnd() * 16), V(x + dx + face * 0.16, 1.6, zc), V(face, 0, 0), 1.4, 1.4, rand(-0.05, 0.05));

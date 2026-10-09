@@ -2,7 +2,7 @@
 
 Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Results: `tools/qa/results/<id>/`.
 
-**Last run:** 2026-10-09 05:27 UTC: `e_keyart` 1791521965514 + `core` 1791521965565 (snapshot 05:19). Perf budget: MET (168–287 calls, 0.28–0.58M tris, 0 console messages).
+**Last run:** 2026-10-09 06:02 UTC: `core` 1791524891892 (snapshot ~05:58), `c_wvis_b` 1791523688692, `e_keyart` 1791521965514. Perf budget: MET.
 
 ## Pass / fail by area
 
@@ -12,12 +12,12 @@ Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Resu
 | TDM: spawn, bots, kills/score, NaNs | `core.json` | PASS | 120 s sim, kills and score progress, no NaN/stuck/fallen |
 | Weapons logic (fire modes, burst, tac +1, empty reload, ADS, sprint lockout, switch, tracers/decals) | `core.json` | PASS | 11/11. Decal check now counts add() calls (pools saturate after long sims) |
 | Weapons visual (hip / ADS / fire / reload / sprint x 11) | `c_weapons_visual_{a,b}.json` | FAIL | 05:41 batch B: M870 shell reload gun out of frame; P226 ADS support glove fills 40% of screen; AWM scope OK; draw-call spike 1166 on M24 shot frame |
-| Movement (speeds, jump, slide, vault, mantle, stairs, spawn/fall) | `core.json` | PASS* | all pass except the dock climb, because level moved the dock to x=13 (test updated) |
+| Movement (speeds, jump, slide, vault, mantle, stairs, spawn/fall) | `core.json` | PASS | 05:58: all checks incl. dock climb at new x=13 |
 | Key art per area + perf | `e_keyart.json` | PASS | 05:19: 14 views 168–287 calls / 0.28–0.58M tris, 0 console messages, visuals OK (new detailed FP M4) |
 | Recoil / spray (tuned feature) | `w_spray.json` | BASELINE 04:10 | 25 m: tapC 100% torso on every rifle (median 2–4 cm); autoC torso 37–65%; burst3C 53–100%. Pistols tapC land 10–16 cm low at 25 m (p226 MPI −10 cm, m1911 −16 cm), possible sight zeroing |
 | FFA | `f_ffa_hang.json` | PASS (00:19) | 120 s FFA with and without ambience: 28 kills, no NaN, no hang, no throw after the dt fix. The 21:51 hang did not reproduce |
 | HUD / menus / UI flow | `core.json` | PASS | kills/medals/tally, low ammo, cook + drop on death, death card, respawn 1.6/4.5 s, damage arcs, pause opens on home, bullets hit bot, end screen |
-| Bot animation jank metrics | `core.json` L4 | FAIL | 05:19: pops 0–3/min, aim OK; regressed: palm 5–9 cm on 6 bots, hands-apart 1.2 m on 2 bots, yaw 760°/s on 1 bot, deaths 4/10 > 0.45 m; toe slip p50 0.3–0.9 / p90 0.9–2.1 m/s (node test: 0.14–0.35 / 0.33–0.66) |
+| Bot animation jank metrics | `core.json` L4 | PASS except feet | 05:58 (60 Hz, 75 s): palm 1.2–2.6 cm, yaw ≤516°/s, aim p90 ≤4.1°, moving aim ≤1.2°, pops 0, deaths in spec (headshots exempt). FAIL: planted toe slip p50 0.33–0.52 / p90 0.86–1.56 m/s |
 
 ## Open issues
 
@@ -46,7 +46,7 @@ Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Resu
 | 24 | Physics hang | coordinator (Player.js) | Page hang inside Rapier world.step() (captured stack), likely NaN player collider translation via Player._syncBody; proposed 8-line finite guard (QA edit blocked by permissions) | runner log 01:50 fprig_cov | guard applied by coordinator 02:15; origin hunt re-runs queued |
 | 25 | Perf | perf a06576c27e6a80553 | Draw calls regressed (transmission glass + zoning, fixed by owner); PVS 404 (VERIFIED gone 03:07); FPS overlay intentional (user); chunky FP gun = dynamic res at 85% (disabled under QA) | e_keyart 1791509573464 | VERIFIED fixed 03:37 |
 | 26 | Runner | coordinator / render | "Renders nothing" 04:48 was a WebGL context loss at ~04:21 that made Chrome block 3D for the origin; not a code bug. Runner now passes --disable-domain-blocking-for-3d-apis and QA added context-loss detection plus browser recycle | c_optics 1791519443222 | RESOLVED 04:58 (smoke clean) |
-| 27 | Bots | bots a77d0883019b11e4c | 05:19 regressions: support palm 5–9 cm off, hands-apart 1.2 m (2 bots), yaw spike 760°/s, foot slip 2–3x node values | core 1791521965565 L4 | reported |
+| 27 | Bots | bots a77d0883019b11e4c | Planted toe slip 2–3x the node-test values (palm, hands-apart and yaw regressions fixed 05:58) | core 1791524891892 L4 | open |
 | 28 | FP rig | art lead a03eed672de8192c8 | M870 reload at 45%: gun out of frame; P226 ADS: oversized support glove, pistol tiny/low | c_wvis_b 1791523688692 | reported |
 | 29 | Render | render a0aa1bfef97277f10 | Draw calls spike 200 → 1166 on the frame after an M24 shot | c_wvis_b m24_3fire overlay | reported |
 | 6 | Perf | perf a06576c27e6a80553 | ~1600 calls / 3.5M tris, 75 s load vs budget 400 / 1.2M / 20 s | coordinator | VERIFIED: budget met 03:37 |
