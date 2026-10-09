@@ -25,8 +25,8 @@
   // Slide: sprint then crouch
   const stS = () => ({ p: Q.p(), v: Q.r(Q.hspeed()), gr: p.grounded, spr: p.sprinting, sl: p.sliding, cr: p.crouching, cd: Q.r(p.slideCooldown), lg: Q.r(p.time - p.lastGroundedTime) });
   // Same test at the west spawn lane (known-good in d_diag) vs the courtyard, to isolate surface effects.
-  settle([-47, 0.1, 20], 0); Q.down('KeyW'); Q.down('ShiftLeft'); Q.sim(1.2); Q.tap('KeyC'); Q.sim(1 / 30); out.slideWest = stS(); Q.releaseAll(); Q.sim(1.5);
-  settle([0, 0.1, 20], 0); Q.down('KeyW'); Q.down('ShiftLeft'); let grFrac = 0; Q.sim(1.2, 1 / 30, () => { if (p.grounded) grFrac += 1 / 36; }); const sx = p.position.z;
+  settle([0, 0.1, 20], 0); Q.down('KeyW'); Q.down('ShiftLeft'); Q.sim(1.2); out.courtyardSprintEnd = stS(); Q.releaseAll(); Q.sim(1.5); // courtyard lane z 20->12 (info: obstacle near z≈13.7?)
+  settle([-47, 0.1, 20], 0); Q.down('KeyW'); Q.down('ShiftLeft'); let grFrac = 0; Q.sim(1.2, 1 / 30, () => { if (p.grounded) grFrac += 1 / 36; }); const sx = p.position.z;
   out.slidePre = stS(); out.slidePre.groundedFrac = Q.r(grFrac);
   Q.tap('KeyC'); Q.sim(1 / 30); out.slideStarted = p.sliding; out.slidePost = stS(); let slideT = 0, peak = 0;
   Q.sim(1.6, 1 / 30, () => { if (p.sliding) { slideT += 1 / 30; peak = Math.max(peak, Q.hspeed()); } });
