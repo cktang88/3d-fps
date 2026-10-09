@@ -120,6 +120,37 @@ for name, (act, b, loop) in CLIPS.items():
     out['metrics'][name] = {'dur_s': clip['dur'], 'maxDispCm': round(max(ds) * 100, 2), 'maxRotDeg': round(max(angs), 1),
                             'peakFrame': int(np.argmax(angs if max(angs) > 2 else ds))}
     out['clips'][name] = clip
+# ---- Reload reshaping (art direction): the template tips the muzzle ~25 deg UP with up to 53 deg roll, which in
+# our camera brings the support forearm across the screen centre. Keep its timing / envelope, but rebuild the gun
+# pose about the grip: rifle comes DOWN and slightly inboard, muzzle low and forward, cant <= 27 deg (magwell turned
+# toward the eyes), support hand path unchanged (gun space).
+def euler_yxz(R):
+    pitch = math.asin(-max(-1, min(1, R[1, 2]))); yaw = math.atan2(R[0, 2], R[2, 2]); roll = math.atan2(R[1, 0], R[1, 1])
+    return pitch, yaw, roll
+def rot_yxz(pitch, yaw, roll):
+    cy, sy, cx, sx, cz, sz = math.cos(yaw), math.sin(yaw), math.cos(pitch), math.sin(pitch), math.cos(roll), math.sin(roll)
+    Ry = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]]); Rx = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]]); Rz = np.array([[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]])
+    return Ry @ Rx @ Rz
+def qmat(q):
+    x, y, z, w = q
+    return np.array([[1-2*(y*y+z*z), 2*(x*y-z*w), 2*(x*z+y*w)], [2*(x*y+z*w), 1-2*(x*x+z*z), 2*(y*z-x*w)], [2*(x*z-y*w), 2*(y*z+x*w), 1-2*(x*x+y*y)]])
+RESHAPE = dict(off=(-0.025, -0.055, -0.02), pitch=math.radians(-6), roll_k=0.5, roll_max=math.radians(27), yaw_k=0.5)
+g0 = base['hip'][:3, 3]
+rl = out['clips']['Reload']
+angs = [2 * math.acos(min(1, abs(f[6]))) for f in rl['gun']]
+amax = max(angs)
+new = []
+for f, a in zip(rl['gun'], angs):
+    env = a / amax
+    env = env * env * (3 - 2 * env)
+    pitch, yaw, roll = euler_yxz(qmat(f[3:]))
+    Rn = rot_yxz(RESHAPE['pitch'] * env, yaw * RESHAPE['yaw_k'], max(-RESHAPE['roll_max'], min(RESHAPE['roll_max'], roll * RESHAPE['roll_k'])))
+    gn = g0 + np.array(RESHAPE['off']) * env
+    t = gn - Rn @ g0                     # D = T(gn) R T(-g0)
+    new.append(r([*t, *quat(Rn)]))
+rl['gun'] = new
+rl['reshaped'] = {k: (round(math.degrees(v), 1) if 'pitch' in k or 'max' in k else v) for k, v in RESHAPE.items()}
+out['metrics']['Reload_reshaped'] = RESHAPE | {'pitch': -6, 'roll_max': 27}
 # Base poses (for docs): template gun grip in camera space.
 for b in ('hip', 'ads'):
     m = base[b]

@@ -99,6 +99,7 @@ export class Bot {
     this.position.copy(pos);
     this.yaw = this.aimYaw = yaw;
     this.pitch = this.aimPitch = 0;
+    this._rcP = this._rcY = 0;
     this.health = this.maxHealth;
     this.alive = true;
     this.memory.clear();
@@ -481,6 +482,7 @@ export class Bot {
     const winput = {
       fire: wantFire, firePressed: wantFire && (w.mode !== 'auto' ? (this.time - (this._lastPress ?? 0) > 60 / w.stats.rpm + 0.08 + Math.random() * 0.12) : true),
       aim: wantAim, sprinting: false, reloadPressed: false, canFire: this.spawnProtect <= 0 || true,
+      crouched: this.crouch > 0.5, moveF: Math.hypot(this.velocity.x, this.velocity.z) / 4.6, airborne: this.jumpY > 0,
     };
     if (winput.firePressed) this._lastPress = this.time;
     if (w.ammo === 0 && w.state === 'idle') w.reload();
@@ -561,12 +563,10 @@ export class Bot {
     this.lastFiredTime = g.time;
     const eye = this.eye;
     const muzzle = this.model?.muzzleWorld(this) ?? eye;
-    const aimDir = new THREE.Vector3(
-      -Math.sin(this.aimYaw) * Math.cos(this.aimPitch), Math.sin(this.aimPitch), -Math.cos(this.aimYaw) * Math.cos(this.aimPitch));
-    // Recoil the bot fails to control drifts aim upward.
-    this.aimPitch += shot.pitch * (1 - this.diff.recoilCtl);
-    this.aimYaw += shot.yaw * (1 - this.diff.recoilCtl);
-    const spread = w.currentSpread(Math.hypot(this.velocity.x, this.velocity.z) / 4.6, this.jumpY > 0, this.crouch > 0.5);
+    const [rp, ry] = this._recoilComp(shot);
+    const ap = this.aimPitch + rp, ay = this.aimYaw + ry;
+    const aimDir = new THREE.Vector3(-Math.sin(ay) * Math.cos(ap), Math.sin(ap), -Math.cos(ay) * Math.cos(ap));
+    const spread = shot.spread ?? w.currentSpread(Math.hypot(this.velocity.x, this.velocity.z) / 4.6, this.jumpY > 0, this.crouch > 0.5);
     const pellets = shot.pellets;
     for (let i = 0; i < pellets; i++) {
       const d = applySpread(aimDir, pellets > 1 ? w.stats.pelletSpread * (1 - w.adsT * 0.3) : spread * 0.7);
@@ -596,4 +596,23 @@ export class Bot {
   }
 
   get crouching() { return this.crouch > 0.5; }
+
+  /**
+   * Same recoil as the player (Weapon._fire -> shot.pitch/yaw), compensated by skill. The uncompensated part
+   * is a muzzle offset the target-tracking loop never sees: it stacks up during a string and only settles once
+   * the bot pauses (better bots settle faster). Returns the offset [pitch, yaw] (rad) for THIS shot, then adds
+   * this shot's leftover recoil for the next one. recoilCtl: recruit 0.3 ... veteran 0.9.
+   */
+  _recoilComp(shot) {
+    const ctl = this.diff.recoilCtl ?? 0.5;
+    const now = this.game.time, gap = now - (this._rcT ?? -99);
+    this._rcT = now;
+    const settle = Math.exp(-gap * (2 + 10 * ctl));
+    const off = [(this._rcP || 0) * settle, (this._rcY || 0) * settle];
+    // Leftover: vertical scales with (1 - ctl); horizontal is harder to read, and the misjudge noise grows as skill drops.
+    const n = (1 - ctl) * 0.35;
+    this._rcP = off[0] + shot.pitch * (1 - ctl) * (1 + n * (Math.random() * 2 - 1));
+    this._rcY = off[1] + shot.yaw * (1 - ctl * 0.8) + Math.abs(shot.pitch) * n * (Math.random() * 2 - 1);
+    return off;
+  }
 }

@@ -4,6 +4,7 @@ import { Effects } from '../render/Effects.js';
 import { Perf } from '../render/Perf.js';
 import { lodReady, installShadowProxyLayer } from '../render/Lod.js';
 import { BotOcclusion } from '../render/Occlusion.js';
+import { LightPool } from '../render/LightPool.js';
 import { Physics, G } from '../core/Physics.js';
 import { Input } from '../core/Input.js';
 import { Audio } from '../core/Audio.js';
@@ -24,6 +25,7 @@ import { Navigation } from './bots/Navigation.js';
 import { Match } from './Match.js';
 import { HUD } from '../ui/HUD.js';
 import { DEG, clamp, rand } from '../core/MathUtil.js';
+import { AimRecoil } from './weapons/Recoil.js';
 
 const SAMPLE_SETS = ['m4a1', 'ak74', 'scarl', 'mp5a5', 'vss', 'awm', 'm24', 'p226', 'm1911', 'shotgun'];
 
@@ -44,7 +46,7 @@ export class Game {
     this.paused = true;
     this.started = false;
     this.breath = 1;
-    this.recoilAccum = new THREE.Vector2();
+    this.aimRecoil = new AimRecoil(); // real aim recoil (pull-down, partial settle); visual kick is fpcam/viewmodel
     this.frame = 0;
     this.matchStats = Game.freshStats();
     this.mode = { teams: true, name: 'TEAM DEATHMATCH', score: [0, 0], timeLeft: 600, scoreLimit: 50, friendlyFire: false };
@@ -110,6 +112,9 @@ export class Game {
     this._wirePlayerEvents();
     this.buildLoadout();
     this.perf.tag(this.renderer.scene, 'effects+viewmodel');
+    // Perf: N physical point lights (by quality) stand in for every logical PointLight (render/LightPool.js).
+    this.lightPool = new LightPool(this.renderer.scene, this.renderer.camera, [3, 4, 6, 8][s.quality] ?? 6);
+    this.lightPool.adopt();
 
     // Patch every material for indoor IBL attenuation (after all scene content exists).
     this.level.applyInteriorOcclusion();
@@ -238,7 +243,7 @@ export class Game {
     this.deathInfo = null;
     this.cook = null;
     this.hud.prompt('');
-    this.recoilAccum.set(0, 0);
+    this.aimRecoil.reset();
     this.fpcam.dip.x = -1.2; // settle-in on deploy
     this.hud.onSpawn?.();
   }
@@ -444,21 +449,23 @@ export class Game {
     this.matchStats.shots++;
     const cam = this.renderer.camera;
     const origin = cam.position.clone();
-    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    // Bullets follow the true aim (player yaw/pitch), never the visual layers on the camera (kick spring,
+    // shake, head-bob curves): the punch is felt, not a hidden aim offset.
+    const cp = Math.cos(p.pitch);
+    const fwd = new THREE.Vector3(-Math.sin(p.yaw) * cp, Math.sin(p.pitch), -Math.cos(p.yaw) * cp);
     const moveF = Math.hypot(p.velocity.x, p.velocity.z) / 4.6;
-    const spread = w.currentSpread(moveF, !p.grounded, p.crouching);
+    const spread = shot.spread ?? w.currentSpread(moveF, !p.grounded, p.crouching);
     const muzzleW = this.viewmodel.worldPoint(this.viewmodel.rig.muzzle) || origin;
     for (let i = 0; i < shot.pellets; i++) {
-      const d = applySpread(fwd, shot.pellets > 1 ? s.pelletSpread * (1 - w.adsT * 0.25) : (i === 0 && w.shotIndex <= 1 && w.adsT > 0.9 ? 0 : spread));
+      const d = applySpread(fwd, shot.pellets > 1 ? s.pelletSpread * (1 - w.adsT * 0.25) : spread);
       this.ballistics.fire(p, origin, d, s, { tracer: shot.pellets > 1 ? i < 2 : (w.shotIndex % 3 === 1), pellet: shot.pellets > 1, tracerFrom: muzzleW });
     }
-    // True recoil (moves the crosshair) + visual camera kick.
-    const pitch = shot.pitch * (p.crouching ? 0.85 : 1);
-    p.pitch = clamp(p.pitch + pitch, -89 * DEG, 89 * DEG);
-    p.yaw += shot.yaw;
-    this.recoilAccum.x += pitch; this.recoilAccum.y += shot.yaw;
+    // True recoil: eased into the aim by AimRecoil (stance/ADS/attachments already applied in Weapon._fire).
+    this.aimRecoil.add(shot.pitch, shot.yaw);
+    // Visual camera punch on top (springs back; does not move where bullets go). Follows the shot's direction.
     const kickScale = s.kick * (1 - w.adsT * 0.4);
-    this.fpcam.addKick(0.006 * kickScale * 6, (Math.random() - 0.5) * 0.004 * kickScale * 6, (Math.random() - 0.5) * 0.01 * kickScale * 4);
+    const side = clamp(shot.yaw / Math.max(1e-4, Math.abs(shot.pitch) + Math.abs(shot.yaw)), -1, 1);
+    this.fpcam.addKick(0.04 * kickScale, (side * 0.6 + (Math.random() - 0.5) * 0.6) * 0.012 * kickScale, (Math.random() - 0.5) * 0.04 * kickScale);
     this.fpcam.addTrauma(s.pellets > 1 || s.cls.includes('Sniper') || s.cls.includes('Marksman') ? 0.22 : 0.035);
     this.viewmodel.onFire(shot);
     // Audio: sampled shot (near) with pitch variance; procedural low layer for punch.
@@ -530,11 +537,10 @@ export class Game {
         // Look with ADS-relative sensitivity (zoom-normalised).
         const zoomK = w.adsT > 0 ? Math.tan((this.renderer.camera.fov * DEG) / 2) / Math.tan((this.fpcam.vfov(s.fov, this.renderer.camera.aspect) * DEG) / 2) : 1;
         const sens = s.sensitivity * (1 + (zoomK * s.adsSensMult - 1) * w.adsT);
-        const pitchBefore = p.pitch;
+        const pitchBefore = p.pitch, yawBefore = p.yaw;
         p.look(m.x, s.invertY ? -m.y : m.y, sens);
-        // Player pulling down against recoil reduces the recoverable part.
-        const dPitch = p.pitch - pitchBefore;
-        if (dPitch < 0 && this.recoilAccum.x > 0) this.recoilAccum.x = Math.max(0, this.recoilAccum.x + dPitch);
+        // Player pulling against recoil reduces the part that would settle back by itself.
+        this.aimRecoil.look(p.pitch - pitchBefore, p.yaw - yawBefore);
 
         // Sniper scope sway + hold breath.
         if (w.stats.overlay && w.adsT > 0.8) {
@@ -600,18 +606,15 @@ export class Game {
           fire: inp.is('fire'), firePressed: inp.justPressed('fire'), aim: cmd.aim && !p.mantle,
           sprinting: p.sprinting || !!p.mantle, reloadPressed: inp.justPressed('reload'), mantling: !!p.mantle,
           canFire: !p.mantle && p.spawnProtect <= 1.3,
+          crouched: p.crouching && !p.sliding, moveF: Math.hypot(p.velocity.x, p.velocity.z) / 4.6, airborne: !p.grounded,
         };
         if (winput.firePressed && p.spawnProtect > 0) p.spawnProtect = 0; // firing cancels spawn protection
         const shots = w.update(dt, winput);
         for (const shot of shots) this._playerFire(shot);
-        // Recoil recovery after a pause in firing.
-        if (this.time - w.lastShotTime > Math.max(0.12, 60 / w.stats.rpm * 1.2) || w.lastShotTime < 0) {
-          const rate = 9 * DEG * dt * (w.stats.recoveryMul ?? 1);
-          const rx = Math.min(this.recoilAccum.x, rate);
-          p.pitch -= rx; this.recoilAccum.x -= rx;
-          const ry = clamp(this.recoilAccum.y, -rate * 0.5, rate * 0.5);
-          p.yaw -= ry; this.recoilAccum.y -= ry;
-        }
+        // Recoil: ease kicks into the aim; after the string ends only part of the climb settles back.
+        const rec = this.aimRecoil.update(dt, w);
+        p.pitch = clamp(p.pitch + rec.dp, -89 * DEG, 89 * DEG);
+        p.yaw += rec.dy;
         // Inactive weapon still ticks (for equip timers).
         this.currentSpread = w.currentSpread(Math.hypot(p.velocity.x, p.velocity.z) / 4.6, !p.grounded, p.crouching);
       } else {
@@ -648,6 +651,7 @@ export class Game {
     this.effects.update(dt, this.renderer.camera);
     this.ambience?.update(dt);
     this.botOcclusion.update(); // perf: hide fully wall-occluded bots (shadow proxies keep casting)
+    this.lightPool?.update(dt);
     if (this.started) this.hud.update(live ? dt : 0); // HUD timers freeze while paused
     // Muffle on low health (visual + audio).
     const lowHealth = p.alive ? clamp(1 - p.health / 40, 0, 1) : 0.6;

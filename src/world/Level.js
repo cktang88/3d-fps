@@ -587,11 +587,16 @@ export class Level {
         if (!part.geo.index) part.geo = mergeVertices(part.geo);
         const full = part.geo;
         const lod = simplifiedGeometry(full, Math.max(60, Math.round(triCount(full) * 0.3)), 0.01);
-        const geos = lod === full ? [full] : [full, lod];
+        // Shadow-only LOD (~12%, 2% error): at 4 cm/texel the silhouette is identical.
+        const sh = simplifiedGeometry(full, Math.max(40, Math.round(triCount(full) * 0.12)), 0.02);
+        const geos = [full];
+        if (lod !== full) geos.push(lod);
+        if (sh !== full && sh !== lod) geos.push(sh);
         const vtx = geos.reduce((n, g) => n + g.attributes.position.count, 0);
         const idx = geos.reduce((n, g) => n + g.index.count, 0);
         const bm = new THREE.BatchedMesh(list.length, vtx, idx, part.mat);
         const ids = geos.map((g) => bm.addGeometry(g));
+        const idLod = ids[geos.indexOf(lod)] ?? ids[0], idShadow = ids[geos.indexOf(sh)] ?? idLod;
         const pos = [];
         for (const m of list) {
           const id = bm.addInstance(ids[0]);
@@ -604,20 +609,26 @@ export class Level {
         if (ids.length > 1) {
           const low = new Uint8Array(list.length);
           const fovK = { fov: -1, t: 1 };
-          // BatchedMesh builds its culled multi-draw list in its own onBeforeRender: run LOD first, then that.
-          const batchedOBR = bm.onBeforeRender.bind(bm);
-          bm.onBeforeRender = (r, sc, camera, ...rest) => {
-            if (camera === cam) updateLod();
-            return batchedOBR(r, sc, camera, ...rest);
-          };
+          // Visual LOD for the main camera (and whatever renders after it this frame).
           const updateLod = () => {
             if (fovK.fov !== cam.fov) { fovK.fov = cam.fov; fovK.t = Math.tan(cam.fov * Math.PI / 360); }
             const cp = cam.position;
             for (let i = 0; i < pos.length; i++) {
               const kk = pos[i].distanceTo(cp) * fovK.t;
-              const want = low[i] ? kk > 24 : kk > 28;
-              if (want !== !!low[i]) { low[i] = want ? 1 : 0; bm.setGeometryIdAt(i, ids[want ? 1 : 0]); }
+              low[i] = (low[i] ? kk > 24 : kk > 28) ? 1 : 0;
+              bm.setGeometryIdAt(i, low[i] ? idLod : ids[0]);
             }
+          };
+          // BatchedMesh builds its culled multi-draw list in its own onBeforeRender / onBeforeShadow: pick the
+          // geometry per instance first, then let it cull.
+          const batchedOBR = bm.onBeforeRender.bind(bm), batchedOBS = bm.onBeforeShadow.bind(bm);
+          bm.onBeforeRender = (r, sc, camera, ...rest) => {
+            if (camera === cam) updateLod();
+            return batchedOBR(r, sc, camera, ...rest);
+          };
+          bm.onBeforeShadow = (...a) => {
+            if (idShadow !== ids[0]) for (let i = 0; i < pos.length; i++) bm.setGeometryIdAt(i, idShadow);
+            return batchedOBS(...a);
           };
         }
         this.group.add(bm);

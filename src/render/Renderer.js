@@ -204,9 +204,27 @@ export class Renderer {
     this.damagePulse = 0;
     this.ads = 0;
     this._v = new THREE.Vector3();
+    this.autoQuality();
     this.applySettings();
     this.resize();
     addEventListener('resize', () => this.resize());
+  }
+
+  /**
+   * Perf: GPU tier guess from the unmasked renderer string. Until the player picks a quality themselves
+   * (settings.qualityAuto), integrated / mobile / software GPUs default to Medium (Low for software and phones);
+   * dynamic resolution then fine-tunes. Result in this.gpuInfo (shown in docs/PERF.md; QA can read it).
+   */
+  autoQuality() {
+    const s = this.settings, gl = this.renderer.getContext();
+    let name = '';
+    try { const ext = gl.getExtension('WEBGL_debug_renderer_info'); name = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)); } catch { /* ignore */ }
+    const software = /swiftshader|llvmpipe|softpipe|microsoft basic render/i.test(name);
+    const mobile = /mali|adreno|powervr|apple gpu/i.test(name) || (navigator.maxTouchPoints > 1 && /android|iphone|ipad/i.test(navigator.userAgent));
+    const integrated = /intel|uhd graphics|iris|radeon\(tm\) graphics|radeon graphics|vega \d+ graphics/i.test(name);
+    const tier = software || mobile ? 0 : integrated ? 1 : 2;
+    this.gpuInfo = { name, tier, software, mobile, integrated };
+    if (s.qualityAuto !== false && !window.__qaFixedDt && !navigator.webdriver) s.quality = tier;
   }
 
   /** Called by the level once the sun is known. dir = unit vector toward the sun. */
@@ -288,18 +306,42 @@ export class Renderer {
   _updateDynRes() {
     if (this.settings.dynamicRes === false || window.__qaFixedDt) return;
     const now = performance.now();
-    if (this._drT0 === undefined) { this._drT0 = now; this._drN = 0; return; }
+    if (this._drT0 === undefined) { this._drT0 = now; this._drN = 0; this._drOkSince = now; this._drHoldUntil = 0; this._drBackoff = 4000; return; }
     this._drN++;
     const span = now - this._drT0;
     if (span < 700) return;
     const ms = span / this._drN;
     this._drT0 = now; this._drN = 0;
-    let s = this.dynScale;
-    if (ms > 19) s = Math.max(0.55, s - (ms > 30 ? 0.15 : 0.08));
-    else if (ms < 14.5 && s < 1) s = Math.min(1, s + 0.05);
-    if (s !== this.dynScale) {
-      this.dynScale = s;
-      this.renderer.setPixelRatio(this.basePixelRatio * s);
+    if (document.hidden || ms > 250) { this._drOkSince = now; return; } // tab switch / hitch: not a GPU signal
+    // Under vsync a frame that fits takes ~16.7 ms (8.3 at 120 Hz), so "has headroom" can't be read from wall
+    // time. Instead: step down on misses; after 3 s at refresh rate, probe one step up. If that probe causes misses
+    // within 2 s, step back down and double the wait before the next probe (4 s → 60 s): no oscillation,
+    // but resolution recovers after a heavy moment passes. (perf, docs/PERF.md)
+    let sc = this.dynScale;
+    const probing = now - (this._drLastUp ?? -1e9) < 2500;
+    if (ms > 19) {
+      if (probing) {
+        // The probe step failed: undo it, remember the ceiling, back off exponentially before probing again.
+        sc = this._drPrev;
+        this._drCeil = this.dynScale;
+        this._drHoldUntil = now + this._drBackoff;
+        this._drBackoff = Math.min(60000, this._drBackoff * 2);
+        this._drLastUp = -1e9;
+      } else sc = Math.max(0.55, sc - (ms > 40 ? 0.15 : 0.08));
+      this._drOkSince = now;
+    } else if (ms <= 17.6) {
+      if (now > this._drHoldUntil) this._drCeil = 2;
+      const next = Math.min(1, sc + 0.05);
+      if (sc < 1 && now - this._drOkSince > 3000 && next < (this._drCeil ?? 2) - 1e-6) {
+        this._drPrev = sc;
+        sc = next;
+        this._drLastUp = now;
+        this._drOkSince = now;
+      }
+    } else this._drOkSince = now;
+    if (sc !== this.dynScale) {
+      this.dynScale = sc;
+      this.renderer.setPixelRatio(this.basePixelRatio * sc);
       this.resize();
     }
   }

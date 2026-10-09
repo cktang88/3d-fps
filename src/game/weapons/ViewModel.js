@@ -717,7 +717,11 @@ export class ViewModel {
     const s = rig.stats;
     const k = s.kick * (1 - this.adsBlend * 0.45);
     this.kickPos.impulse(rand(-0.03, 0.03) * k, rand(0.02, 0.05) * k, 0.5 * k * (rig.sidearm ? 0.6 : 1));
-    this.kickRot.impulse(1.6 * k * (rig.sidearm ? 2.2 : 1), rand(-0.6, 0.6) * k, rand(-1.4, 1.4) * k);
+    // Visual muzzle flip only (the real aim change is shot.pitch/yaw, applied by Game via AimRecoil). The gun
+    // jumps the way this shot pushes the aim (+yaw = left), so a rightward-drifting rifle visibly kicks right.
+    const tot = Math.abs(shot?.pitch || 0) + Math.abs(shot?.yaw || 0);
+    const side = tot > 0 ? shot.yaw / tot : 0;
+    this.kickRot.impulse(1.6 * k * (rig.sidearm ? 2.2 : 1), (side * 0.9 + rand(-0.4, 0.4)) * k, rand(-1.4, 1.4) * k);
     if (!s.suppressed) {
       this.flashT = 0.05;
       this.flashSpin = Math.random() * Math.PI * 2;
@@ -1504,7 +1508,7 @@ export class ViewModel {
     const g = this.game;
     this._probeTagged = true;
     g.renderer.scene.traverse((o) => {
-      if (o.isLight || o === g.level?.sky || (o.isMesh && /^lvl_/.test(o.name))) o.layers.enable(PROBE_LAYER);
+      if ((o.isLight && !o.userData.lightPool) || o === g.level?.sky || (o.isMesh && /^lvl_/.test(o.name))) o.layers.enable(PROBE_LAYER);
     });
   }
 
@@ -1515,7 +1519,8 @@ export class ViewModel {
       this._lightScanT = 2;
       const list = [];
       g.renderer.scene.traverse((o) => {
-        if (o.isLight) o.layers.enable(PROBE_LAYER); // three filters lights by camera layers
+        // (LightPool's physical lights mirror the logical ones: skip them to avoid double lighting — perf)
+        if (o.isLight && !o.userData.lightPool) o.layers.enable(PROBE_LAYER); // three filters lights by camera layers
         if ((o.isPointLight || o.isSpotLight) && !o.userData.vmIgnore) list.push(o);
       });
       this._lightCache = list;

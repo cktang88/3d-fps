@@ -77,6 +77,9 @@ Code is original except where noted. Third-party assets:
   Animation rig/clip source: "FREE [Military Soldier] RIGGED" by BAMEN — CC BY 4.0
   (https://sketchfab.com/3d-models/free-military-soldier-rigged-e9c56308a67d4a3db62e914fafa4d198), fallback body;
   animation clips from Quaternius Universal Animation Library 1 & 2 (Standard) — CC0 (https://quaternius.com), retargeted at load.
+- **Bot locomotion mocap**: lower-body walk/jog/crouch cycles (Swat & Crouched styles) from the **100STYLE** dataset
+  by Ian Mason, Sebastian Starke and Taku Komura — CC BY 4.0 (https://zenodo.org/records/8127870); gait cycles
+  extracted, loop-closed and retargeted to the Mixamo rig (clips `mocap_*` in `soldier.glb`).
 - **Shotgun model**: by Harry_L — CC BY (https://sketchfab.com/models/53b158b0d5a54b4491b09d1fb3058e29), via Mugen87/dive.
 - **First-person rigs** (`public/assets/models/fp/`, built by `tools/blender/`, see `docs/FP_FRAMING.md`). All are CC BY 4.0
   unless noted. Modifications: re-posed, re-rigged, rescaled, maker markings removed, textures re-encoded (WebP),

@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS = {
   sensitivity: 1.6, adsSensMult: 1.0, invertY: false, fov: 100, viewmodelFov: 52, quality: 2, renderScale: 1,
   volume: 0.8, fpsCounter: true, dynamicRes: true, crosshairColor: '#ffffff', holdCrouch: false, toggleAds: false, reduceMotion: false,
   botDifficulty: 'regular', botCount: 6, godMode: false,
+  qualityAuto: true, // perf: first boot picks Medium on weak GPUs (Renderer.autoQuality); false once the player picks
   loadout: { primary: 'm4', secondary: 'p226', attachments: {} },
   career: { xp: 0, matches: 0, wins: 0, kills: 0, deaths: 0 },
 };
@@ -288,6 +289,7 @@ export class Menu {
     m.querySelectorAll('[data-seg]').forEach((el) => el.addEventListener('click', () => {
       const key = el.dataset.seg;
       s[key] = key === 'quality' ? parseInt(el.dataset.v, 10) : el.dataset.v;
+      if (key === 'quality') s.qualityAuto = false;
       el.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === el));
       if (key === 'quality') g.renderer.applySettings();
       g.audio.ui('click');

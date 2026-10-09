@@ -8,6 +8,8 @@
   Q.sim(3); // let bots spread out and engage
   const out = {};
   out.cpu = await P.cpuProfile(240, false);
+  // With rendering (320x180 so llvmpipe fill is negligible): renderer.render ≈ JS + GL command submission cost.
+  out.cpuRender = await P.cpuProfile(40, true);
   out.bots = { n: g.bots.length, alive: g.bots.filter((b) => b.alive).length };
   return out;
 })()

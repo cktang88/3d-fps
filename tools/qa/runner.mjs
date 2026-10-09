@@ -252,9 +252,23 @@ async function worker(n) {
     let timer;
     const r = await Promise.race([
       runJob(job, b, n),
-      new Promise((res) => { timer = setTimeout(() => {
+      new Promise((res) => { timer = setTimeout(async () => {
         log(`[w${n}] TIMEOUT`, job.id, `after ${limit / 1000}s - closing its page`);
         const w = warm.get(n); warm.delete(n); const partial = w?.sink?.result;
+        // Grab the JS stack of the hung page (Debugger.pause interrupts a busy loop; if nothing is running the
+        // page is idle - e.g. waiting for a frame - and we record that instead).
+        let hangStack = 'no JS running (page idle: likely waiting on requestAnimationFrame / compositor)';
+        try {
+          const cdp = await w.page.context().newCDPSession(w.page);
+          await cdp.send('Debugger.enable');
+          hangStack = await Promise.race([
+            new Promise((ok) => cdp.once('Debugger.paused', (e) => ok(e.callFrames.slice(0, 12).map((f) => `${f.functionName || '(anon)'} @ ${(f.url || '').split('/').pop()}:${f.location.lineNumber + 1}:${f.location.columnNumber + 1}`).join(' <- ')))),
+            cdp.send('Debugger.pause').then(() => new Promise((ok) => setTimeout(() => ok(hangStack), 5000))),
+          ]);
+          await cdp.send('Debugger.resume').catch(() => {});
+        } catch (e) { hangStack = 'stack capture failed: ' + e.message; }
+        log(`[w${n}] hang stack`, job.id, hangStack.slice(0, 600));
+        if (partial) partial.hangStack = hangStack;
         // Resolve BEFORE closing the page so the timeout wins the race (closing makes runJob reject with "closed").
         res({ ...(partial || {}), id: job.id, owner: job.owner, startedAt: partial?.startedAt || new Date(Date.now() - limit).toISOString(), finishedAt: new Date().toISOString(), shots: partial?.shots || [], logs: partial?.logs || [], data: partial?.data || {}, timedOut: true, error: `TIMEOUT after ${limit / 1000}s (page hung - possible infinite loop in game code or job script)` });
         w?.page?.close().catch(() => {});

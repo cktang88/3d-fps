@@ -1,16 +1,22 @@
 import { computeStats } from './WeaponDefs.js';
 import { clamp, DEG } from '../../core/MathUtil.js';
 
-// Spread bloom tuning (shared by player and bots). Sustained fire blooms ~1.7x the per-shot table, up to
-// 1.6x spreadMax; the first BLOOM_GRACE shots of a burst stay tight when aimed; ADS keeps 65% of bloom.
-const BLOOM_GAIN = 1.7, BLOOM_CAP = 1.6, BLOOM_GRACE = 2, ADS_BLOOM = 0.65;
+// Spread bloom tuning (shared by player and bots). Each shot adds spreadPerShot*GAIN (cap CAP x spreadMax).
+// Bloom only starts to recover DELAY s after the last shot, so a sustained string keeps blooming while a
+// tap/burst rhythm (~0.2-0.3 s pause) resets it. Aimed fire forgives the first GRACE shots of a string and
+// keeps ADS of the rest; moving while aimed costs MOVE_ADS deg at full run.
+export const BLOOM = { GAIN: 1.0, CAP: 1.0, GRACE: 2, ADS: 0.4, DELAY: 0.1, MOVE_ADS: 0.6 };
+
+// Recoil context modifiers (see docs/RECOIL_RESEARCH.md): hip fire kicks ~1.45x harder vertically and twice as
+// wide; crouching braces the shooter; a bipod only works braced (crouched); moving/airborne fire is wild.
+export const RECOIL_MOD = { hipV: 1.45, hipH: 2.0, crouchV: 0.85, crouchH: 0.8, bipodV: 0.55, bipodH: 0.45, moveV: 0.15, moveH: 0.4, air: 1.5 };
 
 /**
  * Weapon gameplay logic shared by the player and bots.
  * States: idle | equip | reload | bolt | pump | melee | inspect
  * Handles fire modes (auto / semi / burst / pump / bolt), tac vs empty reload (+1 in chamber),
  * shell-by-shell shotgun loading (interruptible), ADS blend, sprint-to-fire lockout,
- * spread bloom and fixed recoil patterns.
+ * spread bloom and per-weapon recoil profiles (WeaponDefs rc; aim side in Recoil.js).
  */
 export class Weapon {
   constructor(id, loadout = {}, owner = null) {
@@ -146,11 +152,13 @@ export class Weapon {
 
   /**
    * Per frame update.
-   * input: { fire (held), firePressed, aim, sprinting, reloadPressed, canFire }
-   * Returns array of shots fired this frame: [{ spreadDeg, recoil: [p, y] }]
+   * input: { fire (held), firePressed, aim, sprinting, reloadPressed, canFire,
+   *          crouched, moveF (0..1+ speed / run speed), airborne }   (stance fields optional)
+   * Returns array of shots fired this frame: [{ pitch, yaw (rad, aim change; +yaw = left), spread (deg), ... }]
    */
   update(dt, input) {
     this.time += dt;
+    this.ctx = input;
     this.stateTime += dt;
     // Cooldown may go negative within a frame so sustained fire carries the remainder (rpm is
     // frame-rate independent); it is re-clamped to 0 whenever the trigger isn't driving fire.
@@ -168,11 +176,11 @@ export class Weapon {
     if (input.sprinting) this.sprintLock = s.sprintToFire;
     else this.sprintLock = Math.max(0, this.sprintLock - dt);
 
-    // Spread recovery.
-    this.spread = Math.max(0, this.spread - s.spreadRecovery * dt);
-    // Recoil pattern index recovers after a pause.
+    // Spread recovery: only once the string has paused (sustained fire keeps blooming).
     const interval = 60 / s.rpm;
-    if (this.time - this.lastShotTime > Math.max(0.25, interval * 1.5) / s.recoveryMul) this.shotIndex = Math.max(0, this.shotIndex - dt * 20);
+    if (this.time - this.lastShotTime > BLOOM.DELAY + Math.min(interval, 0.15)) this.spread = Math.max(0, this.spread - s.spreadRecovery * dt);
+    // Recoil pattern index recovers after a pause.
+    if (this.time - this.lastShotTime > Math.min(0.6, Math.max(0.25, interval * 1.5)) / s.recoveryMul) this.shotIndex = Math.max(0, this.shotIndex - dt * 20);
 
     // ---- State machine ----
     switch (this.state) {
@@ -281,30 +289,60 @@ export class Weapon {
     const s = this.stats;
     // Bloom: the first couple of shots stay on target (taps/bursts reward discipline); sustained auto fire
     // blooms well past the sight picture, even aimed. Movement hurts ADS accuracy too.
-    const bloom = Math.min(s.spreadMax * BLOOM_CAP, this.spread);
-    const aimedBloom = Math.max(0, bloom - BLOOM_GRACE * s.spreadPerShot * BLOOM_GAIN) * ADS_BLOOM;
+    // A braced bipod (crouched) soaks most of the bloom: the LMG's job is sustained fire from a position.
+    const bloom = Math.min(s.spreadMax * BLOOM.CAP, this.spread) * (crouched && s.braced ? 0.5 : 1);
+    const aimedBloom = Math.max(0, bloom - BLOOM.GRACE * s.spreadPerShot * BLOOM.GAIN) * BLOOM.ADS;
     const hip = s.hipSpread + bloom + moveFactor * 0.6 * 2.2 + (airborne ? 3 : 0);
-    const ads = s.adsSpread + aimedBloom + moveFactor * 0.6 + (airborne ? 2 : 0);
+    const ads = s.adsSpread + aimedBloom + moveFactor * BLOOM.MOVE_ADS + (airborne ? 2 : 0);
     let sp = hip + (ads - hip) * Math.min(1, this.adsT / 0.6);
     if (crouched) sp *= 0.8;
     if (s.beam && this.laserOn && this.adsT < 0.5) sp *= 0.85;
     return sp;
   }
 
+  /** Stance / ADS / attachment multipliers for the recoil of the next shot: { v, h }. */
+  recoilMods(ctx = this.ctx || {}) {
+    const s = this.stats, M = RECOIL_MOD, a = this.adsT;
+    let v = (M.hipV + (1 - M.hipV) * a) * s.vRecoilMul, h = (M.hipH + (1 - M.hipH) * a) * s.hRecoilMul;
+    if (ctx.crouched) {
+      if (s.braced) { v *= M.bipodV; h *= M.bipodH; } else { v *= M.crouchV; h *= M.crouchH; }
+    }
+    const mv = Math.min(1.3, ctx.moveF || 0);
+    v *= 1 + M.moveV * mv; h *= 1 + M.moveH * mv;
+    if (ctx.airborne) { v *= M.air; h *= M.air; }
+    return { v, h };
+  }
+
+  /**
+   * Recoil of string shot i in degrees [up, right] before stance modifiers: a learnable climb
+   * (first-shot jump, build-up over shots 1-5, then settle to `tail`) with a mostly-rightward drift and a
+   * per-weapon wander, plus bounded randomness (vertical vj, horizontal jit that grows with sustained fire).
+   */
+  static recoilShape(rc, i, driftMul = 1, rnd = Math.random) {
+    const shape = i === 0 ? rc.first : i <= 5 ? 1 + 0.04 * i : rc.tail + (1.2 - rc.tail) * Math.exp(-(i - 5) / 4);
+    const up = rc.up * shape * (1 + rc.vj * (rnd() * 2 - 1));
+    const right = rc.h * driftMul + rc.wa * Math.sin((2 * Math.PI * i) / rc.wp + rc.ph)
+      + rc.jit * (1 + Math.min(i, 10) * 0.05) * (rnd() * 2 - 1);
+    return [up, right];
+  }
+
   _fire() {
     const s = this.stats;
+    // Spread for this shot uses the bloom *before* it (first aimed shot of a string = sight picture).
+    const ctx = this.ctx || {};
+    const spread = this.currentSpread(ctx.moveF || 0, !!ctx.airborne, !!ctx.crouched);
     this.ammo--;
     this.lastShotTime = this.time;
-    const idx = Math.min(Math.floor(this.shotIndex), s.recoil.length - 1);
-    const [rp, ry] = s.recoil[idx];
+    const idx = Math.floor(this.shotIndex);
+    const [up, right] = Weapon.recoilShape(s.rc, idx, s.driftMul ?? 1);
     this.shotIndex += 1;
-    const adsRecoil = 1 - this.adsT * 0.3;
-    const pitch = rp * s.vRecoilMul * adsRecoil * DEG;
-    const yaw = (ry + (Math.random() * 2 - 1) * s.hJitter) * s.hRecoilMul * adsRecoil * DEG;
+    const m = this.recoilMods(ctx);
+    const pitch = up * m.v * DEG;
+    const yaw = -right * m.h * DEG; // +yaw turns left
     const spreadBefore = this.spread;
-    this.spread = Math.min(s.spreadMax * BLOOM_CAP, this.spread + s.spreadPerShot * BLOOM_GAIN);
+    this.spread = Math.min(s.spreadMax * BLOOM.CAP, this.spread + s.spreadPerShot * BLOOM.GAIN);
     this.inspectT = 0;
-    const shot = { pitch, yaw, spreadBloom: spreadBefore, index: idx, pellets: s.pellets || 1 };
+    const shot = { pitch, yaw, spread, spreadBloom: spreadBefore, index: idx, pellets: s.pellets || 1 };
     this.emit('fire', shot);
     if (this.ammo === 0) this.emit('empty');
     return shot;
