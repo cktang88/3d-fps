@@ -43,7 +43,7 @@ if (process.env.QA_BACKEND !== 'swiftshader' && fs.existsSync('/usr/bin/Xvfb')) 
 }
 const launchOpts = {
   executablePath: '/opt/pw-browsers/chromium', headless,
-  args: [...glArgs, '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required', '--disable-gpu-vsync', '--disable-frame-rate-limit'],
+  args: [...glArgs, '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required', '--disable-gpu-vsync', '--disable-frame-rate-limit', '--disable-domain-blocking-for-3d-apis'],
 };
 let browser = null, launching = null;
 // Self-healing browser: relaunch if Chromium dies (e.g. renderer OOM-killed by the container memory cap).

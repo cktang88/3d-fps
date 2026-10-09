@@ -391,7 +391,7 @@ export class Renderer {
     this.caOn = on('fxCA');
     this.noise.blendMode.opacity.value = on('fxGrain') ? 0.02 : 0;
     this.aaPass.enabled = f.smaa !== false;
-    uploadRing.enabled = f.uploadRing !== false;
+    uploadRing.enabled = f.uploadRing === true; // opt-in until verified on Metal (benchmark A/B step turns it on)
     const r = this.renderer;
     r.shadowMap.enabled = f.shadow > 0;
     // Sun shadow-map size per quality, applied live. PCF-lite = one tap (radius 0, see the chunk patch above).

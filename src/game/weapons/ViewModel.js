@@ -1627,7 +1627,7 @@ export class ViewModel {
       if (this.probeFace === 0 && this.probeTimer <= 0 && !this._probeBusy) {
         this.probeTimer = this.probeInterval;
         this._probeBusy = true;
-        captureSH(r, this.probeRT, this._shBuf).then((sh) => { this.shTarget = sh; }).catch((e) => { if (!this._probeErr) { this._probeErr = true; console.warn('viewmodel probe:', e.message); } }).finally(() => { this._probeBusy = false; });
+        captureSH(r, this.probeRT, this._shBuf).then((sh) => { this.shTarget = sh; }).catch((e) => { if (!this._probeErr) { this._probeErr = true; console.warn('viewmodel probe:', e?.message ?? e); } }).finally(() => { this._probeBusy = false; });
       }
     }
     if (this.shTarget) {
