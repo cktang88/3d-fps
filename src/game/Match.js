@@ -12,6 +12,7 @@ export class Match {
     this.game = game;
     this.state = 'idle';
     this.lastKillTimes = new Map();
+    this.combat = []; // recent kill sites { pos, t } — spawn selection keeps away from live fights
     this.streak = 0;
   }
 
@@ -64,30 +65,43 @@ export class Match {
     if (mode.timeLeft <= 0) this.end();
   }
 
-  /** Score spawn points: far from visible enemies, near teammates (TDM), not recently used. */
+  /**
+   * Score spawn points (CoD/BF-style safety): never in an enemy's line of sight (any range), never next to an
+   * enemy, away from fights of the last ~10 s; prefer own base and teammates (TDM), avoid reusing a point.
+   */
   pickSpawn(actor) {
     const g = this.game, lvl = g.level, mode = g.mode;
-    let list = mode.teams ? lvl.spawns[actor.team === 0 ? 0 : 1] : lvl.spawns.ffa;
+    const own = mode.teams ? lvl.spawns[actor.team === 0 ? 0 : 1] : null;
+    let list = mode.teams ? own : lvl.spawns.ffa;
     // In TDM, allow mid-map spawns near teammates later in the match (flip resistance).
     if (mode.teams) list = list.concat(lvl.spawns.ffa);
+    this.combat = this.combat.filter((c) => g.time - c.t < 10);
+    const eye = new THREE.Vector3();
     let best = null, bestS = -Infinity;
     for (const sp of list) {
       let s = Math.random() * 4;
+      eye.copy(sp.pos).setY(sp.pos.y + 1.6);
       for (const a of g.actors) {
         if (!a.alive || a === actor) continue;
         const d = a.position.distanceTo(sp.pos);
         const enemy = !mode.teams || a.team !== actor.team;
         if (enemy) {
-          if (d < 12) s -= 100;
-          else s += Math.min(d, 45) * 0.6;
-          if (d < 45 && g.physics.lineOfSight(sp.pos.clone().setY(1.6), a.head)) s -= 40;
+          if (d < 12) s -= 120;
+          else if (d < 25) s -= 25;
+          s += Math.min(d, 50) * 0.5;
+          if (d < 110 && g.physics.lineOfSight(eye, a.head)) s -= d < 60 ? 160 : 90;
         } else if (mode.teams && d < 25) s += 8;
       }
-      if (mode.teams && lvl.spawns[actor.team === 0 ? 0 : 1].includes(sp)) s += 25;
+      for (const c of this.combat) {
+        const d = c.pos.distanceTo(sp.pos);
+        if (d < 22) s -= 45 * (1 - (g.time - c.t) / 10) * (1 - d / 22);
+      }
+      if (own && own.includes(sp)) s += 25;
       if (sp.lastUsed && g.time - sp.lastUsed < 5) s -= 30;
       if (s > bestS) { bestS = s; best = sp; }
     }
     best.lastUsed = g.time;
+    actor.spawnTime = g.time;
     // Small jitter so stacked spawns don't overlap.
     const pos = best.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.5, 0.05, (Math.random() - 0.5) * 1.5));
     return { pos, yaw: best.yaw };
@@ -98,6 +112,8 @@ export class Match {
     victim.stats.deaths++;
     const weaponName = info.weapon ? (WEAPONS[info.weapon]?.name ?? info.weapon) : info.type === 'grenade' ? 'FRAG' : info.type === 'melee' ? 'MELEE' : info.type === 'fall' ? 'FALL' : '';
     const victimStreak = victim._streak || 0;
+    this.combat.push({ pos: victim.position.clone(), t: this.game.time });
+    if (killer && killer !== victim && killer.position) this.combat.push({ pos: killer.position.clone(), t: this.game.time });
     victim._streak = 0;
     const isFirstBlood = !this.firstBlood && killer && killer !== victim;
     if (isFirstBlood) this.firstBlood = true;

@@ -46,11 +46,12 @@
   // Spawn kills in a 120 s bot match.
   const m = g.match, orig = m.pickSpawn.bind(m);
   m.pickSpawn = (actor) => { const r = orig(actor); actor._qaSpawnT = g.time; return r; };
-  let spawnKills = 0, kills = 0; const sk = [];
+  let spawnKills = 0, spawnKills6 = 0, kills = 0; const sk = [];
   const ok = g.onActorKilled.bind(g);
-  g.onActorKilled = (v, k, info) => { kills++; if (v._qaSpawnT != null && g.time - v._qaSpawnT < 3) { spawnKills++; sk.push([+(g.time - v._qaSpawnT).toFixed(1), Math.round(v.position.x), Math.round(v.position.z)]); } return ok(v, k, info); };
+  g.onActorKilled = (v, k, info) => { kills++; if (v._qaSpawnT != null && g.time - v._qaSpawnT < 6) spawnKills6++;
+    if (v._qaSpawnT != null && g.time - v._qaSpawnT < 3) { spawnKills++; sk.push([+(g.time - v._qaSpawnT).toFixed(1), Math.round(v.position.x), Math.round(v.position.z)]); } return ok(v, k, info); };
   const res = Q.matchSim(120, [0, -30, 0]);
   g.onActorKilled = ok; m.pickSpawn = orig;
-  out.match = { kills, spawnKills, spawnKillRate: kills ? +(spawnKills / kills).toFixed(2) : 0, examples: sk.slice(0, 12), stuck: res.stuckBots, fallen: res.fallen, score: res.score };
+  out.match = { kills, spawnKills, spawnKills6, spawnKillRate: kills ? +(spawnKills / kills).toFixed(2) : 0, examples: sk.slice(0, 12), stuck: res.stuckBots, fallen: res.fallen, score: res.score };
   return out;
 })()

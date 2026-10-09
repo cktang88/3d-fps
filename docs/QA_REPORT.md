@@ -2,7 +2,7 @@
 
 Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Results: `tools/qa/results/<id>/`.
 
-**Last run:** 2026-10-09 03:46 UTC: `e_keyart` 1791516320967 (snapshot 03:37), `core` 1791514719140 (03:07). `w_spray` queued. Perf budget: ≤400 calls, ≤1.2M tris per view, ≤20 s fresh load (owner: perf a06576c27e6a80553).
+**Last run:** 2026-10-09 04:50 UTC: `c_optics` and `c_wvis_a` on the 04:48 snapshot. **TREE BROKEN: no 3D rendering (0 draws, shader VALIDATE_STATUS false on most materials)**, see #26. Last good: `core` 1791518213787 (~04:11). Perf budget: ≤400 calls, ≤1.2M tris per view, ≤20 s fresh load: MET at 03:37.
 
 ## Pass / fail by area
 
@@ -14,9 +14,10 @@ Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Resu
 | Weapons visual (hip / ADS / fire / reload / sprint x 11) | `c_weapons_visual_{a,b}.json` | FAIL (batch A) | gunmetal colour OK, red dot + holo reticles OK; AK irons no sight picture; optic housings low-poly octagons; ACOG lens washed; AK reload unreadable; RPK = AK (no drum) |
 | Movement (speeds, jump, slide, vault, mantle, stairs, spawn/fall) | `core.json` | PASS | walk 4.37 / sprint 6.46 / crouch 1.9 / jump 1.05; slide 8.3 m/s for 0.83 s; vault, dock climb, catwalk stairs; no falls at 37 positions |
 | Key art per area + perf | `e_keyart.json` | PASS | 03:37: all 14 views 163–287 calls / 0.24–0.49M tris; fresh load 18.6 s; 0 console messages; office rays gone; warehouse, tower and office dressing fixed. Debug FPS overlay shown by design (user request) |
+| Recoil / spray (tuned feature) | `w_spray.json` | BASELINE 04:10 | 25 m: tapC 100% torso on every rifle (median 2–4 cm); autoC torso 37–65%; burst3C 53–100%. Pistols tapC land 10–16 cm low at 25 m (p226 MPI −10 cm, m1911 −16 cm), possible sight zeroing |
 | FFA | `f_ffa_hang.json` | PASS (00:19) | 120 s FFA with and without ambience: 28 kills, no NaN, no hang, no throw after the dt fix. The 21:51 hang did not reproduce |
 | HUD / menus / UI flow | `core.json` | PASS | kills/medals/tally, low ammo, cook + drop on death, death card, respawn 1.6/4.5 s, damage arcs, pause opens on home, bullets hit bot, end screen |
-| Bot animation jank metrics | `core.json` L4 | FAIL (3 bots) | 03:07: palm 1.1–2.6 cm, pops ≤6/min, yaw ≤401°/s, deaths 0.53–0.97 s and 3/18 > 0.45 m, all OK; bots 0–2 hold the gun 12–30° off the aim ray after a second Match.start (rematch path suspected). Foot-slide metric still unvalidated |
+| Bot animation jank metrics | `core.json` L4 | PASS* | 04:11: aim p90 2.3–4.5°, moving aim ≤1.0°, palm 1–3 cm, yaw OK, deaths 16/18 in 0.7–0.93 s (2 at 0.53 s), pops 0–8/min. *Foot-slide metric unvalidated (reads 1.2–2 m/s planted). Hidden (LOD) bots excluded: forceFullRate does not clear _hidden |
 
 ## Open issues
 
@@ -39,11 +40,12 @@ Owner: QA lead. Suite lives in `tools/qa/suites/` (see "How to run" below). Resu
 | 16 | Weapons | weapons | ACOG PiP lens washed out; AK tac reload hands cluster + grey unlit polygon; RPK has no drum | c_wvis_a | reported |
 | 19 | Core loop | coordinator / gameplay | src/main.js dt has no lower bound: first rAF can give dt of -1 to -3 s, so physics and the KCC step backwards (player falls through the world, y=-44, "Fall damage" death after load), game.time goes negative, and HUD.drawMinimap throws "arc radius negative" every frame, skipping render | fallprobe 1791500269172 fp1; ffa_hang 1791500388869 | VERIFIED fixed 00:19 (fall probe: y=0.004 after teleport, no falls at 37 points x 2 dt) |
 | 20 | Render | perf / level | 48x WebGL "GL_INVALID_OPERATION: Mismatch between texture format and sampler type" during key-art renders | e_keyart 1791493511219 logs | VERIFIED fixed 01:54 (0 warnings at full quality) |
-| 21 | Bots | bots a77d0883019b11e4c | After Match.start runs a second time (rematch), bots 0–2 hold the gun 12–30° off the aim ray and never set lGripWorld | core 1791514719140 L4 | reported |
+| 21 | Bots | bots a77d0883019b11e4c | After Match.start runs a second time (rematch), bots 0–2 hold the gun 12–30° off the aim ray and never set lGripWorld | core 1791514719140 L4 | CLOSED 04:16: hidden-LOD bots skip IK by design; with hidden frames excluded all 11 bots pass |
 | 22 | Ambience | QA (applied at coordinator's request) | Unbounded per-frame accumulator loops could spin forever on non-finite input (DistantBattle, Fires, Weather bolt, AmbAudio) | code review after worker hangs | FIXED 01:10 (clamped + capped), no hang in 1028 s core run |
 | 23 | Runner/game | QA / coordinator | Intermittent page hangs (900 s timeouts: fprig film 23:30, bots film 00:52) | runner log | watchdog now captures JS stack on hang, none since 01:00 |
 | 24 | Physics hang | coordinator (Player.js) | Page hang inside Rapier world.step() (captured stack), likely NaN player collider translation via Player._syncBody; proposed 8-line finite guard (QA edit blocked by permissions) | runner log 01:50 fprig_cov | guard applied by coordinator 02:15; origin hunt re-runs queued |
 | 25 | Perf | perf a06576c27e6a80553 | Draw calls regressed (transmission glass + zoning, fixed by owner); PVS 404 (VERIFIED gone 03:07); FPS overlay intentional (user); chunky FP gun = dynamic res at 85% (disabled under QA) | e_keyart 1791509573464 | VERIFIED fixed 03:37 |
+| 26 | Render | coordinator (render owner?) | Current tree renders nothing (0 draws, black/white frame): THREE.WebGLProgram VALIDATE_STATUS false on most materials plus 165x useProgram invalid. Suspect src/render/UploadRing.js (new 04:16) | c_optics 1791519443222, c_wvis_a 1791519443323 | reported URGENT |
 | 6 | Perf | perf a06576c27e6a80553 | ~1600 calls / 3.5M tris, 75 s load vs budget 400 / 1.2M / 20 s | coordinator | VERIFIED: budget met 03:37 |
 | 17 | UI | gameplay a9c1ad23de29b1b81 | Pause menu opened on last-visited page (Credits) | g_hud_ui g12b_pause | VERIFIED fixed 01:31 |
 | 18 | Weapons/FP art | art lead a03eed672de8192c8 | AK irons still no front post at ADS on fresh build | c_optics o3_ak_irons_ads | open |

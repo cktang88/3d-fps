@@ -704,6 +704,7 @@ export class Level {
     this.buildRuins();
     this.buildCourtyard();
     this.buildBackdrop();
+    this.buildSpawnScreens();
     this.dressDecals();
     this.defineSpawns();
     this.finalize();
@@ -852,7 +853,7 @@ export class Level {
       { at: 3, w: 3, y0: 6, y1: 7.6 }, { at: 16, w: 3, y0: 6, y1: 7.6 }, { at: 21, w: 3, y0: 6, y1: 7.6 }, { at: 32, w: 3, y0: 6, y1: 7.6 },
     ];
     this.wall(wm, x0, z1, x1, z1, 0, H, t, southHoles, { ...wo, shaft: -1, doorFrame: 'metalDark' });
-    this.wall(wm, x1, z0, x0, z0, 0, H, t, winRow(36), wo);
+    this.wall(wm, x1, z0, x0, z0, 0, H, t, [...winRow(36), { at: 10, w: 3, y0: 0, y1: 2.8 }], { ...wo, doorFrame: 'metalDark' });
     const westHoles = [{ at: 15, w: 3, y0: 0, y1: 2.8 }, { at: 5, w: 3, y0: 6, y1: 7.6 }];
     const eastHoles = [{ at: 9, w: 4, y0: 0, y1: 3.6 }, { at: 16, w: 3, y0: 6, y1: 7.6 }];
     this.wall(wm, x0, z0, x0, z1, 0, H, t, westHoles, { ...wo, doorFrame: 'metalDark' });
@@ -860,7 +861,7 @@ export class Level {
     // Concrete plinth around the base (outside), broken at door openings.
     const pl = { collide: false, nav: false, map: false };
     this.wall('concrete', x0 - 0.2, z1 + 0.22, x1 + 0.2, z1 + 0.22, 0, 0.6, 0.15, [{ at: 9.2, w: 6, y0: 0, y1: 5 }, { at: 26.2, w: 3.2, y0: 0, y1: 3 }], pl);
-    this.wall('concrete', x1 + 0.2, z0 - 0.22, x0 - 0.2, z0 - 0.22, 0, 0.6, 0.15, [], pl);
+    this.wall('concrete', x1 + 0.2, z0 - 0.22, x0 - 0.2, z0 - 0.22, 0, 0.6, 0.15, [{ at: 10.2, w: 3, y0: 0, y1: 2.8 }], pl);
     this.wall('concrete', x0 - 0.22, z0 - 0.2, x0 - 0.22, z1 + 0.2, 0, 0.6, 0.15, [{ at: 15.2, w: 3, y0: 0, y1: 2.8 }], pl);
     this.wall('concrete', x1 + 0.22, z1 + 0.2, x1 + 0.22, z0 - 0.2, 0, 0.6, 0.15, [{ at: 9.2, w: 4, y0: 0, y1: 3.6 }], pl);
     // Roll-up shutter half open over the main door + housing.
@@ -922,7 +923,8 @@ export class Level {
     for (const yy of [2.2, 2.55]) this.cyl('rustPipe', V(x1 + 0.35, yy, -28.5), V(x1 + 0.35, yy, -33.6), 0.08, 10);
     for (const zz of [-28.5, -31, -33.5]) this.box('metalDark', x1 + 0.2, 2.4, zz, 0.3, 0.7, 0.08, { map: false, nav: false, collide: false });
     this.cyl('rustPipe', V(x1 + 0.35, 2.2, -33.6), V(x1 + 0.35, 0.1, -33.6), 0.08, 10);
-    this.patrolPoints.push(V(-12, 0, -30), V(12, 0, -30), V(0, 0, -44), V(-14, cy, -46), V(10, cy, -46), V(14, 0, -42));
+    this.patrolPoints.push(V(-12, 0, -30), V(12, 0, -30), V(0, 0, -44), V(-14, cy, -46), V(10, cy, -46), V(14, 0, -42),
+      V(-4, 0, -35.2), V(4, 0, -35.2), V(-12, 0, -41), V(8, 0, -47), V(16, 0, -36), V(-16, 0, -34), V(0, cy, -46.5));
   }
 
   rack(x, z) {
@@ -1029,9 +1031,9 @@ export class Level {
     ], { trim, glass: 'none' });
     this.wall(ext, x1, z1, x0, z1, 0, F, t, [{ at: 4, w: 1.6, ...winH(0) }, { at: 19.5, w: 1.5, y0: 0, y1: 2.4 }, { at: 12, w: 1.6, ...winH(0) }], wo);
     this.wall(ext, x1, z1, x0, z1, F, F + 1.0, t, [{ at: 4, w: 1.6, ...winH(F) }, { at: 12, w: 1.6, ...winH(F) }, { at: 19, w: 1.6, ...winH(F) }], { trim, glass: 'none' });
-    this.wall(ext, x0, z1, x0, z0, 0, F, t, [{ at: 6, w: 1.5, y0: 0, y1: 2.4 }], wo);
+    this.wall(ext, x0, z1, x0, z0, 0, F, t, [{ at: 8.5, w: 1.5, y0: 0, y1: 2.4 }], wo); // (was at 6: the z=38 partition split it)
     this.wall(ext, x0, z1, x0, z0, F, F + 1.0, t, [{ at: 6, w: 1.6, ...winH(F) }], { trim, glass: 'none' });
-    this.wall(ext, x1, z0, x1, z1, 0, F, t, [{ at: 4, w: 1.6, ...winH(0) }], wo);
+    this.wall(ext, x1, z0, x1, z1, 0, F, t, [{ at: 4, w: 1.6, ...winH(0) }, { at: 10, w: 1.4, y0: 0, y1: 2.4 }], wo);
     this.wall(ext, x1, z0, x1, z1, F, F + 1.0, t, [{ at: 4, w: 1.6, ...winH(F) }, { at: 9, w: 1.6, ...winH(F) }], { trim, glass: 'none' });
     // Upper-floor window frames/glass (the windows straddle the two wall bands; add them once, full height).
     const upperWins = [
@@ -1045,7 +1047,8 @@ export class Level {
     this.box('tiles', -4, 0.03, 38, 23.6, 0.06, 11.6, { collide: false, map: false, uv: 1.5 });
     const slab = 'concreteFloor';
     this.box(slab, (x0 + 6.6) / 2, floorY - 0.12, 38, 6.6 - x0, 0.24, 11.6, { map: false, uv: 3 });
-    this.box(slab, (6.6 + x1) / 2, floorY - 0.12, 42.2, x1 - 6.6, 0.24, 3.6, { map: false, uv: 3 });
+    this.box(slab, (6.6 + x1) / 2, floorY - 0.12, 42.1, x1 - 6.6, 0.24, 3.8, { map: false, uv: 3 });   // landing meets the top step
+    this.box(slab, (9.15 + x1) / 2, floorY - 0.12, 36.6, x1 - 9.15, 0.24, 7.2, { map: false, uv: 3 });  // strip beside the stair well
     // Ceilings (plaster underside) for both floors.
     this.box('ceilingTile', (x0 + 6.6) / 2, floorY - 0.245, 38, 6.6 - x0 - 0.3, 0.01, 11.4, { map: false, nav: false, collide: false, uv: 10 });
     this.box('ceilingTile', -2, F * 2 - 0.005, 38, 23.6, 0.01, 11.6, { map: false, nav: false, collide: false, uv: 10 });
@@ -1074,7 +1077,7 @@ export class Level {
     this.wall('wornPlaster', -4, z0 + 0.15, -4, z1 - 0.15, 0, F - 0.25, 0.15, [{ at: 3, w: 1.2, y0: 0, y1: 2.2 }, { at: 9, w: 1.2, y0: 0, y1: 2.2 }], pw);
     this.wall('wornPlaster', x0 + 0.15, 38, -4, 38, 0, F - 0.25, 0.15, [{ at: 5, w: 1.2, y0: 0, y1: 2.2 }], pw);
     this.wall('wornPlaster', -2, z0 + 0.15, -2, z1 - 0.15, F, F - 0.25, 0.15, [{ at: 6, w: 1.2, y0: F, y1: F + 2.2 }], pw);
-    this.wall('wornPlaster', 5.8, z0 + 0.15, 5.8, 40.4, F, F - 0.25, 0.15, [{ at: 4, w: 1.2, y0: F, y1: F + 2.2 }], pw);
+    this.wall('wornPlaster', 5.8, z0 + 0.15, 5.8, 40.4, F, F - 0.25, 0.15, [], pw); // (its door only opened onto the stair rail)
     // Skirting boards along partitions.
     // Stairs at x≈8, rising south (+z) from z=33 to z=40.2.
     this.stairs('concrete', 8, 33.1, 0, 2.2, F, 7.1, 0);
@@ -1107,7 +1110,7 @@ export class Level {
         else this.box('steel', x, y + dy, fz + Math.sign(fz - z) * 0.01, 0.14, 0.025, 0.02, { map: false, collide: false, nav: false });
       }
     };
-    cab(-13.4, 42); cab(-13.4, 41.2); cab(-4.6, 33); cab(9.4, 43.2, F); cab(-13.4, 33, F);
+    cab(-13.4, 42); cab(-13.4, 41.2); cab(-2.6, 34.2, F); cab(5.2, 42.6, F); cab(-4.6, 43.2); cab(-4.6, 33); cab(9.4, 43.2, F); cab(-13.4, 33, F);
     // Office chairs (steel frame, worn wood seat/back), one knocked over.
     const chair = (x, z, y = 0, r = 0, fallen = false) => {
       const c = Math.cos(r), sn = Math.sin(r);
@@ -1141,7 +1144,7 @@ export class Level {
     this.prop('hangLamp', -9.5, 38.6, 0.4, { y: 2 * F - 1.36 - 0.02, mount: true });
     this.interiorLight(-9.5, 2 * F - 1.55, 38.6, 0xffad62, 16, 10);
     // Emissive exit signs over the doorways (practicals that read in bloom, no light cost).
-    for (const [x, y, z, ry, wt] of [[-2.4, 2.7, z0, Math.PI, 0.3], [-2, F + 2.42, 38.15, Math.PI / 2, 0.15], [-4, 2.42, 35.15, Math.PI / 2, 0.15], [5.8, F + 2.42, 36.15, Math.PI / 2, 0.15]]) this.exitSign(x, y, z, ry, wt);
+    for (const [x, y, z, ry, wt] of [[-2.4, 2.7, z0, Math.PI, 0.3], [-2, F + 2.42, 38.15, Math.PI / 2, 0.15], [-4, 2.42, 35.15, Math.PI / 2, 0.15]]) this.exitSign(x, y, z, ry, wt);
     // Sun shafts through the south (sun-side) windows of both floors, short so they stop at the floor.
     for (const x of [6, -2]) this.shaftOpenings.push({ center: V(x, 1.65, z1), w: 1.4, h: 1.1, normal: V(0, 0, -1), length: 6.5 });
     for (const x of [6, -2, -9]) this.shaftOpenings.push({ center: V(x, F + 1.65, z1), w: 1.4, h: 1.1, normal: V(0, 0, -1), length: 6.5 });
@@ -1155,7 +1158,8 @@ export class Level {
     for (const [x, z] of [[x0 - 0.25, z0 - 0.25], [x1 + 0.25, z0 - 0.25], [x0 - 0.25, z1 + 0.25], [x1 + 0.25, z1 + 0.25]]) this.cyl('metalDark', V(x, 0.1, z), V(x, 2 * F + 1.2, z), 0.06, 8);
     for (const at of [3, 7, 15.5]) this.decal('leakDecal', V(x0 + at, F - 0.25, z0 - 0.165), V(0, 0, -1), 1.5, 1.2);
     for (const at of [4, 12]) this.decal('leakDecal', V(x1 - at, 2 * F - 0.9, z1 + 0.165), V(0, 0, 1), 1.8, 1.6);
-    this.patrolPoints.push(V(-9, 0, 36), V(2, 0, 38), V(-8, F, 40), V(3, F, 35), V(-12, 0, 30), V(8, 0, 30));
+    this.patrolPoints.push(V(-9, 0, 36), V(2, 0, 38), V(-8, F, 40), V(3, F, 35), V(-12, 0, 30), V(8, 0, 30),
+      V(-10, 0, 41.5), V(0, 0, 41.5), V(9.2, 0, 42.5), V(-9, F, 35.5), V(1, F, 41.5), V(8, F, 42.5), V(-11.5, 0, 35.5));
   }
 
   buildContainerYard() {
@@ -1259,7 +1263,6 @@ export class Level {
     house(-38, 34, 7, 6, false);
     // Low vaultable walls.
     this.box('brick', -34, 0.55, 0, 0.4, 1.1, 8, { uv: 2 });
-    this.box('brick', -48, 0.5, 4, 6, 1.0, 0.4);
     this.box('concreteWall', -30, 0.55, -24, 7, 1.1, 0.4);
     this.box('concreteWall', -38, 0.55, 26, 0.4, 1.1, 5);
     // Guard tower (platform 4.2 m) at (-48, -40).
@@ -1356,16 +1359,17 @@ export class Level {
     this.wall('concreteWall', px - 3, pz - 2.5, px + 3, pz - 2.5, 0, 3, 0.3);
     this.wall('concreteWall', px + 3, pz + 2.5, px - 3, pz + 2.5, 0, 3, 0.3, [{ at: 4, w: 1.4, y0: 0, y1: 2.3 }], pdo);
     this.wall('concreteWall', px - 3, pz + 2.5, px - 3, pz - 2.5, 0, 3, 0.3, [{ at: 2.5, w: 1.4, y0: 1.0, y1: 2.0 }], pdo);
-    this.wall('concreteWall', px + 3, pz - 2.5, px + 3, pz + 2.5, 0, 3, 0.3, [{ at: 2.5, w: 1.2, y0: 1.0, y1: 2.0 }], pdo);
+    this.wall('concreteWall', px + 3, pz - 2.5, px + 3, pz + 2.5, 0, 3, 0.3, [{ at: 2.5, w: 1.2, y0: 0, y1: 2.3 }], pdo);
     this.box('corrugated', px, 3.1, pz, 6.6, 0.15, 5.6, { nav: false, map: false });
     this.prop('pipes', px - 1.5, pz - 2.2, 0, { y: 0.0, mount: true });
     this.prop('wallLamp', px + 1, pz + 2.67, 0, { y: 2.55, mount: true });
     this.prop('utilityBox2', px + 3.4, pz - 1.0, -Math.PI / 2);
     // Loading dock.
-    this.box('concrete', 9, 0.6, -24.5, 6, 1.2, 3);
-    this.box('metalDark', 9, 1.18, -23.0, 6, 0.06, 0.08, { map: false, nav: false, collide: false });
-    for (const xx of [6.8, 11.2]) this.box('black', xx, 0.75, -22.95, 0.5, 0.45, 0.12, { map: false, nav: false, collide: false });
-    this.stairs('concrete', 4.2, -24.5, Math.PI / 2, 3, 1.2, 1.8, 0);
+    // (Moved 4 m east: at x = 9 it sat in front of the warehouse's second door, leaving a 0.85 m trench.)
+    this.box('concrete', 13, 0.6, -24.5, 6, 1.2, 3);
+    this.box('metalDark', 13, 1.18, -23.0, 6, 0.06, 0.08, { map: false, nav: false, collide: false });
+    for (const xx of [10.8, 15.2]) this.box('black', xx, 0.75, -22.95, 0.5, 0.45, 0.12, { map: false, nav: false, collide: false });
+    this.stairs('concrete', 17.8, -24.5, -Math.PI / 2, 3, 1.2, 1.8, 0);
     // Street lights along the road + utility boxes, manholes, bins.
     for (const x of [-42, -18, 6, 30]) this.lampPost(x, -1.4, 0);
     for (const x of [-30, -6, 18]) this.lampPost(x, 9.4, Math.PI);
@@ -1439,6 +1443,53 @@ export class Level {
   }
 
   /**
+   * Precast concrete T-wall blast barrier (1.5 m slab, 3.4 m tall, foot) along z at x, from za to zb, skipping
+   * `skip` ranges. Slabs abut (no LOS slits); alternate slabs lean/offset a hair so the line reads as placed.
+   */
+  tWalls(x, za, zb, skip = [], face = 1) {
+    const W = 1.5, H = 3.4;
+    for (let z = za; z + W <= zb + 0.01; z += W) {
+      const zc = z + W / 2;
+      if (skip.some(([a, b]) => zc >= a && zc <= b)) continue;
+      const k = Math.round(z / W) % 2, dx = k ? 0.03 : -0.02;
+      this.box('concreteWall', x + dx, H / 2 + 0.25, zc, 0.3, H - 0.5, W, { uv: 2, surface: 'concrete' });
+      this.box('concreteWall', x + dx, 0.25, zc, 1.0, 0.5, W, { uv: 2, surface: 'concrete', map: false });
+      this.box('concrete', x + dx, H + 0.02, zc, 0.36, 0.08, W - 0.04, { uv: 1, map: false, collide: false, nav: false });
+      this.box('metalDark', x + dx, H - 0.1, zc, 0.34, 0.12, 0.08, { map: false, collide: false, nav: false, cast: false }); // lifting eye
+      if (rnd() < 0.3) this.decalA('graf' + Math.floor(rnd() * 16), V(x + dx + face * 0.16, 1.6, zc), V(face, 0, 0), 1.4, 1.4, rand(-0.05, 0.05));
+      else if (rnd() < 0.15) this.decalA('leak' + Math.floor(rnd() * 4), V(x + dx + face * 0.16, 2.0, zc), V(face, 0, 0), 0.8, 2.4, 0);
+    }
+    this.blob(x, (za + zb) / 2, 1.8, zb - za, 0, 0.012, 0.6);
+  }
+
+  /**
+   * Spawn screens (map feedback: "people spawn and immediately shoot each other"). Each team's spawn strip is
+   * fenced by a blast-wall line with three gaps; a container sits behind every gap (offset toward the field) so no
+   * straight line from a spawn reaches the field: you leave through a chicane with cover. Two wrecked containers
+   * also break the 116 m sightline straight down the main road. Verified with tools/qa/suites/level_audit.
+   */
+  buildSpawnScreens() {
+    // West (team 0, x = -53): wall at x = -50, 3 m gaps at z = -24, 0, 25.5; containers at x = -47.6 behind the gaps.
+    const gW = [-24, 0, 25.5];
+    this.tWalls(-50, -34.5, 34.5, gW.map((z) => [z - 1, z + 1]), 1);
+    gW.forEach((z, i) => this.container(-47.6, z, Math.PI / 2 + (i - 1) * 0.04, ['containerGreen', 'containerTan', 'containerRed'][i], 0, false));
+    // East (team 1, x = 55): wall at x = 51.5 (the stacked yard containers at z = ±24 close their stretch), gaps at
+    // z = -7.5, 9 and the south/north ends; containers at x = 49.1 behind the gaps.
+    this.tWalls(51.5, -34.5, 34.5, [[-27.4, -20.6], [20.6, 27.4], [-8.3, -6.7], [8.2, 9.8]], -1);
+    this.container(49.1, -7.5, Math.PI / 2 + 0.03, 'containerBlue', 0, false);
+    this.container(49.1, 9, Math.PI / 2 - 0.02, 'containerWhite', 0, false);
+    // Cross containers closing the long sightlines down both spawn strips (corner spawns ↔ strip spawns).
+    for (const z of [-37.5, 37.5]) { this.container(-54.3, z, 0.02, 'containerBlue', 0, false); this.container(54.3, z, -0.02, 'containerTan', 0, false); }
+    // Corridors behind the warehouse (north) and the office (south): containers break the 100 m perimeter lanes.
+    this.container(-25, -52.2, 0.04, 'containerRed', 0, false); this.container(25, -52.4, -0.05, 'containerGreen', 2.6 * 0, true);
+    this.container(-25, 52.3, -0.03, 'containerWhite', 0, false); this.container(25, 52.2, 0.05, 'containerBlue', 0, false);
+    // Main road: a jack-knifed container mid-map and one at the west end break the lane into fights at range.
+    this.container(-2, 4.3, -0.45, 'containerRed', 0, true);
+    this.container(-30, 3.9, 0.3, 'containerGreen', 0, false);
+    this.prop('barrier', 2.6, 6.8, 0.2); this.prop('barrier2', -35.2, 7.2, -0.2);
+  }
+
+  /**
    * Storytelling + anti-tiling decal pass (all from the one decal atlas): graffiti, hazard/stencil signage and leak
    * streaks on walls; oil stains, cracks, asphalt patches, tyre tracks and shell scorch marks on the ground.
    */
@@ -1484,7 +1535,7 @@ export class Level {
     D(graf(), V(-1.92, 3.4 + 1.5, 41.5), V(1, 0, 0), 1.7, 1.7, 0);
     // --- Pump house / utility boxes / loading dock signage.
     D('sign0', V(15, 1.7, -13.33), V(0, 0, 1), 0.5, 0.5, 0);
-    D('tape', V(9, 0.95, -22.98), V(0, 0, 1), 5.8, 0.18, 0);
+    D('tape', V(13, 0.95, -22.98), V(0, 0, 1), 5.8, 0.18, 0);
     D(graf(), V(13.0, 1.25, -18.67), V(0, 0, -1), 1.9, 1.9, 0);
     D('stNoEntry', V(15, 2.4, -18.67), V(0, 0, -1), 2.2, 0.55, 0);
     // --- Ruins: tags + leaks on the houses.
@@ -1523,7 +1574,7 @@ export class Level {
   placeProps() {
     const P = (k, x, z, r = 0, o) => this.prop(k, x, z, r, o);
     // Jersey barriers along road.
-    const barr = [[-6, -1, 0.1], [-1, -1.5, 0], [8, 9.5, 0.05], [14, 9, -0.1], [-16, 10, 0.4], [22, -4, 1.57], [22, 4, 1.57], [-28, 6, 1.6]];
+    const barr = [[-6, -1, 0.1], [-1, -1.5, 0], [8, 9.5, 0.05], [14, 9, -0.1], [-16, 10, 0.4], [22, -4, 1.57], [22, 4, 1.57], [-25.4, 7.0, 1.6]];
     for (const [x, z, r] of barr) P(rnd() < 0.5 ? 'barrier' : 'barrier2', x, z, r);
     // Crate clusters.
     const crates = [[-2, -20.6], [3, 20], [-17, -30], [-15, -26], [12, -44], [12, -42.7], [-6, 30], [29, 4], [37, 22], [45, -26], [-36, -8], [-46, 26], [20, 30], [-24, -40], [5, -28]];
@@ -1537,7 +1588,7 @@ export class Level {
       P('woodCrate', x + 0.3 * Math.cos(r), z - 0.3 * Math.sin(r), r - 0.1, { y: 0.46 });
     }
     // Barrels.
-    const barrels = [[-7, -7], [-7.6, -6.4], [10, 3], [18, -24], [18.6, -23.4], [31, -6], [44, 12], [44.6, 12.7], [-26, 20], [-40, -2], [-15, -46], [15, -47], [-52, -50], [50, -50], [-52, 50], [52, 52]];
+    const barrels = [[-7, -7], [-7.6, -6.4], [10, 3], [19.8, -26.6], [20.4, -26.0], [31, -6], [44, 12], [44.6, 12.7], [-26, 20], [-40, -2], [-15, -46], [15, -47], [-52, -50], [50, -50], [-52, 50], [52, 52]];
     barrels.forEach(([x, z], i) => P(['barrel1', 'barrel2', 'barrel3'][i % 3], x, z, rand(0, 6)));
     // A couple of toppled barrels.
     P('barrel1', 19.4, -22.6, 0.6, { rz: Math.PI / 2, collide: true });

@@ -208,6 +208,7 @@ AK, P226). They can be cut further by atlasing.
 | FPS pistol animations (pistol grip template) | ccransh | sketchfab.com/3d-models/fps-pistol-animations-0d7a343dcb6f401197a73c91aee93f6d | CC-BY 4.0 |
 | FPS animations sniper rifle (bolt grip template) | ccransh | sketchfab.com/3d-models/fps-animations-sniper-rifle-c15ae8393d824f5b929e3f69691cdd31 | CC-BY 4.0 |
 | FPS Arms remington (Remington 870 pump + grip template) | ccransh (870 by tris09) | sketchfab.com/3d-models/fps-arms-remington-shotgun-e68ef617fe8a48cca8610d016ffd5881 | CC-BY 4.0 |
+| M4A1 | Firewarden | sketchfab.com/3d-models/m4a1-40d8ef818c7549a896371cbb1f64fec6 | CC-BY 4.0 |
 | FN Scar-L Assault Rifle | Hitansh_3DArtist | sketchfab.com/3d-models/fn-scar-l-assault-rifle-ea1823de59684fd596d9f6726382f948 | CC-BY 4.0 |
 | MP5 Submachine Gun | Rotuma | sketchfab.com/3d-models/mp5-submachine-gun-a73b61932a0e4eecb5db5c63c158aa24 | CC-BY 4.0 |
 | Special Sniper Rifle VSS Vintorez | ArmsMuseum | sketchfab.com/3d-models/special-sniper-rifle-vss-vintorez-4d5d8c1b7b79429abfa4816f18330089 | CC0 |
@@ -216,7 +217,7 @@ AK, P226). They can be cut further by atlasing.
 | Sig Sauer P226 | Alexcanot | sketchfab.com/3d-models/sig-sauer-p226-e3d4f1ab22f342f4a0891743353c114c | CC-BY 4.0 |
 | M1911 pistol | egorbelous | sketchfab.com/3d-models/m1911-pistol-80a0b8a6c4314da4a7b3a7cfe6cec1d4 | CC-BY 4.0 |
 | First-person rifle animations (idle, walk, run, fire, reload, equip, holster), effector-retargeted | Free FPS Template (Fab) Blender source files; controller shapes by Helindu | Fab listing | used under its licence |
-| M4A1, AK-47 (unchanged meshes, re-rigged) | Operation Steel Tide (AetherRadar) | github.com/AetherRadar/operation-steel-tide | MIT |
+| AK-47 (unchanged mesh, re-rigged) | Operation Steel Tide (AetherRadar) | github.com/AetherRadar/operation-steel-tide | MIT |
 | Generic Red Dot Scope (red dot) | valterjherson1 | sketchfab.com/3d-models/generic-red-dot-scope-rifle-attachment-lowpoly-8bf2794c30d04fa0aed1e3df92cd8a9e | CC-BY 4.0 |
 | EoTech EXPS3-0 Holographic Weapon Sight (holo; logos removed) | valterjherson1 | sketchfab.com/3d-models/eotech-exps3-0-holographic-weapon-sight-lowpoly-45e4fcdfb1b34756ab9e866564a12f66 | CC-BY 4.0 |
 | Advanced Combat Optical Gunsight (4x scope) | Argentavisss | sketchfab.com/3d-models/advanced-combat-optical-gunsight-game-ready-4675fc83ccc54c018d4d03ee1709e8f5 | CC-BY 4.0 |

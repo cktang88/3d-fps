@@ -281,7 +281,7 @@ export class HUD {
     this.fpsT0 ??= nowMs; this.fpsFrames++;
     if (nowMs - this.fpsT0 > 500) {
       const info = g.renderer.renderer.info, secs = (nowMs - this.fpsT0) / 1000;
-      const fps = this.fpsFrames / secs, scale = g.renderer.dynScale ?? 1;
+      const fps = this.fpsFrames / secs, scale = g.renderer.internalSize?.scale ?? g.renderer.dynScale ?? 1; // internal / output (FSR + dynamic res)
       this.el.fps.textContent = g.settings.fpsCounter
         ? `${Math.round(fps)} FPS · ${(1000 / fps).toFixed(1)} ms · ${Math.round(scale * 100)}% res · ${info.render.calls} draws` : '';
       this.el.fps.style.color = fps < 30 ? 'rgba(255,110,110,0.85)' : fps < 50 ? 'rgba(255,210,120,0.8)' : '';

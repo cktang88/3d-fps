@@ -15,8 +15,9 @@
     gl[k] = function (...a) {
       if (on) {
         C[k] = (C[k] || 0) + 1;
-        if (k === 'bufferData' || k === 'bufferSubData') { const d = a[1]; C[k + '_bytes'] = (C[k + '_bytes'] || 0) + (d?.byteLength ?? (typeof d === 'number' ? d : 0)); }
-        if (k === 'texImage2D' || k === 'texSubImage2D') { const w = a.length >= 9 ? a[3] * a[4] : (a[5]?.width || 0) * (a[5]?.height || 0); C[k + '_px'] = (C[k + '_px'] || 0) + (w || 0); }
+        if (k === 'bufferData') { const d = a[1]; C[k + '_bytes'] = (C[k + '_bytes'] || 0) + (d?.byteLength ?? (typeof d === 'number' ? d : 0)); }
+        if (k === 'texSubImage2D' && a.length >= 9) { const key = `texSub_${a[4]}x${a[5]}`; C[key] = (C[key] || 0) + 1; }
+        if (k === 'bufferSubData') { const d = a[2]; C.bufferSubData_bytes = (C.bufferSubData_bytes || 0) + (d?.byteLength ?? 0); }
         if (k === 'getParameter') { const n = a[0]; C['getParameter_' + n] = (C['getParameter_' + n] || 0) + 1; }
       }
       if (k === 'texStorage2D' || k === 'texStorage3D') { const f = '0x' + a[2].toString(16) + ` ${a[3]}x${a[4]}`; fmts[f] = (fmts[f] || 0) + 1; }
@@ -46,6 +47,8 @@
   Q.down('Mouse2', false);
   await run('sun', 20, () => { Q.place([2, 0, -8], 2.68, 0.06); });
   out.texStorageFormats = fmts;
+  out.skeletons = (() => { const set = new Set(); g.renderer.scene.traverse((o) => { if (o.isSkinnedMesh) set.add(o.skeleton); }); g.renderer.viewScene.traverse((o) => { if (o.isSkinnedMesh) set.add(o.skeleton); }); return [...set].map((sk) => sk.boneTexture ? `${sk.boneTexture.image.width}x${sk.boneTexture.image.height}` : 'none'); })();
+  out.batched = (() => { const l = []; g.renderer.scene.traverse((o) => { if (o.isBatchedMesh) l.push(`${o._indirectTexture?.image.width}x${o._indirectTexture?.image.height}`); }); return { n: l.length, sizes: [...new Set(l)] }; })();
   out.programsTotal = r.info.programs.length;
   out.vm = { probeEvery: g.viewmodel?.probeEvery, probeInterval: g.viewmodel?.probeInterval };
   for (const k of Object.keys(orig)) gl[k] = orig[k];

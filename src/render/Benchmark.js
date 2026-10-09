@@ -43,6 +43,7 @@ export const BENCH_STEPS = [
   { name: 'Render scale 0.5', o: { renderScale: 0.5 } },
   { name: 'SMAA off', o: { smaa: false } },
   { name: 'Transparent particles off', o: { particles: false } },
+  { name: 'Data-texture upload ring off (A/B)', o: { uploadRing: false } },
   { name: 'Low preset features', o: { ...QUALITY_PRESETS[0] } },
   { name: 'Everything above off', o: ALL_OFF },
 ];

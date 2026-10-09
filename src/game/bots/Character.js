@@ -54,6 +54,45 @@ function findBones(root) {
  * through each rig's armature transform and the translation scaled by leg length. Bone translation /
  * scale tracks are dropped so the target keeps its own proportions.
  */
+/**
+ * The 100STYLE cycles carry their own hips height (different capture skeleton), which on our rigs left
+ * every mocap gait floating ~13 cm (crouch-walk hips even above standing). Sample each mocap clip's FK on
+ * the actual rig and shift its hips track so the lowest foot/toe over the cycle sits exactly where it
+ * does in the idle clip (feet planted on the ground plane).
+ */
+function groundMocapClips(scene, clips, refClip) {
+  const bn = {}; scene.traverse((o) => { if (o.isBone && !bn[boneKey(o.name)]) bn[boneKey(o.name)] = o; });
+  const hips = bn.Hips, feet = ['LeftFoot', 'RightFoot', 'LeftToeBase', 'RightToeBase'].map((k) => bn[k]).filter(Boolean);
+  const mocap = clips.filter((c) => /^mocap_/.test(c.name));
+  if (!hips?.parent || !feet.length || !refClip || !mocap.length) return;
+  const saved = []; scene.traverse((o) => { if (o.isBone) saved.push([o, o.position.clone(), o.quaternion.clone(), o.scale.clone()]); });
+  const mixer = new THREE.AnimationMixer(scene), v = new THREE.Vector3();
+  const minFoot = (clip, n) => {
+    const a = mixer.clipAction(clip); a.reset().play();
+    let mn = Infinity;
+    for (let i = 0; i < n; i++) {
+      mixer.setTime((clip.duration * i) / n); scene.updateMatrixWorld(true);
+      for (const f of feet) mn = Math.min(mn, f.getWorldPosition(v).y);
+    }
+    a.stop(); mixer.uncacheAction(clip);
+    return mn;
+  };
+  const ref = minFoot(refClip, 8);
+  scene.updateMatrixWorld(true);
+  const toLocal = new THREE.Matrix3().setFromMatrix4(hips.parent.matrixWorld.clone().invert());
+  for (const clip of mocap) {
+    const tr = clip.tracks.find((t) => t.name.endsWith('.position') && boneKey(THREE.PropertyBinding.parseTrackName(t.name).nodeName) === 'Hips');
+    if (!tr) continue;
+    const dy = minFoot(clip, 48) - ref;
+    if (!(Math.abs(dy) > 1e-4)) continue;
+    const d = v.set(0, -dy, 0).applyMatrix3(toLocal), vals = tr.values;
+    for (let i = 0; i < vals.length; i += 3) { vals[i] += d.x; vals[i + 1] += d.y; vals[i + 2] += d.z; }
+  }
+  mixer.stopAllAction(); mixer.uncacheRoot(scene);
+  for (const [o, p, q, s] of saved) { o.position.copy(p); o.quaternion.copy(q); o.scale.copy(s); }
+  scene.updateMatrixWorld(true);
+}
+
 function retargetClips(clips, srcScene, dstScene) {
   srcScene.updateMatrixWorld(true); dstScene.updateMatrixWorld(true);
   const S = new Map(), D = new Map();
@@ -253,6 +292,11 @@ export class CharacterTemplate {
     g.traverse((o) => { if (o.isMesh && o.material?.map) this.textured = true; });
     let clips = gltf.animations;
     if (meshGltf && meshGltf !== gltf) clips = retargetClips(clips, gltf.scene, g);
+    if (clips.some((c) => /^mocap_/.test(c.name))) {
+      // Ground the mocap cycles on this rig (copies, so a shared source gltf is never mutated twice).
+      clips = clips.map((c) => (/^mocap_/.test(c.name) ? c.clone() : c));
+      groundMocapClips(g, clips, clips.find((c) => c.name === 'aim_idle') || clips.find((c) => c.name === 'idle'));
+    }
     this.clips = new Map(clips.map((c) => [c.name, c]));
     if (meshGltf) mergeSkinnedByMaterial(g);
     // The tactical body's headset is authored floating above the cap (user report: "hovers above the
@@ -485,6 +529,7 @@ function springDamperExact(s, goal, halflife, dt) {
 }
 // Hot-path world transforms read straight from matrixWorld (callers keep matrices current).
 const _wv = new THREE.Vector3(), _ws = new THREE.Vector3();
+const _cl = { lp: new THREE.Vector3(), rp: new THREE.Vector3(), d: new THREE.Vector3(), pole: new THREE.Vector3(), lq: new THREE.Quaternion(), rq: new THREE.Quaternion(), q: new THREE.Quaternion(), m: new THREE.Matrix4(), n: new THREE.Matrix3() };
 const wpos = (o, out) => out.setFromMatrixPosition(o.matrixWorld);
 const wquat = (o, out) => { o.matrixWorld.decompose(_wv, out, _ws); return out; };
 const wrapPi = (a) => ((a + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
@@ -702,7 +747,7 @@ export class Character {
 
   // ---------------- events ----------------
   onSpawn(bot) {
-    this.deadTime = 0;
+    this.deadTime = 0; this._hidden = false; this._lodAcc = 1; // first update after spawn: full pose + aim/IK pass
     this.dying = null;
     this.mixer.stopAllAction();
     for (const [k, a] of Object.entries(this.lowerActions)) { a.reset().play(); a.setEffectiveWeight(k === 'idle' ? 1 : 0); if (GAIT_KEYS.includes(k)) a.timeScale = 0; }
@@ -999,7 +1044,17 @@ export class Character {
   /** Procedural layer applied on top of the sampled pose, then weapon + IK + matrices. */
   _afterPose(bot, fresh) {
     if (!fresh) { this._matrixFrame = -1; return; } // matrices refreshed lazily (hitboxes) / by the renderer
-    if (this._hidden) { this._matrixFrame = -1; return; } // off-screen / occluded: mixer pose only, no aim/IK pass
+    if (this._hidden) {
+      // Off-screen / occluded: mixer pose only, no aim/IK pass, but keep the crouch pelvis drop so the
+      // hitboxes of a bot crouch-walking behind low cover stay as low as its visible pose.
+      this._matrixFrame = -1;
+      this._saveProc();
+      let cw = 0;
+      if (bot.crouch > 0.01) for (const m of this.mocapActions) if (m.kind === 'crouch') cw += m.w;
+      this.crouchMove = cw;
+      if (cw > 0.01) { this.root.updateMatrixWorld(true); this._crouchLegs(cw); }
+      return;
+    }
     const root = this.root, b = this.bones;
     this._saveProc();
     // Dead blending over discrete switches (run/walk regime, crouch, one-shots, carry state).
@@ -1009,6 +1064,12 @@ export class Character {
     this._dbSig = sig;
     this.dblend.apply(this._animDt || 1 / 60);
     root.updateMatrixWorld(true);
+    // Crouched locomotion: the 100STYLE "Crouched" cycles barely bend the knees on our rigs (hips at
+    // walking height), so drop the pelvis and solve both legs back onto their animated feet.
+    let cw = 0;
+    for (const m of this.mocapActions) if (m.kind === 'crouch') cw += m.w;
+    this.crouchMove = cw;
+    if (cw > 0.01) this._crouchLegs(cw);
     const pitch = clamp(bot.pitch, -70 * DEG, 70 * DEG);
     const aimYaw = bot.yaw;
     this.leanIn = damp(this.leanIn || 0, Character.LEAN_IN * (1 - clamp(this.speedS / 2, 0, 1)) * (1 - bot.crouch), 6, this._animDt || 0.016);
@@ -1022,7 +1083,7 @@ export class Character {
       // World-space rotation for this bone's share: twist about up, pitch about aim-right, plus recoil
       // (pitch back) and a directional flinch on the upper chest.
       // Part of the aim pitch (the arms carry the rest), plus an aggressive forward lean when planted.
-      let p = (pitch * 0.45 - this.leanIn) * share[i];
+      let p = (pitch * 0.45 - this.leanIn - Character.CROUCH_LEAN * this.crouchMove) * share[i];
       if (i === 2) p += this.fireKick * 0.05;
       _q3.setFromAxisAngle(UP, this.twist * share[i]);
       _q4.setFromAxisAngle(_v5, p);
@@ -1232,6 +1293,26 @@ export class Character {
   }
 
   /** Swing the elbow about the shoulder→wrist axis toward `poleDir` (world), keeping the wrist fixed. */
+  /** Pelvis drop + two-bone leg IK keeping each foot's animated world position and orientation. */
+  _crouchLegs(w) {
+    const b = this.bones, T = _cl;
+    if (!b.hips?.parent || !b.lUp || !b.lLeg || !b.lFoot || !b.rUp || !b.rLeg || !b.rFoot) return;
+    wpos(b.lFoot, T.lp); wquat(b.lFoot, T.lq); wpos(b.rFoot, T.rp); wquat(b.rFoot, T.rq);
+    const fx = -Math.sin(this.bodyYaw), fz = -Math.cos(this.bodyYaw); // body forward (yaw 0 = -Z)
+    const drop = Character.CROUCH_DROP * w;
+    T.d.set(-fx * drop * 0.25, -drop, -fz * drop * 0.25); // down, and the seat back a little
+    T.n.setFromMatrix4(T.m.copy(b.hips.parent.matrixWorld).invert());
+    b.hips.position.add(T.d.applyMatrix3(T.n));
+    b.hips.updateMatrixWorld(true);
+    const rx = Math.cos(this.bodyYaw), rz = -Math.sin(this.bodyYaw); // body right
+    for (const [up, leg, foot, tp, tq, side] of [[b.lUp, b.lLeg, b.lFoot, T.lp, T.lq, -1], [b.rUp, b.rLeg, b.rFoot, T.rp, T.rq, 1]]) {
+      this._twoBoneIK(up, leg, foot, tp, 1);
+      this._pole(up, leg, foot, T.pole.set(fx + rx * side * 0.3, 0, fz + rz * side * 0.3), 0.5 * w);
+      foot.quaternion.copy(wquat(foot.parent, T.q).invert().multiply(tq));
+      foot.updateMatrixWorld(true);
+    }
+  }
+
   _pole(A, B, C, poleDir, weight) {
     const a = wpos(A, _ik.a), bb = wpos(B, _ik.b), c = wpos(C, _ik.c);
     const axis = _ik.ax0.subVectors(c, a);
@@ -1398,7 +1479,7 @@ export class Character {
 
   // ---------------- death ----------------
   _startDeath(bot) {
-    this._restoreProc();
+    this._restoreProc(); this._hidden = false; // corpses never take the LOD path
     const hit = this.lastHit;
     const dir = _v1.set(0, 0, 0);
     if (hit?.dir) dir.set(hit.dir.x, 0, hit.dir.z);
@@ -1666,3 +1747,5 @@ Character.STANCE_YAW = -30 * DEG; // hips 30° to the firing side (TC 3-22.9)
 Character.TWIST_TRIM = -12 * DEG; // shoulders stay ~12° bladed
 Character.LEAN_IN = 0.09; // rad of extra forward lean when planted and aiming
 Character.POCKET_Y = 0.06; // shoulder-pocket height trim (m): bore ≈ 6.5 cm under the eye
+Character.CROUCH_DROP = 0.24; // crouch-walk pelvis drop (m): hips ~0.97 → ~0.73, knees ~80–95° in stance
+Character.CROUCH_LEAN = 0.22; // extra forward chest lean (rad) while crouch-walking

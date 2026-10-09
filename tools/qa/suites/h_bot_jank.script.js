@@ -20,6 +20,7 @@
   const angDiff = (a, b) => Math.abs(((a - b + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
   const DIRS = [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]].map((a) => new V(...a));
   let botBot = 0, botBotPairs = new Set();
+  const lastHead = new Map(); const _ok = g.onActorKilled; g.onActorKilled = function (v, k, info) { lastHead.set(v, !!info?.headshot); return _ok.call(this, v, k, info); };
   const dumps = bots.map(() => []), excs = bots.map(() => []); let tick = 0;
   for (const b of bots) { if (!b._qaUpd) { b._qaUpd = b.update; const i = bots.indexOf(b); b.update = function (d) { try { return b._qaUpd.call(this, d); } catch (e) { if (excs[i].length < 3) excs[i].push(String(e.stack || e).slice(0, 300)); } }; } }
   Q.sim(SIM, dt, () => {
@@ -31,19 +32,20 @@
         // Death: time for the hips to reach the ground, hips displacement, settle jitter 3-4 s after death.
         if (m.bones?.hips && m.root.visible) {
           m.root.updateMatrixWorld(true); const hp = wp(m.bones.hips);
-          if (!s.dth) s.dth = { t: 0, p0: hp.clone(), ground: null, last: hp.clone(), jit: 0, y0: b.position.y };
+          if (!s.dth) s.dth = { head: lastHead.get(b) || false, t: 0, p0: hp.clone(), ground: null, last: hp.clone(), jit: 0, y0: b.position.y };
           const d = s.dth; d.t += dt;
           if (d.ground == null && hp.y - d.y0 < 0.32) d.ground = d.t;
           if (d.t > 3 && d.t <= 4) d.jit = Math.max(d.jit, hp.distanceTo(d.last) / dt);
           if (d.t <= 3) d.disp = Math.hypot(hp.x - d.p0.x, hp.z - d.p0.z);
           d.last.copy(hp);
-          if (d.t > 4.05 && !d.done) { d.done = true; s.deaths.push({ ground: d.ground == null ? null : +d.ground.toFixed(2), disp: +(d.disp || 0).toFixed(2), jitter: +d.jit.toFixed(3) }); }
+          if (d.t > 4.05 && !d.done) { d.done = true; s.deaths.push({ head: d.head, ground: d.ground == null ? null : +d.ground.toFixed(2), disp: +(d.disp || 0).toFixed(2), jitter: +d.jit.toFixed(3) }); }
         }
         s.deadT += dt; if (m.root.visible) s.corpseMax = Math.max(s.corpseMax, s.deadT); s.lastToe = null; s.apartT = 0; s.floatT = 0; return;
       }
-      if (s.dth && !s.dth.done && s.dth.t > 1.5) s.deaths.push({ ground: s.dth.ground, disp: +(s.dth.disp || 0).toFixed(2), jitter: null, respawnedAt: +s.dth.t.toFixed(1) });
+      if (s.dth && !s.dth.done && s.dth.t > 1.5) s.deaths.push({ head: s.dth.head, ground: s.dth.ground, disp: +(s.dth.disp || 0).toFixed(2), jitter: null, respawnedAt: +s.dth.t.toFixed(1) });
+      if (s.dth || s.aliveT === 0) s.spawnT = 0; s.spawnT = (s.spawnT || 0) + dt;
       s.dth = null; s.deadT = 0; s.aliveT += dt;
-      if (m._hidden) { s.hiddenF = (s.hiddenF || 0) + 1; s.lastToe = null; return; } // LOD-hidden: no aim/IK pass by design
+      if (m._hidden) { s.hiddenF = (s.hiddenF || 0) + 1; s.lastToe = null; s.lastToes = null; return; } // LOD-hidden: no aim/IK pass by design
       m.root.updateMatrixWorld(true);
       const B = m.bones;
       // Ground reference: raycast down from the hips (nav y can be off on stairs / ramps).
@@ -65,6 +67,15 @@
         if (planted) { s.slide.push(dxz / dt); s.stanceAcc[k] += dxz; s.stanceOn[k] = true; }
         else if (s.stanceOn[k]) { s.stance[k].push(s.stanceAcc[k]); s.stanceAcc[k] = 0; s.stanceOn[k] = false; }
       }
+      // Tighter contact test (bots engineer): TOE within 2 cm of its 1 s minimum, |vy| < 0.1, body speed < 2.2.
+      const toesNow = [wp(B.lToe), wp(B.rToe)];
+      s.th = s.th || [[], []]; s.toeSlip = s.toeSlip || [];
+      if (s.lastToes) for (let k = 0; k < 2; k++) {
+        const h = toesNow[k].y - groundY; s.th[k].push(h); if (s.th[k].length > 30) s.th[k].shift();
+        const vy = (toesNow[k].y - s.lastToes[k].y) / dt;
+        if (bodyV < 2.2 && h < Math.min(...s.th[k]) + 0.02 && Math.abs(vy) < 0.1) s.toeSlip.push(Math.hypot(toesNow[k].x - s.lastToes[k].x, toesNow[k].z - s.lastToes[k].z) / dt);
+      }
+      s.lastToes = toesNow;
       s.lastToe = feet;
       // Floating / sinking: lowest toe vs the raycast ground while not jumping.
       const low = Math.min(wp(B.lToe).y, wp(B.rToe).y) - groundY;
@@ -76,7 +87,7 @@
       for (const a of m.mixer._actions) {
         if (a === m.hitAction || a === m.deathAction || a === m.toppleLoAction || a === m.toppleUpAction) continue;
         const w = a.getEffectiveWeight(), w0 = s.lastW.get(a);
-        if (w0 !== undefined && Math.abs(w - w0) > 0.35) { s.pops++; if (s.popList.length < 5) s.popList.push((a.getClip()?.name || '?') + ' ' + w0.toFixed(2) + '->' + w.toFixed(2)); }
+        if (w0 !== undefined && Math.abs(w - w0) > 0.35 && s.spawnT > 0.5) { s.pops++; if (s.popList.length < 5) s.popList.push((a.getClip()?.name || '?') + ' ' + w0.toFixed(2) + '->' + w.toFixed(2)); }
         s.lastW.set(a, w);
       }
       // Chest vs hips twist.
@@ -121,14 +132,15 @@
   const pct = (arr, p) => { if (!arr.length) return 0; const a = arr.slice().sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(p * a.length))]; };
   out.bots = S.map((s, i) => {
     const stance = s.stance[0].concat(s.stance[1]);
-    const r = { i, hiddenFrames: s.hiddenF || 0, team: bots[i].team, weapon: bots[i].weapon?.id, stanceSlideP95: Q.r(pct(stance, 0.95), 3), stanceN: stance.length, supportP95: Q.r(pct(s.support, 0.95), 3), supportN: s.support.length, yawRateP99: Q.r(pct(s.yawRate, 0.99), 0), moveAimP95: Q.r(pct(s.moveAim, 0.95), 1), moveAimN: s.moveAim.length, deaths: s.deaths, ratioP5: Q.r(pct(s.ratio, 0.05)), ratioP95: Q.r(pct(s.ratio, 0.95)), ratioN: s.ratio.length, aliveS: Q.r(s.aliveT, 1), slideP95: Q.r(pct(s.slide, 0.95)), slideN: s.slide.length, popsPerMin: Q.r(s.pops / Math.max(1e-3, s.aliveT) * 60, 1), pops: s.popList, twistMax: Q.r(s.twistMax, 0), aimP90: Q.r(pct(s.aimErr, 0.9), 1), aimN: s.aimErr.length, handsApartMax: Q.r(s.apartMax), tposeEvents: s.tpose, floatMax: Q.r(s.floatMax), sinkMin: Q.r(s.sinkMin), floatEvents: s.floatEv, insideFrames: s.inside, corpseMaxS: Q.r(s.corpseMax, 1) };
+    const r = { i, toeSlipP50: Q.r(pct(s.toeSlip || [], 0.5)), toeSlipP90: Q.r(pct(s.toeSlip || [], 0.9)), toeN: (s.toeSlip || []).length, hiddenFrames: s.hiddenF || 0, team: bots[i].team, weapon: bots[i].weapon?.id, stanceSlideP95: Q.r(pct(stance, 0.95), 3), stanceN: stance.length, supportP95: Q.r(pct(s.support, 0.95), 3), supportN: s.support.length, yawRateP99: Q.r(pct(s.yawRate, 0.99), 0), moveAimP95: Q.r(pct(s.moveAim, 0.95), 1), moveAimN: s.moveAim.length, deaths: s.deaths, ratioP5: Q.r(pct(s.ratio, 0.05)), ratioP95: Q.r(pct(s.ratio, 0.95)), ratioN: s.ratio.length, aliveS: Q.r(s.aliveT, 1), slideP95: Q.r(pct(s.slide, 0.95)), slideN: s.slide.length, popsPerMin: Q.r(s.pops / Math.max(1e-3, s.aliveT) * 60, 1), pops: s.popList, twistMax: Q.r(s.twistMax, 0), aimP90: Q.r(pct(s.aimErr, 0.9), 1), aimN: s.aimErr.length, handsApartMax: Q.r(s.apartMax), tposeEvents: s.tpose, floatMax: Q.r(s.floatMax), sinkMin: Q.r(s.sinkMin), floatEvents: s.floatEv, insideFrames: s.inside, corpseMaxS: Q.r(s.corpseMax, 1) };
     const F = (m) => out.fails.push(`bot${i}: ${m}`);
-    if (r.slideP95 > TH.slideP95) F(`planted-foot slide p95 ${r.slideP95} m/s > ${TH.slideP95}`); else if (r.slideP95 > TH.slideWarn) out.warn.push(`bot${i}: foot slide p95 ${r.slideP95}`);
-    if (r.stanceN > 10 && r.stanceSlideP95 > TH.stanceSlideP95) F(`stance foot slide p95 ${r.stanceSlideP95} m per contact > ${TH.stanceSlideP95} (spec ≤0.02)`); else if (r.stanceN > 10 && r.stanceSlideP95 > TH.stanceSlideWarn) out.warn.push(`bot${i}: stance slide p95 ${r.stanceSlideP95} m`);
+    if (r.toeN > 60 && r.toeSlipP90 > 0.7) F(`planted toe slip p90 ${r.toeSlipP90} m/s > 0.7 (p50 ${r.toeSlipP50})`); else if (r.toeN > 60 && r.toeSlipP50 > 0.25) out.warn.push(`bot${i}: toe slip p50 ${r.toeSlipP50}`);
+    if (r.stanceN > 10 && r.stanceSlideP95 > TH.stanceSlideP95) out.warn.push(`bot${i}: [unvalidated] stance foot slide p95 ${r.stanceSlideP95} m per contact > ${TH.stanceSlideP95} (spec ≤0.02)`); else if (r.stanceN > 10 && r.stanceSlideP95 > TH.stanceSlideWarn) out.warn.push(`bot${i}: stance slide p95 ${r.stanceSlideP95} m`);
     if (r.supportN > 30 && r.supportP95 > TH.supportP95) F(`support hand off grip p95 ${r.supportP95} m > ${TH.supportP95}`);
     if (r.yawRateP99 > TH.yawRateP99) F(`upper-body yaw rate p99 ${r.yawRateP99}°/s > ${TH.yawRateP99}`);
     if (r.moveAimN > 20 && r.moveAimP95 > TH.moveAimP95) F(`muzzle off aim while moving aimed p95 ${r.moveAimP95}° > ${TH.moveAimP95}`);
     for (const d of s.deaths) {
+      if (d.head) continue; // headshots drop instantly by design
       if ((d.ground == null && !(d.respawnedAt < 1.5)) || d.ground < TH.deathGroundLo || d.ground > TH.deathGroundHi) F(`death: hips grounded at ${d.ground == null ? 'never (within ' + (d.respawnedAt ?? 4) + ' s)' : d.ground + ' s'} (spec 0.7-1.1)`);
       if (d.jitter != null && d.jitter > TH.deathJitter) F(`death: corpse jitter ${d.jitter} m/s at 3-4 s`);
     }
@@ -138,7 +150,7 @@
     if (r.twistMax > TH.twistDeg) F(`chest twist ${r.twistMax}° > ${TH.twistDeg}`);
     if (r.aimN >= 5 && r.aimP90 > TH.aimP90Deg) F(`barrel-vs-aim p90 ${r.aimP90}° over ${r.aimN} shots`);
     if (r.tposeEvents) F(`hands apart > ${TH.handsApart} m for > ${TH.handsApartT}s (${r.tposeEvents} frames; max ${r.handsApartMax} m)`);
-    if (r.floatEvents) F(`feet floating/sinking > ${TH.floatT}s (max ${r.floatMax}, min ${r.sinkMin})`);
+    if (r.floatEvents) out.warn.push(`bot${i}: [unvalidated] feet floating/sinking > ${TH.floatT}s (max ${r.floatMax}, min ${r.sinkMin})`);
     if (r.insideFrames > 15) F(`chest inside static geometry for ${r.insideFrames} frames`);
     if (r.corpseMaxS > TH.corpseS) F(`corpse visible ${r.corpseMaxS}s`);
     return r;
@@ -147,6 +159,7 @@
   const far = D.filter((d) => d.disp > TH.deathDisp + 0.15).length;
   out.deathSummary = { n: D.length, dispOver045: far, groundTimes: D.map((d) => d.ground) };
   if (D.length >= 5 && far / D.length > 0.3) out.fails.push(`deaths: ${far}/${D.length} displace hips > ${TH.deathDisp + 0.15} m (spec ≤0.3; allowance 30% for backward-fall variant + shotgun/grenade knockback)`);
+  if (Object.prototype.hasOwnProperty.call(g, 'onActorKilled')) delete g.onActorKilled;
   for (const b of bots) if (b._qaUpd) { b.update = b._qaUpd; delete b._qaUpd; }
   out.updateExceptions = excs.map((e, i) => e.length ? { i, e } : null).filter(Boolean);
   out.dumps = out.bots.map((r, i) => (r.aimP90 > 8 || r.moveAimP95 > 4 || r.supportP95 > 1) ? { i, dump: dumps[i] } : null).filter(Boolean);

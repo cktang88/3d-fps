@@ -20,7 +20,7 @@ TPL = {
 LEFT_TPL = {'rifle': 'rifle', 'bolt': 'rifle', 'shotgun': 'shotgun', 'pistol': 'pistol'}
 
 RIGS = {
-    'm4a1': dict(vgrip=0.5, tpl='rifle', cls='rifle', web=(-0.213, -0.080), rake=26.6, trig=(-0.110, -0.090), sup=0.42),
+    'm4a1': dict(vgrip=0.30, tpl='rifle', cls='rifle', web=(-0.295, 0.012), rake=30.0, trig=(-0.182, -0.014), sup=0.26),
     'ak47': dict(vgrip=0.92, tpl='rifle', cls='rifle', web=(0.172, -0.095), rake=16.0, trig=(0.315, -0.120), sup=0.80),
     'scarl': dict(vgrip=0.36, tpl='rifle', cls='rifle', web=(-0.262, -0.025), rake=30.0, trig=(-0.150, -0.050), sup=0.25),
     'mp5a5': dict(vgrip=0.5, tpl='rifle', cls='smg', web=(-0.110, 0.020), rake=34.0, trig=(0.000, -0.020), sup=0.43),

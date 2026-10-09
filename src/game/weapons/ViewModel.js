@@ -849,7 +849,10 @@ export class ViewModel {
     if (Math.abs(this.viewCam.near - near) > 1e-4) { this.viewCam.near = near; this.viewCam.updateProjectionMatrix(); }
 
     // ---- Root pose ----
-    const pos = new THREE.Vector3().copy(rig.hip).lerp(rig.ads, adsE);
+    // hipPush (FP_TUNE): scales the hip pose about the eye. The gun keeps its place on screen but sits further out,
+    // so it reads smaller (framing is purely angular, docs/FP_FRAMING.md).
+    const push = window.__vmHipPush ?? rig.tune.hipPush ?? 1;
+    const pos = new THREE.Vector3().copy(rig.hip).multiplyScalar(push).lerp(rig.ads, adsE);
     const rot = new THREE.Euler(
       rig.hipRot.x + (rig.adsRot.x - rig.hipRot.x) * adsE,
       rig.hipRot.y + (rig.adsRot.y - rig.hipRot.y) * adsE,

@@ -107,6 +107,7 @@ Third-party assets:
     "FPS pistol animations" (https://sketchfab.com/3d-models/fps-pistol-animations-0d7a343dcb6f401197a73c91aee93f6d),
     "FPS animations sniper rifle" (https://sketchfab.com/3d-models/fps-animations-sniper-rifle-c15ae8393d824f5b929e3f69691cdd31).
   - Remington 870 pump shotgun: "FPS Arms remington (shotgun)" by ccransh, with the 870 by tris09 (https://sketchfab.com/3d-models/fps-arms-remington-shotgun-e68ef617fe8a48cca8610d016ffd5881).
+  - M4A1: "M4A1" by Firewarden (https://sketchfab.com/3d-models/m4a1-40d8ef818c7549a896371cbb1f64fec6).
   - SCAR-L: "FN Scar-L Assault Rifle" by Hitansh_3DArtist (https://sketchfab.com/3d-models/fn-scar-l-assault-rifle-ea1823de59684fd596d9f6726382f948).
   - MP5: "MP5 Submachine Gun" by Rotuma (https://sketchfab.com/3d-models/mp5-submachine-gun-a73b61932a0e4eecb5db5c63c158aa24).
   - VSS: "Special Sniper Rifle VSS Vintorez" by ArmsMuseum, CC0 (https://sketchfab.com/3d-models/special-sniper-rifle-vss-vintorez-4d5d8c1b7b79429abfa4816f18330089).

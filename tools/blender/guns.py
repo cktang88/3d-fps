@@ -13,8 +13,12 @@ Sources are recorded in CREDITS (see docs/FP_FRAMING.md).
 
 SF = 'https://sketchfab.com/3d-models/'
 GUNS = {
-    'm4a1': dict(src='repo:public/assets/models/weapons/m4a1.glb', keep_nodes=True, length=0.84,
-                 measure=r'^(M4A1Body_00|M4A1Body_01|StockGeometry)'),
+    # M4A1 (Firewarden, CC-BY): separate magazine / bolt carrier / bolt catch / sights. The file holds a second
+    # copy of the rifle (*.001 / *.002 names) plus loose rounds; only the first rifle is kept.
+    'm4a1': dict(src='sf:g_m4fw/model.glb', rot=(-12.0, 0, 0), length=0.84,
+                 drop=r'(?<!rear sight)\.001_M_M4A1|\.002_M_M4A1|^shell|^bullet',
+                 parts={'Magazine': r'^(magazine|follower)_M', 'ChargingHandle': r'^bolt_M', 'RearIronSight': r'^(rear sight|sight_M)'},
+                 credit=('M4A1', 'Firewarden', SF + 'm4a1-40d8ef818c7549a896371cbb1f64fec6', 'CC-BY-4.0')),
     'ak47': dict(src='repo:public/assets/models/weapons/ak47.glb', keep_nodes=True, length=0.88, decimate=0.3,
                  measure=r'.*'),
     'scarl': dict(src='sf:g_scar/model.glb', rot=(0, 0, 0), length=0.889,
